@@ -8,7 +8,9 @@ Build a local desktop writing application around the existing scene-shorthand fr
 
 **Confirmed requirements:** separate application repository; an Electron-like local app; a vertical timeline of draggable scene blocks; individual scene editing in the scene writer; the main scene idea/summary in a box; ordered beat cards with freeform text and no required cast size or actor/recipient fields; separate reusable character, emotion, tone, and voice/delivery blocks; optional stage references and a possible physical stage board; human-authored shorthand and tags; AI primarily for prose generation.
 
-**Confirmed navigation:** use separate Story and Scene views as two conceptual zoom levels. Story shows the whole-story vertical timeline; opening a scene switches into its writer. Keep the existing accepted scene-writer appearance, with a clear return to the overview.
+**Confirmed navigation:** use separate Story and Scene views as two conceptual zoom levels. Story shows the whole-story vertical timeline; opening a scene switches into its writer. Preserve the accepted scene-writer workflow and hierarchy, with a clear return to the overview.
+
+**Next interface iteration:** add a playful touch through selective skew and asymmetry, plus discoverable create/edit/duplicate/delete controls. Keep writing surfaces comfortable and make removal recoverable. The concrete scope, control inventory, state rules, and acceptance checks are in [the playful interface and editing plan](interface-plan.md). These additions are planned; the current prototype remains the functional baseline.
 
 **Proposed first-release scope:** Windows first, one writer, one open story workspace, Markdown-backed authoring, and one directly integrated AI provider. Provider choice remains open. Local authoring and review work offline; cloud generation requires a connection. Supporting local models can be a later provider adapter.
 
@@ -48,7 +50,7 @@ Canon, provisional staging, editorial interpretation, and unresolved questions r
 
 ## 3. Two views at two zoom levels: story overview and scene writer
 
-Use two distinct views, at two conceptual zoom levels. **Story view** is the whole-story overview with a vertical timeline of draggable scene blocks. Opening a block switches to **Scene view**, the dedicated scene writer for that scene. Back to story returns to the overview; Story/Scene controls switch between the two levels. The timeline does not occupy a permanent sidebar in Scene view. A chapter/scene breadcrumb preserves orientation. Keep the accepted scene-writer design: scene summary plus separate, reorderable freeform beat cards, with its existing appearance and library/inspector arrangement. Structured details support the editor rather than replacing it.
+Use two distinct views, at two conceptual zoom levels. **Story view** is the whole-story overview with a vertical timeline of draggable scene blocks. Opening a block switches to **Scene view**, the dedicated scene writer for that scene. Back to story returns to the overview; Story/Scene controls switch between the two levels. The timeline does not occupy a permanent sidebar in Scene view. A chapter/scene breadcrumb preserves orientation. Preserve the accepted scene summary, reorderable freeform beat cards, and library/inspector arrangement while adding the playful visual treatment described below. Structured details support the editor rather than replacing it.
 
 ### Two useful scales
 
@@ -73,10 +75,20 @@ Keep the main idea above the beats while composing. Preserve the selected scene 
 
 - A scene block and its editor refer to one stable scene identity. Editing the title or summary updates the timeline block; switching scenes preserves unfinished title, summary, beat, and prose buffers.
 - Moving a scene changes its timeline position and dependent context, while its summary, beats, candidates, and prose remain attached to the same scene. Provide undo for movement and clear feedback about affected continuity views.
-- Preserve the existing accepted scene-writer composition and appearance. Beat cards remain visually distinct, with freeform contents. Further visual redesign is not a prerequisite for the two-view workflow.
+- Preserve the accepted scene-writer hierarchy and behavior. Add gentle skew to card backings or tabs and bounded asymmetric offsets to overview scene blocks; keep editable text, controls, focus outlines, and timeline/drop markers aligned and readable.
 - Keep the established warm neutral surfaces and restrained character/emotion/tone colors. Selection, focus, hover, and drop targets must be legible in light and dark modes. Avoid permanent forms or repeated metadata around every beat.
 - On smaller windows, reflow scene tools around the editor; Story and Scene remain separate views. The overview timeline stays vertical at every size.
 - The revised design reference is [the scene writer prototype](../outputs/scene-writer-studio.html). It illustrates the intended interaction and visual hierarchy; it is a local prototype, not the installed application or a connected AI generator.
+
+### Planned playful treatment and complete editing controls
+
+Follow [the interface plan](interface-plan.md) for the next iteration. In the story overview, scene blocks alternate left/right around a numbered central vertical spine, with staggered positions and slightly varied widths. Reading order determines side after reordering; subtle backing angles remain tied to identity. Freeform beat text remains horizontal. Calm appearance removes decorative transforms without changing reading order; reduced motion is respected independently. Narrow layouts use one readable column and a left spine.
+
+Add visible creation actions and labeled contextual menus for chapter/scene/beat editing, insertion, duplication, movement, and recoverable deletion. Expand the reusable library with basic author-created character profiles, preset/template editing, usage inspection, archiving, and deletion of unused entries. Keep imported canon changes on their source-linked review path.
+
+Duplicated scenes/beats receive new identities while keeping references to the same reusable characters/presets. A scene duplicate starts as direction only; it does not inherit accepted prose, evidence assertions, or continuity approval. Used library entries can be archived without breaking existing scenes. Removing a local chip or token never deletes its global definition.
+
+Scene/chapter removal uses project Trash and supports restoration; beat deletion supports Undo and resolves any evidence references. Define Trash persistence, restore ordering, reference handling, and undo transaction boundaries during the schema spike. Destructive purge, extensive bulk operations, and a general project-management wizard are later work.
 
 ### Reusable blocks and ordinary text
 
@@ -219,8 +231,8 @@ These are dependency-ordered milestones, not calendar commitments. Estimate effo
 | Milestone | Deliverable | Acceptance gate |
 |---|---|---|
 | 1. Engine and packaging spike | Independent repository, worker contract, read-only import, and a minimal packaged Electron shell | Opens a disposable vault copy, enumerates all three sequences correctly, reproduces representative replay results, and launches without system Python |
-| 2. Two-view timeline and scene writer | Story overview with vertical draggable scene timeline; separate individual scene view preserving the accepted editor; summary boxes, freeform beat cards, reusable blocks, optional stages, scoped drop targets, tags, raw fallback, and safe persistence | Open a scene, edit it, return without losing edits/overview position, and open another independently; reorder scenes vertically while preserving identities; write beats with zero/one/multiple characters; reuse and locally edit presets; reorder beats with evidence intact; preserve unknown Markdown and recover after external edits/crashes |
-| 3. AI prose loop | Scene context assembler, one provider, streaming, candidates, comparison, and acceptance | Generate from structured shorthand, revise, accept prose, and recover the previous source; no automatic canon/state/hash updates occur |
+| 2. Two-view authoring, editing controls, and visual treatment | Separate Story/Scene views; vertical timeline; summary and freeform beats; chapter/scene/beat create/edit/duplicate/move/recoverable delete; basic character/preset management; optional stages; playful styling and Calm appearance; safe persistence | Complete the authoring/library/Trash/Undo flows and visual-accessibility gates in the interface plan; preserve independent buffers, stable identities, local/global scope, evidence references, unknown Markdown, and recoverable work |
+| 3. AI prose loop | Scene context assembler, one provider, streaming, candidate labels/editing/comparison/recoverable removal, and deliberate acceptance | Generate from structured shorthand, revise, remove an unaccepted candidate without affecting the manuscript, accept prose, and recover the previous source; no automatic canon/state/hash updates occur |
 | 4. State and continuity review | Entering/exiting inspector, source-linked histories, intended-outcome handling, packet review, and derived views | Intended knowledge never enters actual replay; stale inputs stay visible; review refreshes evidence only for the prose actually inspected |
 | 5. Usable desktop release | New/move scene transactions, search/filter refinement, accessible keyboard flows, installer, and explicit exports | Complete the entire authoring loop on a disposable real project, reopen it successfully in Obsidian, and install on a clean Windows environment |
 
@@ -235,6 +247,8 @@ Package the Python worker with its interpreter, then include it with the desktop
 - **Authoring lifecycle:** a scene with no prose remains editable; intended updates cannot affect replay; source changes require renewed evidence review; beat moves preserve references; scene moves preserve identity.
 - **Timeline and reuse:** scenes appear in a vertical timeline; drag and keyboard scene moves retain scene/summary/beat identities and invalidate affected context; switching scenes preserves independent edits and unfinished buffers; title and summary edits update the matching timeline block; freeform beat text/block order survives save/reopen; beats with no characters, one character, and multiple characters all remain editable and generate successfully; multiple actions or paragraphs need no extra mandatory fields; character-specific emotions never spread to other characters in a beat; optional stages and inherited narration settings never block writing; preset edits do not change past instances without an explicit update; keyboard controls can perform every drag operation; author-only comments stay out of generation requests.
 - **Two-view navigation:** the overview and scene writer are distinct screens; opening/returning preserves selected scene, independent editing buffers, and overview scroll position. The overview stays vertical at all widths, and the accepted scene editor retains its summary and freeform beat cards.
+- **Editing controls and recovery:** create/edit/duplicate/move/delete/undo/restore chapters, scenes, and beats; duplicates receive fresh identities and no copied continuity approval; used library entries archive without breaking references; deleting a local occurrence never deletes a global profile; evidence-linked beat deletion requires explicit resolution.
+- **Playful appearance:** deterministic offsets and decorative skew preserve reading order and interactive bounds; editable text/carets remain aligned; verify Calm appearance, reduced motion, light/dark themes, keyboard flow, high text zoom, narrow windows, and long content using the interface plan's acceptance checks.
 - **Durability:** conflicting external edits, interrupted multi-file writes, app crashes, missing source files, and restarting a failed worker preserve recoverable work.
 - **AI behaviour:** mock the provider for repeatable streaming, stop, timeout, rate-limit, partial-output, and changed-input tests. Inspect assembled requests for missing constraints and future-state leakage. Use a small real generation evaluation separately; prose quality needs editorial judgement.
 - **Desktop:** bounded end-to-end checks for project opening, authoring, generation, review, keyboard operation, and installer startup. Verify packaged operation without developer runtimes.
@@ -247,7 +261,7 @@ Normal saves rebuild lightweight derived views as needed. Exporting a compiled M
 
 Defer multiplayer collaboration, cloud sync, mobile clients, automatic canon promotion, broad historical knowledge extraction, advanced spatial stage editing/simulation, and large-scale autonomous chapter generation. A simple optional placement board can be prototyped without making it a first-release dependency. A generic project-creation wizard and additional AI/local-model providers can follow proven compatibility with the initial framework.
 
-Character and canon editing can begin as source-linked reference views; full retcon workflows require a reviewed multi-file change set and decision record. Retain the repository's distinction between canon, suggestions, and open questions throughout.
+Basic creation and editing of author-created characters belongs in the first authoring release. Imported canon editing retains source-linked review; full retcon workflows require a reviewed multi-file change set and decision record. Defer permanent purge and extensive bulk editing. Retain the repository's distinction between canon, suggestions, and open questions throughout.
 
 ## 10. Open product decisions
 

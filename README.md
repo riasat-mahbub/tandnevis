@@ -6,6 +6,8 @@ A proposed local desktop writing application: each scene sits on a timeline and 
 
 [Read the development plan](docs/development-plan.md).
 
+[Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
+
 ## Agreed direction
 
 - A separate software repository from the story vault.
@@ -24,6 +26,8 @@ A proposed local desktop writing application: each scene sits on a timeline and 
 The first compatibility target is the existing shorthand framework. Proposed technology, scope, and schema extensions are documented in the plan and remain subject to revision.
 
 [Explore the scene writer design](outputs/scene-writer-studio.html). This is an interactive local prototype; application implementation has not started.
+
+[Try the playful interface preview](outputs/scene-writer-playful.html): asymmetric scene blocks, skewed backings, Calm appearance, scene/beat actions, Trash/Undo, and basic character profiles.
 
 ## Repository boundary
 

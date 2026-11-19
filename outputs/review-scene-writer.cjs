@@ -5,9 +5,11 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 
 // Local, dependency-free browser check for the design reference.
-const directory = path.resolve(__dirname, 'review');
+const previewName = path.basename(process.argv[2] || 'scene-writer-studio.html');
+if (!/^[a-z0-9-]+\.html$/.test(previewName)) throw new Error('Expected an HTML preview filename.');
+const directory = path.resolve(__dirname, previewName === 'scene-writer-studio.html' ? 'review' : 'review-playful');
 fs.mkdirSync(directory, { recursive: true });
-const fragment = fs.readFileSync(path.resolve(__dirname, 'scene-writer-studio.html'), 'utf8');
+const fragment = fs.readFileSync(path.resolve(__dirname, previewName), 'utf8');
 for (const block of fragment.matchAll(/<script>([\s\S]*?)<\/script>/g)) new (require('node:vm').Script)(block[1]);
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark}body{margin:0}button,input,select,textarea{font-family:inherit}</style></head><body><script>window.openai={setWidgetState:async s=>{window.__snapshot=JSON.parse(JSON.stringify(s))}};</script>' + fragment + '</body></html>';
 const server = http.createServer((request, response) => { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(html); });
@@ -59,7 +61,7 @@ async function main() {
     const checks=[];function check(ok,label){checks.push({label,pass:!!ok});if(!ok)throw new Error(label);}
     check(!q('[data-view="story"]').hidden&&q('[data-view="scene"]').hidden,'Story and Scene are separate views');
     q('[data-zoom="story"]').click();const initial=JSON.parse(JSON.stringify(window.__snapshot.privateContent));
-    const rects=qa('.scene-button').map(x=>x.getBoundingClientRect());check(rects.every((x,i)=>i===0||x.top>rects[i-1].bottom),'Story scene blocks form a vertical timeline');
+    const rects=qa('.scene-button').map(x=>x.getBoundingClientRect());check(rects.every((x,i)=>i===0||x.top>rects[i-1].top),'Story scene blocks follow vertical reading order');
     q('[data-scene-id="stitches"]').click();check(q('[data-view="story"]').hidden&&!q('[data-view="scene"]').hidden,'Opening a scene zooms into its writer');
     const bodies=qa('.beat-text');check(bodies[0].querySelectorAll('[data-kind="character"]').length===0,'A beat can contain no character blocks');check(bodies[1].querySelectorAll('[data-kind="character"]').length===2,'A beat can contain multiple character blocks');
     q('[data-summary]').textContent='Review: independent scene summary';q('[data-summary]').dispatchEvent(new Event('input',{bubbles:true}));
@@ -81,6 +83,40 @@ async function main() {
   })()`);
   report.checks.push(...results);
   console.log(results.length+' interaction checks passed.');
+  if (previewName === 'scene-writer-playful.html') {
+    const additional = await evaluate(`(() => {
+      const root=document.getElementById('hybrid-writer'),q=s=>root.querySelector(s),qa=s=>Array.from(root.querySelectorAll(s)),checks=[];
+      function check(ok,label){checks.push({label,pass:!!ok});if(!ok)throw new Error(label);}
+      q('[data-zoom="story"]').click();
+      const cards=qa('.scene-button').map(x=>x.getBoundingClientRect()),axis=q('.scene-sequence').getBoundingClientRect();check(cards[0].right<axis.left+axis.width/2&&cards[1].left>axis.left+axis.width/2&&cards[2].right<axis.left+axis.width/2,'Scenes alternate left and right of a central timeline');
+      const markers=qa('.scene-order').map(x=>x.getBoundingClientRect());check(markers.every(x=>Math.abs(x.left+x.width/2-(axis.left+axis.width/2))<2),'Numbered scene markers align on the central spine: '+JSON.stringify({axis:axis.left+axis.width/2,centers:markers.map(x=>x.left+x.width/2),cards:cards.map(x=>[x.left,x.right])}));
+      check(cards[2].top>cards[0].bottom&&cards[2].left<cards[1].left,'Staggered cards retain same-side separation and readable order');
+      q('[data-calm]').click();check(root.classList.contains('calm')&&qa('.scene-item').every(x=>getComputedStyle(x).getPropertyValue('--offset').trim()==='0px'),'Calm appearance removes decorative offsets');q('[data-calm]').click();
+      const source=q('[data-scene-id="stitches"]');source.closest('.scene-item').querySelector('[data-command="duplicate"]').click();
+      check(qa('.scene-button').length===4,'Scene actions duplicate scene direction');
+      const duplicate=qa('.scene-button').find(x=>x.textContent.includes('Stitches (copy)')),duplicateId=duplicate.dataset.sceneId;
+      duplicate.click();q('[data-current-scene-actions] [data-command="move-to-trash"]').click();check(qa('.scene-button').length===3&&q('[data-trash-count]').textContent==='1','Scene deletion is recoverable in Trash');
+      q('[data-show-trash]').click();q('[data-trash-list] button').click();check(!!q('[data-scene-id="'+duplicateId+'"]'),'Trash restoration preserves scene identity');
+      q('[data-scene-id="stitches"]').click();let beat=qa('.beat')[0];beat.querySelector('[data-command="duplicate"]').click();check(qa('.beat').length===5,'Beat actions duplicate freeform content');
+      beat=qa('.beat')[1];const id=beat.dataset.id;beat.querySelector('[data-command="delete"]').click();check(qa('.beat').length===4,'Beat actions remove a selected beat');q('[data-undo]').click();check(qa('.beat').some(x=>x.dataset.id===id),'Undo restores removed beat identity and text');
+      q('.new-profile').click();let form=q('[data-profile-form]');form.elements.name.value='Rin';form.elements.voice.value='Quiet and deliberate';form.requestSubmit();check(!!q('.library [data-kind="character"][data-value="Rin"]'),'Library can create a reusable character');
+      q('[aria-label="Edit Rin profile"]').click();form=q('[data-profile-form]');check(form.elements.voice.value==='Quiet and deliberate','Character profile details can be inspected');form.elements.voice.value='Warm and direct';form.requestSubmit();q('[aria-label="Edit Rin profile"]').click();check(q('[data-profile-form]').elements.voice.value==='Warm and direct','Character profile changes remain editable');
+      q('[data-profile-actions] [data-command="archive"]').click();check(!q('.library [data-kind="character"][data-value="Rin"]'),'Character profiles can be archived');q('[data-undo]').click();check(!!q('.library [data-kind="character"][data-value="Rin"]'),'Undo restores an archived character');
+      q('[data-zoom="story"]').click();while(qa('.scene-button').length)qa('.scene-item')[0].querySelector('[data-command="move-to-trash"]').click();check(q('[data-zoom="scene"]').disabled&&!!q('.empty-story'),'An empty story keeps a usable creation state');q('[data-undo]').click();check(qa('.scene-button').length===1,'Undo recovers the final removed scene');
+      return checks;
+    })()`);
+    report.checks.push(...additional);console.log(additional.length+' playful editing checks passed.');
+  }
+  await call('Page.reload');
+  for(let i=0;i<100;i++){if(await evaluate('document.querySelectorAll(".scene-item").length===3'))break;await sleep(50);}
+  if(previewName==='scene-writer-playful.html'){
+    await call('Emulation.setDeviceMetricsOverride',{width:320,height:900,deviceScaleFactor:1,mobile:false});
+    await evaluate('document.querySelector(\'.scene-item .action-menu\').open=true');
+    report.checks.push({label:'Story actions fit at 320px',pass:!(await evaluate('document.documentElement.scrollWidth>window.innerWidth'))});
+    await evaluate('document.querySelector(\'[data-scene-id="stitches"]\').click();document.querySelector(\'.beat .action-menu\').open=true;document.querySelector(\'.new-profile\').click()');
+    report.checks.push({label:'Beat actions and character form fit at 320px',pass:!(await evaluate('document.documentElement.scrollWidth>window.innerWidth'))});
+    await call('Page.reload');for(let i=0;i<100;i++){if(await evaluate('document.querySelectorAll(".scene-item").length===3'))break;await sleep(50);}
+  }
   async function capture(name, width, view, theme = 'light') {
     await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
     await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });

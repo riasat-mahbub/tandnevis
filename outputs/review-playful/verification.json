@@ -1,0 +1,192 @@
+{
+  "checks": [
+    {
+      "label": "Story and Scene are separate views",
+      "pass": true
+    },
+    {
+      "label": "Story scene blocks follow vertical reading order",
+      "pass": true
+    },
+    {
+      "label": "Opening a scene zooms into its writer",
+      "pass": true
+    },
+    {
+      "label": "A beat can contain no character blocks",
+      "pass": true
+    },
+    {
+      "label": "A beat can contain multiple character blocks",
+      "pass": true
+    },
+    {
+      "label": "Summary edits update their overview block",
+      "pass": true
+    },
+    {
+      "label": "Other scenes retain independent summaries",
+      "pass": true
+    },
+    {
+      "label": "Edits survive scene and view switches",
+      "pass": true
+    },
+    {
+      "label": "Narration overrides stay local to their scene",
+      "pass": true
+    },
+    {
+      "label": "Narration overrides survive switching and disclose their scope",
+      "pass": true
+    },
+    {
+      "label": "Add beat creates a freeform empty beat",
+      "pass": true
+    },
+    {
+      "label": "Reordering a beat preserves its identity and content",
+      "pass": true
+    },
+    {
+      "label": "Any number of characters can be inserted into one beat",
+      "pass": true
+    },
+    {
+      "label": "Emotion applies to its explicit local character target",
+      "pass": true
+    },
+    {
+      "label": "Independent prose edits survive switching scenes",
+      "pass": true
+    },
+    {
+      "label": "Optional stage can be attached",
+      "pass": true
+    },
+    {
+      "label": "Stage can be removed without removing the scene",
+      "pass": true
+    },
+    {
+      "label": "Scene movement preserves the edited scene",
+      "pass": true
+    },
+    {
+      "label": "Scene dragging shows a before/after insertion marker",
+      "pass": true
+    },
+    {
+      "label": "Dragging a scene changes vertical reading order",
+      "pass": true
+    },
+    {
+      "label": "New scene opens its individual editor",
+      "pass": true
+    },
+    {
+      "label": "Scenes alternate left and right of a central timeline",
+      "pass": true
+    },
+    {
+      "label": "Numbered scene markers align on the central spine: {\"axis\":504.5,\"centers\":[504.5,504.5,504.5],\"cards\":[[82.5,468.5],[540.5,903.328125],[82.5,468.5]]}",
+      "pass": true
+    },
+    {
+      "label": "Staggered cards retain same-side separation and readable order",
+      "pass": true
+    },
+    {
+      "label": "Calm appearance removes decorative offsets",
+      "pass": true
+    },
+    {
+      "label": "Scene actions duplicate scene direction",
+      "pass": true
+    },
+    {
+      "label": "Scene deletion is recoverable in Trash",
+      "pass": true
+    },
+    {
+      "label": "Trash restoration preserves scene identity",
+      "pass": true
+    },
+    {
+      "label": "Beat actions duplicate freeform content",
+      "pass": true
+    },
+    {
+      "label": "Beat actions remove a selected beat",
+      "pass": true
+    },
+    {
+      "label": "Undo restores removed beat identity and text",
+      "pass": true
+    },
+    {
+      "label": "Library can create a reusable character",
+      "pass": true
+    },
+    {
+      "label": "Character profile details can be inspected",
+      "pass": true
+    },
+    {
+      "label": "Character profile changes remain editable",
+      "pass": true
+    },
+    {
+      "label": "Character profiles can be archived",
+      "pass": true
+    },
+    {
+      "label": "Undo restores an archived character",
+      "pass": true
+    },
+    {
+      "label": "An empty story keeps a usable creation state",
+      "pass": true
+    },
+    {
+      "label": "Undo recovers the final removed scene",
+      "pass": true
+    },
+    {
+      "label": "Story actions fit at 320px",
+      "pass": true
+    },
+    {
+      "label": "Beat actions and character form fit at 320px",
+      "pass": true
+    },
+    {
+      "label": "desktop-story has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "desktop-scene has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "mobile-story has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "mobile-scene has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "dark-scene has no horizontal overflow",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "screenshots": [
+    "D:\\writing\\shorthand-writer\\outputs\\review-playful\\desktop-story.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review-playful\\desktop-scene.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review-playful\\mobile-story.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review-playful\\mobile-scene.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review-playful\\dark-scene.png"
+  ]
+}

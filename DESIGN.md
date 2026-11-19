@@ -1,6 +1,6 @@
 # Shorthand Writer — two-view design
 
-The latest user instruction preserves the accepted scene-writer design and separates the whole story and each scene into two distinct views at two conceptual zoom levels. Functional requirements remain in [the development plan](docs/development-plan.md). The [interactive design reference](outputs/scene-writer-studio.html) is a prototype with illustrative story content, not the installed application or a connected AI generator.
+The accepted scene-writer workflow remains: two views at two conceptual zoom levels, scene summaries, and freeform beat cards. The next visual iteration adds a playful touch with selective skew and asymmetry, together with clearer editing controls. Functional requirements remain in [the development plan](docs/development-plan.md); the detailed next-step brief is [the interface plan](docs/interface-plan.md). The [interactive design reference](outputs/scene-writer-studio.html) shows the current functional baseline. The new visual treatment and additional controls are planned, not implemented in that prototype.
 
 ## Composition
 
@@ -17,6 +17,16 @@ Preserve the accepted scene layout: reusable blocks on the left, writing in the 
 - Restrained green character blocks, rose emotion blocks, and ochre tone/delivery blocks. Labels identify each meaning independently of color.
 - One-pixel boundaries, small consistent radii, compact control groups, and generous space between writing sections. No decorative shadows or dashboard statistics.
 - Clear selected, hover, focus, disabled, empty, and drop states in light and dark appearances. Motion only communicates state and respects reduced-motion preferences.
+
+## Planned playful refinement
+
+Alternate scenes to the left and right of a central vertical timeline, staggered from top to bottom, with numbered nodes and clear connectors. Slightly unequal card widths provide asymmetry while same-side cards stay separated. Side follows reading order after reordering; subtle backing angles remain tied to scene identity. Collapse to a single column with a left spine on narrow screens. Put gentle skew/rotation on backings and tabs; keep editable text and controls horizontal. Retain the existing palette, writing typography, scene summary, and editor/library hierarchy.
+
+Asymmetry should emphasize the writing area through unequal useful proportions, not obscure order or scatter tools. Calm appearance removes decorative transforms and normalizes offsets. Narrow layouts reduce the effect before sacrificing readable width. No looping wobble or bouncing; reduced motion remains an independent preference.
+
+## Planned editing controls
+
+Add clear New/Add actions and labeled Actions menus for chapter, scene, and beat creation, inspection, editing, duplication, movement, and recoverable removal. Add character/profile and preset/template editing, usage inspection, and archive/delete rules to the library. Scene/chapter Trash and beat Undo make everyday removal reversible. Local removal never deletes a global definition; duplicates receive new identities and retain explicit shared references. See the interface plan for the object-by-object inventory and acceptance gates.
 
 ## Interaction contract
 
