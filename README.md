@@ -2,9 +2,9 @@
 
 A proposed local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with optional reusable character, emotion, tone, and voice blocks, and can contain zero, one, or many characters. An optional stage provides physical placement. AI composes prose from that direction and the story's established context.
 
-**Status:** development plan only; implementation has not started.
+**Status:** implementation is starting in small, reviewable commits. [Implementation progress](docs/implementation-progress.md) records completed work, pending work, and verification limits.
 
-**Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. Markdown/manifests remain the local story source; cloud AI is optional during ordinary authoring.
+**Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
 
 [Read the development plan](docs/development-plan.md).
 
@@ -27,11 +27,12 @@ A proposed local desktop writing application: each scene sits on a timeline and 
 - Story-level narration defaults, with optional scene overrides.
 - Human-authored shorthand, tags, scene direction, and character changes.
 - AI primarily generates and revises prose.
-- Open an existing local story project; preserve its editable Markdown sources.
+- Create/open a native local SQLite project containing stories, chapters, scenes, freeform beats, profiles, presets, revisions, and recoverable Trash.
+- Import/export Markdown deliberately, preserving imported source material and reporting compatibility limits; external Markdown edits never silently overwrite the native project.
 
-The first compatibility target is the existing shorthand framework. Proposed technology, scope, and schema extensions are documented in the plan and remain subject to revision.
+The first compatibility target is the existing shorthand framework. Native authoring comes first; legacy parser/replay parity, advanced AI, and production signing remain later milestones with their own acceptance gates.
 
-[Explore the scene writer design](outputs/scene-writer-studio.html). This is an interactive local prototype; application implementation has not started.
+[Explore the scene writer design](outputs/scene-writer-studio.html). This is an interactive local prototype, separate from the desktop implementation.
 
 [Try the playful interface preview](outputs/scene-writer-playful.html): asymmetric scene blocks, skewed backings, Calm appearance, scene/beat actions, Trash/Undo, and basic character profiles.
 

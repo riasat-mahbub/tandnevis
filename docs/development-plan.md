@@ -1,6 +1,6 @@
 # Shorthand Writer — development plan
 
-Status: proposal, 19 November 2026. This plan changes no story canon or source files.
+Status: approved product direction, implementation starting, 19 November 2026. This plan changes no story canon or source files. Actual delivery and verification are tracked in [implementation progress](implementation-progress.md).
 
 **Implementation platform:** Tauri 2 desktop with a React/TypeScript frontend and Rust application backend. This replaces the earlier Electron proposal. The detailed build plan, module ownership, storage/IPC contracts, work tickets, and verification gates are in [the Tauri implementation plan](tauri-implementation-plan.md).
 
@@ -16,7 +16,7 @@ Build a local desktop writing application around the existing scene-shorthand fr
 
 **Next interface iteration:** add a playful touch through selective skew and asymmetry, plus discoverable create/edit/duplicate/delete controls. Keep writing surfaces comfortable and make removal recoverable. The concrete scope, control inventory, state rules, and acceptance checks are in [the playful interface and editing plan](interface-plan.md). These additions are planned; the current prototype remains the functional baseline.
 
-**Proposed first-release scope:** Windows first, one writer, one open story workspace, Markdown-backed authoring, and one directly integrated AI provider. Provider choice remains open. Local authoring and review work offline; cloud generation requires a connection. Supporting local models can be a later provider adapter.
+**Approved storage and first tranche:** Windows first, one writer, one open native project, with SQLite as the canonical store and Rust-only domain/database access. Build the scaffold, durable authoring backend, connected Story/Scene timelines/editor/library/Trash, and verification/build in commit-sized steps. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Integrated AI, legacy engine compatibility, and production signing follow as separate milestones. Local authoring works offline; cloud generation later requires a connection. Provider choice remains open.
 
 The primary workflow is:
 
@@ -120,7 +120,7 @@ To protect earlier scenes, dropping a tone/voice/stage preset inserts an editabl
 
 ### Structured details behind the blocks
 
-- Preserve title, period, location, viewpoint, cast, purpose, and optional tags. Existing fields load from their current sources; avoid duplicate copies of manifest metadata.
+- Preserve title, period, location, viewpoint, cast, purpose, and optional tags in native entities. Explicit import maps supported legacy fields with provenance; native edits do not update the original manifests.
 - Keep narration settings optional and inherit the story's defaults. Grammatical person (first/third person) is separate from whose thoughts the narrator can reveal (limited/omniscient/external). Do not require a character viewpoint selection to create a scene.
 - Support `@self`, `@room`, and `?` recipients, named characters, groups, generic roles, and offstage correspondents. Unknown recipients stay unknown.
 - Keep scene tone progression, per-beat delivery, and persistent default changes separate. Tone presets are guidance, not global character mutations.
@@ -133,13 +133,13 @@ Tags filter and describe content; they do not establish facts. Beat cards provid
 
 Scenes and beats are both draggable structural objects. Drag scenes within the current chapter and beats within the open scene in the initial implementation; existing impact-reviewed cross-chapter scene movement follows later. A dedicated handle starts dragging so selecting text, moving the caret, or clicking an inline character/emotion block never reorders the containing card. Show before/after insertion markers and support drops before the first item, between items, and after the last item, including scroll assistance for long timelines. Commit one reorder on drop; cancellation leaves order unchanged. Provide native-button and keyboard movement equivalents, with focus following the moved item.
 
-Move scenes within a chapter first, then support cross-chapter moves with an impact preview. A move updates manifest positions and affected packet metadata together, invalidates dependent views, and preserves scene identity and prose paths.
+Move scenes within a chapter first, then support cross-chapter moves with an impact preview. A move transaction updates database order/parent metadata, invalidates dependent views, and preserves scene identity, content, and source provenance. Export derives manifest/order representations when that interchange format supports them.
 
 Reordering beats also remaps character-diff evidence references. Deleting a referenced beat requires reassignment or removal of that reference. Give blocks stable internal identities so a display renumber does not break references.
 
 After either kind of move, update ordinal numbers, alternating sides, and connectors from the new order. Preserve identities, freeform text, local block scope, draft/prose associations, and evidence links. Record the reorder as one undoable transaction and invalidate affected generation/continuity context. Deleting through a quick action follows the same Trash/Undo/reference-resolution path as deleting through a menu.
 
-During the schema spike, specify how mixed text, preset provenance, and optional overlap groups map to the Markdown packet. Existing semantic fields remain authoritative. A small versioned authoring section can hold block identities, ordering references, and provenance; it must not introduce a competing editable copy of the same beat, stage, or relationship. Store reusable presets as readable, versioned project Markdown. Preserve imported packets and unknown content without mandatory migration.
+The native SQLite schema stores freeform beat documents, reusable profile/preset revisions, local block instances/scope, order, and optional stage metadata. Define a versioned Markdown interchange representation with readable scene/beat boundaries and explicit supported-format limits. Preserve imported originals and unknown content as provenance rather than establishing a second editable authority. Re-import is deliberate; no watched Markdown mirror or automatic reconciliation is planned.
 
 ## 4. Make the framework support shorthand-first authoring
 
@@ -149,17 +149,17 @@ Introduce these capabilities without weakening the existing strict build checks:
 
 1. Separate document parsing, format validation, source-freshness checks, and replay. The editor can open an incomplete packet and report useful field-level diagnostics; strict export still rejects invalid inputs.
 2. Add an explicit lifecycle for new scenes: direction only, candidate available, current prose awaiting review, and packet reviewed against the current source. Imported scenes retain their existing provenance; a matching hash alone does not confer editorial approval.
-3. Define a small, versioned Markdown extension for intended outcomes, proposed in `objective.md`. Planned updates may have a preview, but do not feed the established replay. Existing `relationships`, `voices`, and `character-diff` blocks retain their meaning as authored draft assertions.
+3. Store intended outcomes separately from established changes in the native schema; define their explicit Markdown representation when the compatibility adapter is implemented. Planned updates may have a preview, but do not feed established replay. Imported `relationships`, `voices`, and `character-diff` blocks retain their meaning as authored draft assertions.
 4. Keep current-source and packet-reviewed fingerprints separate. Accepting a candidate makes its prose current; only a subsequent packet review can refresh the reviewed source hash. Bind review completion to the exact bytes reviewed.
 5. Keep draft evidence distinct from canon approval. No lifecycle action promotes a draft assertion to canon.
 
-Proposed new metadata must be documented and tested for compatibility before rollout. Preserve existing packets without rewriting them merely to import them. Unknown Markdown sections survive form editing; unsupported syntax remains accessible in a raw editor.
+Proposed legacy mappings must be documented and tested before claiming compatibility. Import never rewrites original packets. Retain unknown source sections in provenance, expose unsupported content, and document what can be re-exported without loss. Full legacy parsing/replay is later work and does not block native SQLite authoring.
 
 When an upstream packet is stale or invalid, keep the editor usable and label downstream calculations accordingly. Do not quietly omit the problem scene or present its dependent state as current. A last valid snapshot may be shown with its source revision clearly identified.
 
 ## 5. AI prose generation is a core feature
 
-The first usable authoring release includes one integrated generation path. Provider selection and credentials are settings, not part of the story files. Keep the provider interface small enough to add another backend later.
+The eventual authoring/generation release includes one integrated generation path. This follows the first native authoring tranche. Provider selection and credentials are settings, not story content. Keep the provider interface small enough to add another backend later.
 
 ### Context assembly
 
@@ -179,7 +179,7 @@ Do not import later scenes or a later-period profile into an earlier scene's ent
 
 Provide Generate, Stop, Compare, Revise with instruction, and Accept candidate. Stream text without blocking editing. Capture the exact direction/context revision, model settings, and outcome with each candidate. If inputs change while generation runs, retain the result but mark it as based on earlier direction.
 
-Save candidates separately from the manifest-linked prose, proposed under `scenarios/candidates/<scene-id>/`. Candidates are never included in reading editions automatically. Support rejecting a candidate without losing the existing draft, recovering partial output, and comparing alternatives without overwriting them.
+Store candidates separately from current manuscript revisions in the native database. Candidates are never included in reading editions automatically. Support rejecting a candidate without losing the existing draft, recovering partial output, and comparing alternatives without overwriting them. Explicit exports choose which manuscript scope to include.
 
 Acceptance is a deliberate replacement of the current prose with a recoverable previous version. It does not accept model-suggested character diffs, invent canon, clear continuity concerns, or refresh the packet hash. The writer reviews those consequences separately, with the prose and relevant packet fields side by side.
 
@@ -195,19 +195,19 @@ Use Tauri 2 for the desktop shell, React/TypeScript/Vite for the frontend, and R
 |---|---|
 | React frontend | Two writing views, rich-text beat editors, timeline drag previews, quick actions, library, review, focus/accessibility |
 | Typed Tauri command/channel boundary | Validated requests, acknowledged revisions, structured errors, cancellable progress/token streams |
-| Rust backend | Workspace sessions, all story-file writes, transactions/recovery, domain mutations, jobs, provider requests, credentials, exports |
-| Engine adapter | Existing parsing/replay behind a verified adapter; initially a bundled Python sidecar if packaging/parity pass |
-| Local workspace | Markdown/manifests plus documented portable metadata; indexes remain disposable |
+| Rust backend | Project sessions, exclusive domain/database access, migrations, transactions/recovery, revisions, Trash, interchange, later jobs/provider requests/credentials |
+| Engine adapter | Later existing parsing/replay adapter after source inspection, parity fixtures, and sidecar-or-port decision |
+| Local project | Canonical SQLite database: stories/chapters/scenes/freeform beats/profiles/presets/revisions/Trash; derived indexes remain disposable |
 
-Rust is the single workspace writer and owns native integration and provider/network work. The frontend calls narrow application commands instead of performing arbitrary filesystem or shell operations. Restrict application-command permissions as well as plugin capabilities, validate workspace sessions/paths and message revisions, and render Markdown without executable content. [Tauri commands](https://v2.tauri.app/develop/calling-rust/), [Tauri capabilities](https://v2.tauri.app/security/capabilities/).
+Rust alone accesses the canonical SQLite database and owns native integration and provider/network work. The frontend calls narrow domain commands; it has no SQL plugin, database connection, arbitrary filesystem operations, or shell access. Restrict application-command permissions as well as plugin capabilities, validate project sessions/paths and message revisions, and render Markdown without executable content. [Tauri commands](https://v2.tauri.app/develop/calling-rust/), [Tauri capabilities](https://v2.tauri.app/security/capabilities/).
 
 Use Tauri channels for generation/progress streams and low-volume events for invalidation. If the engine worker is retained, Rust controls its versioned standard-input/output protocol and supplies authorized snapshots; the worker returns derived results or proposed patches rather than writing story files. No localhost web server is required in the installed app. Include request/operation IDs, cancellation, structured errors, progress, and controlled worker recovery.
 
 ### Keep software and story repositories independent
 
-The application opens a chosen workspace directory; it never assumes the vault is beneath its installation or application repository. Ship the reusable engine with the app, rather than executing arbitrary scripts found in an opened project.
+The application creates/opens a chosen local native project database; it never assumes a story is beneath its installation or application repository. Markdown import/export uses explicit chosen sources/destinations. If a reusable engine is later shipped, never execute arbitrary scripts found in an opened project.
 
-The referenced `build_scene_maps.py` and `build_character_pilot.py` sources are not in this repository. Inspect the external framework and adapt their verified logic behind an engine interface, preserving attribution and behavioural parity. Generalise fixed roots/period selections through explicit project configuration. Validate a bundled Python worker before choosing it over a Rust port; preserve unchanged imported packets and the original vault's supported command-line workflows. New freeform formats require an explicit codec/parser compatibility gate.
+The referenced `build_scene_maps.py` and `build_character_pilot.py` sources are not in this repository. Later, inspect the external framework and adapt verified logic behind an engine interface, preserving attribution and behavioural parity. Generalise fixed roots/period selections through explicit project configuration. Compare a bundled Python worker with a Rust port using evidence; neither is a dependency for the native authoring tranche. Original vault files and command-line workflows stay independent; compatibility claims require an explicit codec/parser gate.
 
 Proposed application layout:
 
@@ -225,33 +225,34 @@ Do not copy the private story vault into the application repository. Use the rea
 
 ### Persistence and recovery
 
-Markdown and existing manifests remain the source of truth. Structured controls edit bounded sections while preserving unrelated text, links, Unicode, and line endings. Untouched files remain byte-identical. Reject unsupported pipe/newline values clearly unless an explicit compatible escaping scheme has been introduced.
+SQLite is the source of truth. Rust owns a versioned schema with foreign keys, stable opaque entity IDs, explicit sibling order, revision preconditions, content revisions, operations, and persistent Trash. Use parameterized queries and a transaction for each domain mutation, including related order/reference/history updates. A failed mutation rolls back as a unit. Native content permits freeform multiple-paragraph beats without legacy pipe-table restrictions.
 
-Use recoverable write transactions, a single workspace writer, and expected-content hashes to detect external edits. Recheck before saving; offer compare/reload rather than overwriting work from Obsidian. Group multi-file changes in a journal so scene creation, movement, or candidate acceptance can recover after interruption.
+The frontend never opens the database directly. Rust serializes conflicting mutations and acknowledges saves only after commit. Test project reopen, rollback, stale revisions, lock/write failures, and migration refusal for newer schemas. Back up consistently before destructive migrations; if WAL is used, copying a live main database file alone is insufficient. Never replace an unreadable project with an empty database silently.
 
-Autosave authoring buffers independently of packet review. Store UI preferences and recovery buffers in application data; portable project metadata belongs in a documented Markdown block or a small project configuration file. Optional caches are disposable and contain no authoritative relationships or entering-state records.
+Autosave authoring buffers independently of packet review, showing saving/saved/failed based on backend acknowledgement. Store UI preferences and crash buffers in application data; project content, revision history, and Trash remain in the database. Optional caches contain no sole authoritative relationships or entering-state records. Flush dirty text before structural operations and project switching, or preserve explicit recoverable buffers.
 
-Watch external file changes and invalidate affected views. Reject paths outside the selected workspace, including resolved link/junction escapes. Git remains optional: show changed files and readable diffs first; integrated commit/sync can wait.
+Markdown is an explicit interchange boundary. Import retains provenance and unknown source material without modifying originals; export chooses scope/destination and documents loss limits. External edits to Markdown are not synchronized into the project; re-import requires a deliberate supported operation. Validate import/export paths including resolved link/junction escapes. Git integration and cloud sync can wait.
 
 ## 7. Delivery milestones and acceptance gates
 
-These are dependency-ordered milestones, not calendar commitments. Estimate effort after the first engine and packaging spike. The detailed M0–M8 breakdown is in [the Tauri implementation plan](tauri-implementation-plan.md#13-implementation-milestones-and-tickets): coarse milestone 1 maps to M0–M1, 2 to M2–M4, 3 to M5, 4 to M6, and 5 to M8. Optional staging is M7.
+These are dependency-ordered milestones, not calendar commitments. The detailed M0–M8 breakdown is in [the Tauri implementation plan](tauri-implementation-plan.md#13-implementation-milestones-and-tickets). The immediate commit sequence and honest completion checklist are in [implementation progress](implementation-progress.md). Native authoring comes before advanced AI and legacy framework integration.
 
 | Milestone | Deliverable | Acceptance gate |
 |---|---|---|
-| 1. Tauri, engine, and packaging spike | React/TypeScript + Tauri/Rust scaffold, command/capability contracts, format/engine decision, read-only import, and a minimal installer | Opens a disposable vault copy, enumerates all three sequences correctly, reproduces representative replay results, and launches without system Python/Node |
-| 2. Two-view authoring, editing controls, and visual treatment | Separate Story/Scene views; vertical timeline; summary and freeform beats; chapter/scene/beat create/edit/duplicate/move/recoverable delete; basic character/preset management; optional stages; playful styling and Calm appearance; safe persistence | Complete the authoring/library/Trash/Undo flows and visual-accessibility gates in the interface plan; preserve independent buffers, stable identities, local/global scope, evidence references, unknown Markdown, and recoverable work |
-| 3. AI prose loop | Scene context assembler, one provider, streaming, candidate labels/editing/comparison/recoverable removal, and deliberate acceptance | Generate from structured shorthand, revise, remove an unaccepted candidate without affecting the manuscript, accept prose, and recover the previous source; no automatic canon/state/hash updates occur |
-| 4. State and continuity review | Entering/exiting inspector, source-linked histories, intended-outcome handling, packet review, and derived views | Intended knowledge never enters actual replay; stale inputs stay visible; review refreshes evidence only for the prose actually inspected |
-| 5. Usable desktop release | New/move scene transactions, search/filter refinement, accessible keyboard flows, installer, and explicit exports | Complete the entire authoring loop on a disposable real project, reopen it successfully in Obsidian, and install on a clean Windows environment |
+| 1. Scaffold and durable native backend | React/TypeScript + Tauri 2/Rust scaffold; SQLite schema/migrations; project sessions; transactional chapter/scene/beat and library operations; revisions; Trash; explicit Markdown interchange | Build/typecheck and meaningful Rust tests demonstrate create/edit/duplicate/move/delete/restore, rollback, supported interchange, and persistence after reopen |
+| 2. Connected two-view authoring and verification | Separate Story/Scene views; matching alternating timelines; summary/freeform beats; visible quick actions/drag handles/keyboard movement; reusable profiles/presets; local/global scope; Trash; playful/Calm styling | UI reads/writes through Rust; complete documented authoring flows, preserve identities/independent edits, and record frontend/native build and interaction results with remaining gaps |
+| 3. Legacy compatibility and richer editing | Inspected external parser/replay adapter; synthetic/disposable corpus; supported rich inline nodes; source preservation and interchange limits | Legacy parity and supported export/import round-trips proven before claiming framework compatibility |
+| 4. AI prose loop | Scene context assembler, one provider, streaming, candidate labels/editing/comparison/recoverable removal, and deliberate acceptance | Generate from structured shorthand, revise, remove an unaccepted candidate without affecting the manuscript, accept prose, and recover the previous source; no automatic canon/state/hash updates occur |
+| 5. State and continuity review | Entering/exiting inspector, source-linked histories, intended-outcome handling, packet review, and derived views | Intended knowledge never enters actual replay; stale inputs stay visible; review refreshes evidence only for the prose actually inspected |
+| 6. Desktop release | Search/filter refinement, full keyboard/accessibility flows, installer, compiled exports, clean-machine tests, production signing policy | Complete the full workflow on a disposable project, inspect deliberate Markdown exports in Obsidian, and install on clean Windows; make no live-sync claim |
 
-For milestone 1, select synthetic scenes covering a directed relationship, a local mood, a continuing mood, received testimony, and a stale source. Treat packaging as an early feasibility test rather than postponing it until the UI is complete.
+For the first tranche, use only synthetic projects covering empty/multiple scenes, freeform beats, shared and local library scope, durable ordering, revisions, and Trash restoration. Legacy parity fixtures later cover directed relationships, local/continuing moods, received testimony, and stale sources. Verify native builds early; installed-app and production signing evidence remain separate gates.
 
 If selected, package the Python engine with its interpreter as a target-specific sidecar. Build the Windows installer through the Tauri bundler, initially proposing NSIS. Verify WebView2/runtime installation policy and native-resource lookup on a clean machine; manual installation comes before any automatic-update service. [Tauri sidecars](https://v2.tauri.app/develop/sidecar/), [Windows installers](https://v2.tauri.app/distribute/windows-installer/).
 
 ## 8. Validation strategy
 
-- **Compatibility:** golden inputs and outputs for existing scene parsing, replay, and strict build behaviour. Round-trip unchanged packets byte-for-byte and preserve unrecognised content during targeted edits.
+- **Interchange and later compatibility:** verify the supported native Markdown export/import contract with synthetic fixtures and retained unknown content/provenance. Later add golden inputs/outputs for inspected legacy parsing/replay and strict builds. Import leaves original packets byte-identical; native authoring never writes them implicitly.
 - **Story semantics:** directed attitudes stay directed; events do not overwrite standing relationships; local moods do not persist; reader revelations do not become character knowledge; periods reset appropriately; uncertain chronology is visible.
 - **Authoring lifecycle:** a scene with no prose remains editable; intended updates cannot affect replay; source changes require renewed evidence review; beat moves preserve references; scene moves preserve identity.
 - **Timeline and reuse:** scenes appear in a vertical timeline; drag and keyboard scene moves retain scene/summary/beat identities and invalidate affected context; switching scenes preserves independent edits and unfinished buffers; title and summary edits update the matching timeline block; freeform beat text/block order survives save/reopen; beats with no characters, one character, and multiple characters all remain editable and generate successfully; multiple actions or paragraphs need no extra mandatory fields; character-specific emotions never spread to other characters in a beat; optional stages and inherited narration settings never block writing; preset edits do not change past instances without an explicit update; keyboard controls can perform every drag operation; author-only comments stay out of generation requests.
@@ -259,7 +260,7 @@ If selected, package the Python engine with its interpreter as a target-specific
 - **Matching timelines and quick actions:** Story view has a scene timeline and Scene view has a matching beat timeline, both alternating left/right when space allows. Exercise drag-and-drop before/between/after items, long-list scrolling, cancellation, and keyboard movement at both levels. Text selection and inline-block editing never initiate structural dragging. Renumbering/repositioning preserves identities and evidence links, and Undo restores a complete move. Every scene/beat exposes Duplicate and Delete without hover or a menu; quick deletion is recoverable and leaves focus on a useful neighboring target.
 - **Editing controls and recovery:** create/edit/duplicate/move/delete/undo/restore chapters, scenes, and beats; duplicates receive fresh identities and no copied continuity approval; used library entries archive without breaking references; deleting a local occurrence never deletes a global profile; evidence-linked beat deletion requires explicit resolution.
 - **Playful appearance:** deterministic offsets and decorative skew preserve reading order and interactive bounds; editable text/carets remain aligned; verify Calm appearance, reduced motion, light/dark themes, keyboard flow, high text zoom, narrow windows, and long content using the interface plan's acceptance checks.
-- **Durability:** conflicting external edits, interrupted multi-file writes, app crashes, missing source files, and restarting a failed worker preserve recoverable work.
+- **Durability:** SQLite transaction rollback, stale revisions, lock/write failures, migration refusal/backup, interrupted operations, project reopen, and persistent revision/Trash recovery preserve work. Direct external database replacement is an error, not a silent new project. Later worker failures cannot invalidate authoring content.
 - **AI behaviour:** mock the provider for repeatable streaming, stop, timeout, rate-limit, partial-output, and changed-input tests. Inspect assembled requests for missing constraints and future-state leakage. Use a small real generation evaluation separately; prose quality needs editorial judgement.
 - **Desktop:** bounded end-to-end checks for project opening, authoring, generation, review, keyboard operation, and installer startup. Verify packaged operation without developer runtimes.
 
@@ -271,7 +272,7 @@ Normal saves rebuild lightweight derived views as needed. Exporting a compiled M
 
 Defer multiplayer collaboration, cloud sync, mobile clients, automatic canon promotion, broad historical knowledge extraction, advanced spatial stage editing/simulation, and large-scale autonomous chapter generation. A simple optional placement board can be prototyped without making it a first-release dependency. A generic project-creation wizard and additional AI/local-model providers can follow proven compatibility with the initial framework.
 
-Basic creation and editing of author-created characters belongs in the first authoring release. Imported canon editing retains source-linked review; full retcon workflows require a reviewed multi-file change set and decision record. Defer permanent purge and extensive bulk editing. Retain the repository's distinction between canon, suggestions, and open questions throughout.
+Basic creation and editing of author-created characters belongs in the first authoring release. Imported canon editing retains source-linked review; full retcon workflows require a reviewed domain change set and decision record. Defer permanent purge and extensive bulk editing. Retain the repository's distinction between canon, suggestions, and open questions throughout.
 
 ## 10. Open product decisions
 
@@ -280,4 +281,4 @@ Basic creation and editing of author-created characters belongs in the first aut
 3. Should descriptive tags have a shared vocabulary across scenes? Proposed default: freeform tags with suggestions from the current project; constrained values only where the framework defines semantics.
 4. Should this become a general writing product? Proposed default: a reusable app proven against the current framework, with project-specific rules loaded from the workspace rather than hardcoded into the interface.
 
-These are software design questions, not unresolved story canon. The next implementation step is milestone 1, using synthetic fixtures and a disposable compatibility copy of the vault.
+These are software design questions, not unresolved story canon. Implementation starts with the native SQLite tranche and synthetic fixtures; a disposable vault copy is needed only for later legacy compatibility work.

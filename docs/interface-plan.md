@@ -4,7 +4,7 @@ Status: planned application work, with an [interactive playful preview](../outpu
 
 The latest additions—an alternating beat timeline, direct Delete/Duplicate quick actions, and the complete drag-and-drop contract at both levels—are recorded here as requirements. Existing previews are earlier references; this update does not modify them.
 
-The application target is now Tauri 2 with a React/TypeScript frontend and Rust backend. [The detailed implementation plan](tauri-implementation-plan.md) maps these UI requirements to native services, persistence, IPC, engine integration, testing, and packaging.
+The application target is Tauri 2 with a React/TypeScript frontend and Rust backend. The local SQLite project database is canonical and accessed only through Rust domain commands. Markdown import/export is explicit interchange, without live two-way Obsidian sync. [The detailed implementation plan](tauri-implementation-plan.md) maps these UI requirements to native services, persistence, IPC, later engine integration, testing, and packaging; [implementation progress](implementation-progress.md) distinguishes delivery from requirements.
 
 ## 1. Goal and boundaries
 
@@ -81,7 +81,7 @@ New or duplicated beats receive focus in their text editor. After a move, focus 
 - Text selection, caret movement, inline character/emotion dragging, and Delete/Duplicate clicks do not start a drag of the containing scene or beat. Structural dragging requires the handle and an intentional movement threshold.
 - Show a clear insertion marker before or after a target in reading order, regardless of which side its card occupies. Accept drops before the first item, between items, and after the last; scroll the timeline when dragging toward a long view's edge.
 - A completed drop commits one reorder. Escape/cancellation restores the original order. Update numbering, sides, and connectors afterward; preserve object identity, text, local block scope, prose/draft associations, and evidence references.
-- Make each move one undoable operation. Persist the new order through the existing safe-write transaction and invalidate affected continuity/generation context. Announce the new position and keep keyboard focus on the moved item.
+- Make each move one undoable operation. Persist order/revision/history through one Rust-owned SQLite transaction and invalidate affected continuity/generation context. Announce the new position and keep keyboard focus on the moved item.
 
 ### Library controls
 
@@ -101,7 +101,7 @@ An inspector explicitly distinguishes **This scene/beat** from **Reusable profil
 
 ### Deletion, archiving, and Undo
 
-- Move scenes and populated chapters to recoverable project Trash. Keep their summaries, beat identities, prose/candidates, source paths, and prior positions available for restoration. Use transaction-safe workspace operations; never recursively delete an opened story folder through this control.
+- Move scenes and populated chapters to recoverable project Trash in SQLite. Keep their summaries, beat identities, prose/candidates, import provenance, and prior positions available for restoration. Use Rust domain transactions; never delete a native project file or imported story folder through this control.
 - Ordinary reversible deletions show Undo without an unnecessary confirmation dialog. Support undo/redo for scene and beat creation, duplication, movement, and deletion, with history that restores the whole operation.
 - A beat referenced by recorded evidence needs reassignment or explicit removal of the affected assertion before deletion completes. Explain the actual reference rather than showing a generic warning.
 - Used global entries are archived by default. Archived entries remain resolvable in existing scenes but are hidden from normal insertion lists. Deleting an unused entry is recoverable; permanently purging content is later work.
@@ -119,7 +119,7 @@ An inspector explicitly distinguishes **This scene/beat** from **Reusable profil
 
 These are slices of the existing milestones, not a replacement schedule.
 
-1. **Authoring timelines and controls:** after the engine/schema spike, implement matching scene/beat timelines, drag-and-drop reordering at both levels, and directly visible Duplicate/Delete quick actions. Include chapter/scene/beat creation, editing, insertion, movement, and recovery. Keep stable identities, switching buffers, evidence references, and undo/redo correct before styling those controls.
+1. **Authoring timelines and controls:** after the scaffold and durable SQLite slice, connect matching scene/beat timelines, drag-and-drop reordering at both levels, and directly visible Duplicate/Delete quick actions to Rust domain commands. Include chapter/scene/beat creation, editing, insertion, movement, and recovery. Keep stable identities, switching buffers, evidence references, and undo/redo correct before styling those controls. The unavailable legacy engine is not a prerequisite.
 2. **Reusable library:** basic character creation/profile editing, preset/template editing, usage inspection, local-vs-global scope, archive/delete, and restoration. Optional physical layout remains independent of the writing loop.
 3. **Playful treatment:** apply restrained skew/backings, deterministic asymmetric offsets, improved spacing, and Calm appearance to the working two-view interface. Preserve the accepted content hierarchy.
 4. **AI candidate controls:** extend the AI milestone with candidate labels, comparison, editing, recoverable removal, and deliberate acceptance.
@@ -137,4 +137,4 @@ These are slices of the existing milestones, not a replacement schedule.
 - Exercise empty story, empty chapter, empty scene, long titles/summaries, long beat text, repeated character references, and archived/missing entries. Controls remain discoverable and errors preserve work.
 - Inspect both views in light/dark appearance, Calm appearance, reduced motion, high text zoom, and narrow windows. Skew/asymmetry never causes overlap, misaligned carets, clipped menus, or ambiguous reading order.
 - Complete all editing/reordering/recovery actions by keyboard, with focus following the affected object. Screen-reader labels announce object names, local/global scope, and action results.
-- Reopen the workspace and verify real autosave, undo/recovery policy, and external-edit handling. The prototype's in-memory navigation checks alone do not satisfy this persistence gate.
+- Reopen the native project and verify SQLite-backed autosave, order, revisions, Trash, and the documented undo/recovery policy. Test explicit Markdown export/import and confirm that external Markdown edits do not alter the open project. The prototype's in-memory navigation checks alone do not satisfy this persistence gate.

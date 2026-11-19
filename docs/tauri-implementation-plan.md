@@ -1,6 +1,6 @@
 # Tauri desktop implementation plan
 
-Status: implementation proposal. No application scaffold is present yet. This document turns the [product/development plan](development-plan.md), [interface requirements](interface-plan.md), and [design record](../DESIGN.md) into buildable work. It supersedes the earlier Electron architecture.
+Status: approved architecture, implementation starting. This document turns the [product/development plan](development-plan.md), [interface requirements](interface-plan.md), and [design record](../DESIGN.md) into buildable work. It supersedes the earlier Electron and Markdown-first architectures. [Implementation progress](implementation-progress.md) records actual delivery and verification; requirements here are not claims of completed features.
 
 ## 1. Deliverable and architectural decisions
 
@@ -11,11 +11,11 @@ Build an installed, local-first desktop application with a React/TypeScript fron
 | Desktop | Tauri 2; Windows first, proposed initial target Windows 11 x64 | macOS/Linux follow separate packaging and verification gates |
 | UI | React, TypeScript, Vite; preserve the two-view product design | Production loads bundled frontend assets; Vite is a development tool |
 | Desktop backend | Rust command handlers and application services | Own workspace access, writes, credentials, provider requests, jobs, and exports |
-| Rich text | Proposed Tiptap editor with custom inline nodes | Validate the Markdown codec and clipboard behavior before committing to its schema |
+| Rich text | Versioned freeform beat documents, with richer inline nodes added incrementally | Plain text and multiple paragraphs must work before adding editor-specific complexity |
 | Drag/drop | Proposed current dnd-kit React integration | Separate structural dragging from inline-node placement and native OS file drops |
-| Data | Markdown/manifests plus documented portable authoring metadata | No second editable story database |
-| Indexes | Disposable local cache; add SQLite search/index storage only when measured need justifies it | Never store the only copy of prose, beat text, or character definitions in the cache |
-| Existing engine | Compatibility adapter, initially a packaged Python sidecar if the engine spike validates reuse | Rust remains the only workspace writer; no system Python requirement |
+| Data | Local SQLite project database is canonical | Rust domain/repository code alone reads and writes the database; no frontend SQL plugin |
+| Markdown | Explicit import/export interchange | No live two-way filesystem or Obsidian synchronization; imported originals remain untouched |
+| Existing engine | Later compatibility adapter, after inspection and parity fixtures | Native authoring does not depend on Python or an unavailable external engine |
 | AI | One provider adapter in Rust; provider choice remains open | No provider key or network request is required for ordinary authoring |
 | Tests | Rust/domain tests, frontend behavior tests, browser interaction checks, and installed Tauri/WebView tests | A browser-only mockup does not verify native IPC, persistence, or packaging |
 
@@ -50,17 +50,17 @@ The optional stage can provide a reusable location and a simple scene-local plac
 
 | Layer | Responsibilities | Must not own |
 |---|---|---|
-| React views | Display, selection, text editing, drag previews, menus, focus, accessibility | Arbitrary file paths, shell execution, canonical disk writes |
+| React views | Display, selection, text editing, drag previews, menus, focus, accessibility | Database connections/SQL, arbitrary file paths, shell execution, canonical disk writes |
 | Typed frontend gateway | Invoke Rust commands, decode results, subscribe/unsubscribe to job streams, map domain errors | A second persistence implementation |
 | Rust command boundary | Validate payloads, caller/session, schema versions, and operation permissions | Business logic duplicated across individual handlers |
 | Rust domain services | Workspace sessions, authoring mutations, library revisions, Trash/Undo, generation lifecycle, review, exports | Presentation state such as hovered cards |
-| Rust repository/transaction layer | Path confinement, reads, lossless patches, expected revisions, journal/recovery, file watching | Literary/canon inference |
+| Rust repository/transaction layer | SQLite connections, migrations, foreign keys, transactions, expected revisions, backups, import/export path confinement | Literary/canon inference |
 | Engine adapter | Parse/replay/context derivation with provenance and coverage limits | Unreviewed file changes or model-suggested canon promotion |
 | Provider adapters | Authenticated generation, stream parsing, usage, retry classification, cancellation | Workspace authority or automatic manuscript replacement |
 
 Use asynchronous I/O and background execution for blocking or CPU-heavy work. Do not hold the workspace mutation lock while waiting on provider tokens or a long engine calculation. Jobs read immutable, revision-tagged snapshots; later results are checked against current revisions before application.
 
-The frontend receives an opaque workspace session ID after opening a directory. Later authoring commands address entity IDs under that session, rather than passing arbitrary absolute paths. Closing/switching workspaces revokes the session, flushes or preserves pending buffers, and cancels or detaches its jobs deliberately.
+The frontend receives an opaque project session ID after Rust opens or creates the native database. Later authoring commands address entity IDs under that session, rather than passing SQL or arbitrary absolute paths. Closing/switching projects revokes the session, flushes or preserves pending buffers, and cancels or detaches its jobs deliberately. The command inventory below uses workspace as a project-session term, not a Markdown vault authority.
 
 ## 4. Proposed repository structure
 
@@ -85,12 +85,13 @@ src-tauri/
   src/
     commands/              narrow invoke entry points
     domain/                IDs, operations, revisions, invariants
-    workspace/             sessions, repositories, transactions, watchers
+    workspace/             database sessions, repositories, migrations, transactions
     engine/                adapter contract, worker lifecycle, replay cache
     generation/            request assembly, jobs, provider adapters
     secrets/               native credential-store interface
-    recovery/              buffers, journal replay, undo/redo, Trash
-    export/                reading-edition assembly and export jobs
+    recovery/              buffers, revision recovery, undo/redo, Trash
+    interchange/           explicit Markdown import/export and source provenance
+    export/                later reading-edition assembly and export jobs
   capabilities/            explicit main-window permissions
   permissions/             application-command permission definitions
   binaries/                build-produced engine sidecars, if used
@@ -110,8 +111,8 @@ Use stable opaque IDs, separate from display names, filenames, ordinal numbers, 
 
 | Entity | Required identity/content | Important invariants |
 |---|---|---|
-| Project | Project ID, format version, source layout, story defaults | One selected workspace; no private story copied into the app repository |
-| Chapter | ID, title, ordered scene IDs | Manifest order is authoritative; deletion resolves children |
+| Project/story | Project/story IDs, database schema version, title, story defaults | One selected local database; no private story copied into the app repository |
+| Chapter | ID, story ID, title, explicit order | Database order is authoritative; deletion resolves children |
 | Scene | ID, title, summary, ordered beat IDs, local settings | Can exist with no prose, stage, cast, or beats |
 | Beat | ID and freeform document | Zero or more characters; ordering does not change identity |
 | Character profile revision | Character ID, revision, name, optional profile fields/period | Rename never search-and-replaces authored prose; historical context uses the appropriate revision/period |
@@ -122,46 +123,47 @@ Use stable opaque IDs, separate from display names, filenames, ordinal numbers, 
 | Review record | Scene ID, exact source/packet revisions and evidence links | Approval applies only to the bytes inspected; no automatic canon promotion |
 | Trash record | Original entity IDs, parent/order, saved content and references | Restore retains identities; no permanent purge in the first release |
 | Operation record | Operation ID, preconditions, forward/inverse change, revision | Retry is idempotent; a move or duplicate is one logical undo step |
+| Content revision | Entity ID, immutable revision content, operation/time metadata | Recovery does not depend on Markdown copies or the current UI undo stack |
+| Import provenance | Source path/format/hash and preserved source content | Describes an explicit import; never establishes a live synchronization relationship |
 
 Target emotion/delivery instructions to an explicit character occurrence or character within a named beat/range. Do not use fragile display positions as identities. Editing a range must update its anchors or surface an unresolved scope; it must not silently apply the instruction to another character.
 
 Keep personality, baseline voice, temporary emotion, relationship direction, and established knowledge distinct. Missing knowledge coverage remains unmodelled rather than being treated as ignorance. Planned outcomes never feed established replay.
 
-## 6. Storage and format work
+## 6. Canonical SQLite storage and Markdown interchange
 
 ### Source-of-truth policy
 
-Preserve Markdown and existing manifests as the editable story source. The editor works on a normalized document in memory; that projection is not a second authoritative database. Library entries are readable versioned project files. Derived context, usage indexes, and search caches are rebuildable.
+Each native project is a local SQLite database. It stores stories, chapters, scene and beat order, scene summaries/settings/prose, freeform beat content, character profiles, emotion/tone/voice presets, local references/scope, revisions, operations, and Trash. Optional stages and later candidates/review records extend the versioned schema. The database is the sole authoring authority; frontend state is an acknowledged projection plus clearly identified unsaved buffers. Derived search/context indexes remain rebuildable.
 
-Use a reserved project-owned metadata directory, proposed `.shorthand-writer/`, for format/configuration, operation journals, revision backups, and portable Trash. Specify every path and schema before writing it. Application-local preferences, recent roots, machine-specific state, and crash buffers belong in the app-data directory. API keys never belong in either story content or portable metadata.
+Rust owns connection lifecycle, schema migrations, parameterized queries, foreign-key enforcement, and domain transactions. Use stable opaque IDs, explicit sibling order, revision preconditions, and valid parent/reference constraints. Record schema versions and refuse unsupported newer databases. Back up before destructive migrations using a consistent SQLite backup procedure. If WAL is used, configure and test it deliberately: copying a live main database file alone is not a backup. Application-local preferences, recent projects, and crash buffers belong in app data. API keys belong in the native credential store, outside the project.
 
-### Mixed-text codec decision gate
+### Explicit Markdown import/export
 
-The existing parser/serializer source is outside this repository. Do not claim compatibility or invent a migration against uninspected packets. Milestone 1 must settle the exact representation with synthetic fixtures and a disposable compatibility corpus.
+Import reads a chosen Markdown source or supported bundle into new native entities through Rust. Export writes a chosen scope to a deliberate destination. Neither action creates a watched editable mirror; editing an export in Obsidian changes that file only. Re-import is an explicit reviewed operation, with conflict/duplication behavior documented before merging into existing entities is enabled.
 
-Proposed approach:
+Interchange contract:
 
-1. Parse imported semantic fields and beat content into a normalized AST while retaining unknown source regions and byte-level patch boundaries.
-2. Store new freeform beats in a versioned Markdown authoring section with stable beat markers. Use readable, explicitly parsed reference links/markers for inline atoms and a small metadata region for IDs/scope/provenance. Beat text has one editable source; physical section order determines beat order.
-3. Keep the editor-specific document JSON in memory/recovery buffers, not as a competing canonical copy of the same Markdown text.
-4. Derive any legacy table-shaped engine input in memory. Do not write a second independently editable beat table beside the new freeform representation.
-5. Unchanged legacy packets remain byte-identical. If an edit exceeds their representational capacity, offer a scene-specific migration preview and recoverable backup; do not rewrite an entire imported project on open.
-6. Preserve imported unknown sections, Unicode, line endings, comments, and links. Define literal escaping and pasted-text behavior; a typed literal resembling an inline token is not automatically a global object.
-7. Either extend the compatible parser/CLI to read the new section, or provide an explicit legacy export to a separate destination. Verify which operations can round-trip before enabling writes on those imported scenes.
+1. Define a versioned native beat-document format; plain freeform text is valid. Inline references use stable identities and explicit local scope rather than inferring meaning from typed names.
+2. Define readable Markdown export with chapter/scene/beat boundaries, source IDs where supported, reusable-definition metadata, escaping, and documented limits for rich nodes and optional stage data.
+3. Validate supported native export/import round-trips with synthetic Unicode, multiple-paragraph, zero/one/many-character, and unknown-section fixtures. Preserve unrecognized source material as provenance; never silently discard it or execute embedded content.
+4. Leave original imported files unchanged. Exports never overwrite a source or unrelated destination without an explicit conflict policy. Import errors leave the database transaction unchanged.
+5. Treat legacy shorthand manifests/packets as a later separate adapter. The parser/serializer is outside this repository; do not claim compatibility with uninspected packets. Existing framework parity requires inspection, a disposable corpus, and golden outputs.
+6. Derive any legacy table-shaped engine input from an immutable database snapshot. No adapter owns a competing editable copy of authoring content.
 
-The format ADR must include sample files, authority for each field, version negotiation, unsupported-node handling, upgrades, downgrade/export limits, and golden round-trip fixtures. This gate blocks writable import until it passes.
+The format specification must include sample files, version negotiation, unsupported-content handling, downgrade/export limits, and round-trip fixtures. A minimal native Markdown interchange can ship before full legacy compatibility; clearly label the supported format in the UI and documentation.
 
 ### Transactions and recovery
 
-All authoring writes go through Rust's single workspace writer. Serialize conflicting mutations; reads use revisioned snapshots. Each mutation checks its workspace/entity revision and relevant file fingerprints, then prepares bounded patches and inverse data.
+All authoring reads and writes go through Rust domain services and its SQLite repository. Serialize conflicting mutations; reads use consistent snapshots. Each mutation validates parent/reference invariants and expected entity/order revisions, then commits content, sibling order, revision/inverse data, and operation receipt in one SQLite transaction. Return success only after commit. Failed validation or SQL errors roll back the whole mutation.
 
-For multi-file operations: validate paths and content, prepare temporary replacements/backups, persist a journal intent, apply replacements with platform-appropriate durability/replacement handling, mark completion, then acknowledge the new revision. A journal provides recoverability; do not claim that renaming several files is globally atomic.
+Create/duplicate/move/trash/restore operations are database transactions, not multi-file rename journals. Scene duplication copies direction with fresh scene/beat identities while retaining shared library references; accepted prose and review approval are excluded. Trash persists original identity, content, parent, and order. Restore uses the prior valid location or an explicit fallback destination. Used profiles/presets archive rather than leaving dangling references.
 
-On restart, inspect incomplete transactions and current hashes before completing or rolling back. If another editor changed a target, preserve both versions and enter conflict recovery instead of replaying blindly. Use file-watch notifications as invalidation hints, verify hashes, and avoid mistaking an application's own transaction for an unrelated change. Account for Windows sharing violations, case-only renames, antivirus delays, disk-full errors, and linked/junction paths.
+Test reopen after interrupted transactions, database locks, invalid schema versions, disk-full/write failures, and migration interruption. Keep a clear error and recovery path; never replace a corrupt project with an empty one. Native project databases are not intended for simultaneous direct editing by another process. Detect unexpected database replacement and reject stale revisions rather than silently overwriting. Markdown file watching and live external-edit reconciliation are outside scope.
 
 Autosave uses revision-aware debounced operations, plus crash-buffer checkpoints. Structural operations flush the relevant dirty editor state before moving/deleting it. Close/workspace-switch waits for acknowledged saves or keeps recoverable buffers and an explicit failed-save state. “Saved” is shown only after backend acknowledgement.
 
-Text editing uses the editor's transaction history; structural undo/redo uses domain operations. Define routing so text shortcuts are not intercepted while typing. An inverse operation must validate current state; external changes can require conflict resolution rather than a destructive rollback. Trash restoration and process-crash recovery remain available independently of the current session's undo stack.
+Text editing uses the editor's transaction history; structural undo/redo uses validated domain operations. Define routing so text shortcuts are not intercepted while typing. An inverse validates current revisions rather than blindly overwriting newer edits. Persisted revisions and Trash remain available independently of the current session's undo stack. Report any initially unsupported undo commands honestly; never label an action undoable without a working inverse.
 
 ## 7. Rust commands, events, and jobs
 
@@ -173,7 +175,7 @@ Initial command inventory (names are proposed contracts):
 
 | Group | Commands | Notes |
 |---|---|---|
-| Workspace | `open_workspace`, `create_workspace`, `close_workspace`, `read_workspace_summary` | Select/register roots through native dialogs and validated backend sessions |
+| Workspace | `open_workspace`, `create_workspace`, `close_workspace`, `read_workspace_summary` | Open/create SQLite projects through native selection and validated backend sessions |
 | Read | `read_scene`, `read_library_entry`, `find_usages`, `search_story` | Return normalized content, revisions, diagnostics, and coverage |
 | Authoring | `apply_story_operation` | Typed operation union for chapter/scene/beat create/edit/duplicate/move/delete/restore |
 | Library | `apply_library_operation` | Create/revise/rename/duplicate/archive/remove with usage-aware preconditions |
@@ -182,7 +184,8 @@ Initial command inventory (names are proposed contracts):
 | Generation | `preview_generation_context`, `start_generation`, `cancel_job`, `read_candidate`, `accept_candidate` | Request snapshots are immutable; acceptance is a recoverable mutation |
 | Review | `read_character_state`, `preview_review_changes`, `complete_packet_review` | Bind evidence review to exact source/packet revisions |
 | Settings | `read_settings`, `update_settings`, `set_provider_secret`, `remove_provider_secret` | Return secret-present status, never a stored key |
-| Export | `start_export`, `read_job_status` | Explicit destination and output scope; no implicit edition rebuild on save |
+| Interchange | `import_markdown`, `export_markdown` | Explicit source/destination/scope; no live two-way sync; report supported format limits |
+| Later edition export | `start_export`, `read_job_status` | Explicit destination and output scope; no implicit edition rebuild on save |
 
 Do not expose generic write-file, arbitrary process-launch, SQL-execution, or fetch-any-URL commands to the frontend.
 
@@ -202,7 +205,7 @@ Use one typed gateway for all native calls. A lightweight UI store can hold view
 
 ### Editor and inline blocks
 
-Prototype Tiptap custom nodes for character references and scoped instructions, with visible labels and inspect/edit behavior. Keep each beat's editor document independent of its ordinal position. Preserve IME composition, multi-paragraph text, selection/caret behavior, plain-text paste, internal copy/paste of references, and undo across inline atom insertion. Tiptap documents custom interactive node views separately from serialized output; the Markdown codec remains our responsibility. [Node views](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views).
+Begin with a durable freeform text editor; add custom inline nodes for character references and scoped instructions after their versioned database representation is verified. Keep each beat's editor document independent of its ordinal position. Preserve IME composition, multiple paragraphs, selection/caret behavior, plain-text paste, and native text undo. If Tiptap is adopted, its custom node views are distinct from serialized output; database documents and interchange codecs remain our responsibility. [Node views](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views).
 
 Mount editors for actively edited/visible beats and render inactive content cheaply. Save before unloading an editor and restore selection by stable anchors. Do not add aggressive list virtualization until measured content sizes justify it; naïve virtualization can break focus and drag targets.
 
@@ -218,17 +221,21 @@ Each card exposes a drag handle, Duplicate, and Delete directly. More contains l
 
 ## 9. Existing Python engine integration
 
+This is a later compatibility milestone, independent of the first native authoring tranche. No current scaffold or SQLite work claims legacy replay parity.
+
 The current repository contains no Python engine source. Identify the external framework version and license/attribution requirements before adapting it. Use synthetic fixtures and a disposable vault copy; never bundle the private manuscript as an application resource.
 
 Preferred transition: retain verified parsing/replay algorithms behind an `EngineAdapter`, and package a worker executable only if the spike demonstrates clean boundaries and reproducible builds. Tauri supports bundled sidecar executables, including packaged Python programs, with target-specific naming. [Embedding external binaries](https://v2.tauri.app/develop/sidecar/).
 
 Worker protocol: versioned newline-delimited messages, request ID, operation, bounded payload, progress, result/error, and cancellation. Reserve stdout for protocol data and stderr for redacted diagnostics. Add startup handshake, heartbeat/timeout, output limits, controlled restart, and shutdown on workspace/application close.
 
-Rust reads authorized source snapshots and supplies content/configuration to the adapter. The worker returns parsed/replayed results or proposed patches; Rust validates and applies all writes. Never execute a script found inside an opened project. The adapter cannot receive provider keys or initiate arbitrary network access.
+Rust reads authorized database/import snapshots and supplies content/configuration to the adapter. The worker returns parsed/replayed results or proposed domain changes; Rust validates and applies database mutations. The worker never opens the project database directly. Never execute a script found inside an opened project. The adapter cannot receive provider keys or initiate arbitrary network access.
 
 Build the worker with its interpreter if used; end users install neither Python nor Node. Test packaged resource lookup, missing/failed worker recovery, and version compatibility. A later Rust engine replacement must pass the same corpus and golden outputs before switching. If clean sidecar reuse fails, record the measured blocker and estimate a Rust port before committing the schedule; do not hide the extra work.
 
 ## 10. AI generation and context
+
+Advanced AI and the integrated provider loop are later milestones; ordinary native authoring must work first. Candidate/review controls remain requirements until implemented and verified.
 
 Define a provider trait for credential validation, supported model/settings, request construction, streaming, usage, cancellation, and classified errors. Select one provider for the first integrated release. Avoid a generic “compatible API” claim until an adapter is tested.
 
@@ -255,7 +262,7 @@ Logs use operation/job IDs, timings, and error codes. Manuscript text, request b
 ## 12. Desktop build and release
 
 1. Establish Windows Rust/MSVC, C++ build tools, Node tooling, and WebView2 prerequisites. Record tested versions in developer setup. [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-2. Produce a minimal installer in the first spike, including the worker if selected. Verify startup and resource lookup on a clean machine before building the full UI.
+2. Verify frontend and native debug/release builds during the first tranche. Installer production and clean-machine verification are separate gates; do not describe a successful renderer build as an installed-app test.
 3. Proposed initial installer is NSIS through the Tauri bundler; add MSI only when needed. Specify install scope, WebView2 installation/offline policy, minimum supported OS/runtime, app-data location, and uninstall behavior. [Windows installer](https://v2.tauri.app/distribute/windows-installer/).
 4. Verify install/upgrade/reinstall preserve user workspaces and app recovery data appropriately. Uninstall must not delete user-selected story folders. Test startup without developer runtimes and authoring with the network disconnected.
 5. Keep application format migrations separate from installer updates. Back up before a migration and refuse writes to unsupported newer project formats.
@@ -266,21 +273,21 @@ No deployment, publishing account, signing key, installer certificate, or releas
 
 ## 13. Implementation milestones and tickets
 
-All items are pending. These are dependency gates, not calendar promises; estimate effort after M0/M1.
+These are dependency gates, not calendar promises. Check [implementation progress](implementation-progress.md) for completed commits and actual evidence. The first tranche is M0–M3; later requirements stay pending until delivered.
 
 | Milestone | Concrete work | Exit evidence |
 |---|---|---|
-| M0: Tauri feasibility | Scaffold React/TypeScript/Vite + Tauri/Rust; lock dependencies; define minimal command/channel; verify capabilities; create a Windows installer; evaluate credentials and worker packaging | Packaged app opens, exchanges a typed command and cancellable progress stream, and launches on a clean Windows machine |
-| M1: Format and engine spike | Inspect external framework; build synthetic corpus; specify normalized entities, Markdown codec, migration rules, engine protocol, and ownership; test read-only imports and replay | Format ADR approved by evidence; untouched files round-trip byte-for-byte; representative replay parity; sidecar-or-port decision recorded |
-| M2: Durable workspace slice | Open/minimally create a project; sessions/locks; journaled writes; revisions; watcher/conflicts; autosave buffers; Trash and undo operations | Create/edit/save/reopen a tiny story; interrupt a multi-file operation; recover without silently overwriting an external edit |
-| M3: Story/beat timelines | Build both routes and shared alternating timeline; inline scene summary; scene/beat CRUD; visible Delete/Duplicate; drag handles/drop slots; keyboard/focus; empty states | A writer creates scenes and multi-paragraph beats, moves them at both levels, returns/reopens independently, deletes/restores, and undoes structural changes |
-| M4: Inline editor and library | Implement codec-backed inline nodes; character/preset revisions; local scope; usage/archive; clipboard/IME; responsive/Calm styling | Zero/one/many-character beats survive save/reopen; named local emotions do not mutate profiles; used/archived entries remain resolvable |
+| M0: Application scaffold | React/TypeScript/Vite + Tauri 2/Rust; locked dependencies; typed gateway; restricted native command boundary; developer commands | Frontend typecheck/build and native compile launch a minimal application, with any environmental blockers recorded |
+| M1: Durable SQLite authoring | Versioned schema/migrations; project open/create; stories/chapters/scenes/beats; profile/preset revisions; transactional ordering; revisions; Trash/restore; explicit Markdown interchange | Rust tests create/edit/duplicate/move/delete/restore and reopen a synthetic project; rollback/reference checks and supported Markdown round-trips pass |
+| M2: Connected Story/Scene UI | Separate views and matching alternating timelines; title/summary/freeform beats; visible Duplicate/Delete; drag handles and keyboard movement; library/local scope; Trash; responsive/Calm styling | UI invokes Rust domain commands, reloads persisted content, preserves independent edits/identity, and completes library/recovery flows without browser-storage authority |
+| M3: Verification and build | Frontend behavior/interaction checks, Rust format/lint/domain tests, command-contract checks, frontend/native builds; document remaining gaps | Record exact commands/results; clearly distinguish browser checks, native compilation, and actual Tauri runtime/installer verification |
+| M4: Rich interchange and legacy compatibility | Inspect external framework; richer inline nodes/codecs; compatibility corpus; unknown-source retention; engine adapter/packaging decision | Supported nodes round-trip; legacy replay/parsing parity proven before claiming compatibility or enabling adapter writes |
 | M5: Context and AI loop | Entering-state snapshots; context preview; one provider; native key storage; streaming/cancel/recovery; candidate comparison/editing/acceptance | Generate/revise/accept with recoverable prior prose; cancelled/outdated jobs remain correctly labeled; no automatic evidence or canon promotion |
-| M6: Review and export | Exact-revision evidence review; intended vs established changes; stale context; history; explicit Markdown reading-edition export; PDF pipeline decision | Review binds to actual inspected bytes; compatible CLI outputs pass; exports target a chosen scope/destination and preserve artwork |
+| M6: Review and edition export | Exact-revision evidence review; intended vs established changes; stale context; history; compiled Markdown edition/PDF pipeline decision | Review binds to actual inspected revisions; compatible CLI outputs pass; exports target a chosen scope/destination and preserve artwork |
 | M7: Optional stage increment | Saved location references; scene-local conditions; simple placement tokens; local extras/props; no simulation | Stage remains removable/optional and does not alter global profiles or block the complete authoring loop |
-| M8: Release hardening | Installed-app E2E; keyboard/screen-reader pass; conflict/crash corpus; performance; installer upgrades; release docs/signing policy | Full workflow passes on clean Windows without Node/Python; user story files remain portable and recoverable |
+| M8: Release hardening | Installed-app E2E; keyboard/screen-reader pass; database/crash corpus; performance; installer upgrades; production signing/release policy | Full workflow passes on clean Windows without developer runtimes; native projects and deliberate exports remain recoverable |
 
-M7 may be deferred without blocking the first complete release. M0–M6 and M8 cover the initial authoring/generation product. More elaborate project wizards, collaboration/sync, multiple providers, autonomous chapter generation, permanent purge, and advanced stage simulation remain later work.
+M0–M3 deliver the first native authoring tranche. M4–M6 and M8 extend it toward the authoring/generation release; M7 remains optional. More elaborate project wizards, collaboration/sync, multiple providers, autonomous chapter generation, permanent purge, and advanced stage simulation remain later work. Production signing/publishing is not implied by local build verification.
 
 The first vertical implementation slice should be small: open a synthetic workspace, show its scene overview, open a scene, edit its summary and one beat, save in Rust, close, and reopen from disk. Add drag/drop and library features after that disk-backed slice works.
 
@@ -289,7 +296,7 @@ The first vertical implementation slice should be small: open a synthetic worksp
 | Scope | Required checks |
 |---|---|
 | Domain | Stable IDs; duplicate semantics; archive/usages; scoped instructions; exact review revisions; invalid operations rejected |
-| Persistence | Golden round-trips; unknown sections; Unicode/line endings; migrations; journal interruption at every write stage; disk-full/sharing violations; external conflicts; Trash restoration |
+| Persistence | SQLite migrations/foreign keys; expected revisions; atomic rollback; reopen durability; lock/write failures; consistent backups; Trash restoration; supported explicit Markdown round-trips |
 | Editor | Text/IME/clipboard; atomic references; multiple paragraphs; local scope anchors; native text undo; save before structural operations |
 | Timelines | Left/right numbering; no same-side overlap; before/after drop slots; edge scrolling; Escape cancellation; pointer/touch/keyboard; quick actions never initiate dragging |
 | Jobs | Token ordering; channel disconnect; cancellation races; partial checkpoints; model errors; stale input; duplicate command retries; detached scene navigation |
@@ -303,7 +310,7 @@ Proposed measurable budgets, to validate on a recorded reference machine rather 
 
 - Local typing and drag feedback remain responsive within a frame where practical; backend autosave never blocks input.
 - Switching to an already indexed scene should target under 200 ms; show cancellable progress for slower cold parsing/replay.
-- Synthetic stress fixtures include 500 scenes, a scene with 100 beats, long multi-paragraph beats, and repeated references. Establish memory/startup baselines in M0/M3 and measure before adding virtualization or a database.
+- Synthetic stress fixtures include 500 scenes, a scene with 100 beats, long multiple-paragraph beats, and repeated references. Establish memory/startup baselines in M0/M3 and measure before adding virtualization or extra indexes.
 - Inspect both views in light/dark/Calm, reduced motion, 200% text zoom, and narrow editor widths. The two-column treatment must fall back before text or menus clip.
 
 Proposed CI gates after scaffold: frontend typecheck/lint/behavior tests/build; Rust format/clippy/tests; contract generation drift; codec and engine parity fixtures; Windows debug and release packaging; selected installed-app E2E. Keep secrets and private vault data out of CI fixtures. Run real-provider literary evaluation separately from deterministic mocked-provider tests.
@@ -312,15 +319,17 @@ Proposed CI gates after scaffold: frontend typecheck/lint/behavior tests/build; 
 
 | Decision | Proposed position | Deadline |
 |---|---|---|
-| Initial desktop support | Windows first; Windows 11 x64 proposed baseline | M0 packaging spike |
-| UI/editor/drag versions | React/TypeScript/Vite; Tiptap and current dnd-kit integration, subject to codec/interaction proof | M0–M1 |
-| Python sidecar vs Rust engine | Reuse the existing engine behind a sidecar when parity and packaging are proven | M1; no writable import before format/engine decision |
-| Exact authoring format | Single-source Markdown authoring section plus metadata; no dual editable beat bodies | M1 format ADR |
-| Native credentials | OS-backed Windows store, no plaintext fallback | M0 |
+| Initial desktop support | Windows first; Windows 11 x64 proposed baseline | M0 native build; M8 clean-machine packaging |
+| UI/editor/drag versions | React/TypeScript/Vite; freeform text first; richer editor/drag dependencies follow interaction evidence | M0–M2; rich nodes in M4 |
+| Canonical storage (decided) | Local SQLite project database; Rust-only domain/repository access | M1 schema and durability tests |
+| Markdown authority (decided) | Explicit import/export only; no live two-way Obsidian sync | M1 supported interchange specification |
+| Python sidecar vs Rust engine | Decide after external source inspection, parity, and packaging evidence | Later M4 compatibility gate |
+| Exact beat document format | Versioned database document; freeform text first, scoped inline nodes incrementally | M1/M4 schema/codec evidence |
+| Native credentials | OS-backed Windows store, no plaintext fallback | Before M5 |
 | Provider and authentication | One tested direct API adapter; no subscription/API assumption | Before M5 |
 | Passage-level prose revision | Whole-scene loop first; selected-passage revision follows context-safe editing | M5 scope review |
 | PDF export backend | Reuse a verified existing pipeline if possible; otherwise specify a packaged exporter | M6; do not claim PDF until implemented |
 | Optional physical placement | Separate increment with no core-loop dependency | M7 |
 | Signing/update hosting | Manual installer first; keys/accounts/hosting are not yet configured | Before public distribution |
 
-Before substantive feature implementation, produce ADRs for storage/codec authority, Tauri command/capability boundaries, and engine packaging. Then work milestone by milestone, attaching tests and a runnable build to each exit gate. This planning change does not scaffold code, install dependencies, modify the story vault, or update mockups.
+Proceed in the commit-sized order recorded in [implementation progress](implementation-progress.md). Storage authority and the Rust-only command boundary are decided here; refine their schema/contracts alongside implementation and tests. Legacy engine packaging is a later decision and does not block native authoring. Keep requirements, completed work, and measured verification separate; never modify the story vault or the accepted mockups as a side effect of implementation.
