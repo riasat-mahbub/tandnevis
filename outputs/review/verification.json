@@ -1,0 +1,116 @@
+{
+  "checks": [
+    {
+      "label": "Story and Scene are separate views",
+      "pass": true
+    },
+    {
+      "label": "Story scene blocks form a vertical timeline",
+      "pass": true
+    },
+    {
+      "label": "Opening a scene zooms into its writer",
+      "pass": true
+    },
+    {
+      "label": "A beat can contain no character blocks",
+      "pass": true
+    },
+    {
+      "label": "A beat can contain multiple character blocks",
+      "pass": true
+    },
+    {
+      "label": "Summary edits update their overview block",
+      "pass": true
+    },
+    {
+      "label": "Other scenes retain independent summaries",
+      "pass": true
+    },
+    {
+      "label": "Edits survive scene and view switches",
+      "pass": true
+    },
+    {
+      "label": "Narration overrides stay local to their scene",
+      "pass": true
+    },
+    {
+      "label": "Narration overrides survive switching and disclose their scope",
+      "pass": true
+    },
+    {
+      "label": "Add beat creates a freeform empty beat",
+      "pass": true
+    },
+    {
+      "label": "Reordering a beat preserves its identity and content",
+      "pass": true
+    },
+    {
+      "label": "Any number of characters can be inserted into one beat",
+      "pass": true
+    },
+    {
+      "label": "Emotion applies to its explicit local character target",
+      "pass": true
+    },
+    {
+      "label": "Independent prose edits survive switching scenes",
+      "pass": true
+    },
+    {
+      "label": "Optional stage can be attached",
+      "pass": true
+    },
+    {
+      "label": "Stage can be removed without removing the scene",
+      "pass": true
+    },
+    {
+      "label": "Scene movement preserves the edited scene",
+      "pass": true
+    },
+    {
+      "label": "Scene dragging shows a before/after insertion marker",
+      "pass": true
+    },
+    {
+      "label": "Dragging a scene changes vertical reading order",
+      "pass": true
+    },
+    {
+      "label": "New scene opens its individual editor",
+      "pass": true
+    },
+    {
+      "label": "desktop-story has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "desktop-scene has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "mobile-story has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "mobile-scene has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "dark-scene has no horizontal overflow",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "screenshots": [
+    "D:\\writing\\shorthand-writer\\outputs\\review\\desktop-story.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review\\desktop-scene.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review\\mobile-story.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review\\mobile-scene.png",
+    "D:\\writing\\shorthand-writer\\outputs\\review\\dark-scene.png"
+  ]
+}

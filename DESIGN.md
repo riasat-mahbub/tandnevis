@@ -1,19 +1,19 @@
-# Shorthand Writer — scene writer design
+# Shorthand Writer — two-view design
 
-This records the refined interface direction for the accepted scene writer. The functional requirements remain in [the development plan](docs/development-plan.md). The [interactive design reference](outputs/scene-writer-studio.html) is a prototype with illustrative story content, not the installed application or a connected AI generator.
+The latest user instruction preserves the accepted scene-writer design and separates the whole story and each scene into two distinct views at two conceptual zoom levels. Functional requirements remain in [the development plan](docs/development-plan.md). The [interactive design reference](outputs/scene-writer-studio.html) is a prototype with illustrative story content, not the installed application or a connected AI generator.
 
 ## Composition
 
-The left rail is a **vertical scene timeline**, grouped by chapter. Scene blocks show their title and summary excerpt. The selected block opens one independently editable scene in the center. Drag scenes vertically, with explicit before/after insertion feedback; visible move controls offer the same action without dragging.
+**Story view (zoomed out)** is a vertical scene timeline, grouped by chapter. Scene blocks show their title and summary excerpt. Opening a block switches into that individual scene's editor. Drag scenes vertically, with explicit before/after insertion feedback; visible move controls offer the same action without dragging. The timeline stays vertical at every size.
 
-The center is the main working area: editable title, scene tone, a distinct scene idea/summary field, and ordered freeform beat cards. A beat can contain any text and zero or more character references. Small drag handles and secondary move controls keep manipulation available without competing with the prose.
+**Scene view (zoomed in)** retains the accepted scene writer: editable title, scene tone, a distinct scene idea/summary field, and ordered freeform beat cards. A beat can contain any text and zero or more character references. Back to story returns to the overview; Story/Scene controls switch zoom levels. A chapter/scene breadcrumb preserves orientation.
 
-The right library contains reusable characters, emotions, scene tones, delivery presets, extras, and optional stage templates. Selected-beat details remain contextual. Physical staging and narration are collapsed until needed. The library can be hidden to widen the editor.
+Preserve the accepted scene layout: reusable blocks on the left, writing in the center, and contextual details/optional staging on the right. Physical staging and narration are collapsed until needed. The whole-story timeline does not occupy a permanent sidebar beside the scene writer.
 
 ## Visual system
 
-- Warm paper for the editor; a quieter neutral for summary and tools; deep moss for story navigation.
-- Literata for scene titles and writing content; DM Sans for controls and navigation. Georgia and the platform sans provide readable fallbacks.
+- Preserve warm paper and neutral secondary surfaces.
+- Preserve Georgia for writing content and the platform sans for controls/navigation.
 - Restrained green character blocks, rose emotion blocks, and ochre tone/delivery blocks. Labels identify each meaning independently of color.
 - One-pixel boundaries, small consistent radii, compact control groups, and generous space between writing sections. No decorative shadows or dashboard statistics.
 - Clear selected, hover, focus, disabled, empty, and drop states in light and dark appearances. Motion only communicates state and respects reduced-motion preferences.
@@ -25,7 +25,7 @@ The right library contains reusable characters, emotions, scene tones, delivery 
 - Character blocks refer to shared profiles. Beat emotion and delivery changes affect their explicit local target; multi-character beats do not silently apply them to everyone.
 - Dragging is optional: library blocks can be inserted by clicking, and movement has native-button equivalents.
 - No stage, cast, recipient, or viewpoint form is required to write a scene or beat.
-- On narrow windows, labeled Scenes and Library controls reveal supporting panels. The scene list stays vertical at every size.
+- On narrow windows, scene tools reflow around the editor. The two views remain distinct and the overview stays vertical.
 
 ## Implementation boundaries
 

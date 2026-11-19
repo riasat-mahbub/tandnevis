@@ -8,6 +8,8 @@ Build a local desktop writing application around the existing scene-shorthand fr
 
 **Confirmed requirements:** separate application repository; an Electron-like local app; a vertical timeline of draggable scene blocks; individual scene editing in the scene writer; the main scene idea/summary in a box; ordered beat cards with freeform text and no required cast size or actor/recipient fields; separate reusable character, emotion, tone, and voice/delivery blocks; optional stage references and a possible physical stage board; human-authored shorthand and tags; AI primarily for prose generation.
 
+**Confirmed navigation:** use separate Story and Scene views as two conceptual zoom levels. Story shows the whole-story vertical timeline; opening a scene switches into its writer. Keep the existing accepted scene-writer appearance, with a clear return to the overview.
+
 **Proposed first-release scope:** Windows first, one writer, one open story workspace, Markdown-backed authoring, and one directly integrated AI provider. Provider choice remains open. Local authoring and review work offline; cloud generation requires a connection. Supporting local models can be a later provider adapter.
 
 The primary workflow is:
@@ -44,14 +46,14 @@ Additional knowledge/expertise/mood diffs currently cover the first eighteen Yea
 
 Canon, provisional staging, editorial interpretation, and unresolved questions remain distinct. Cooperation does not automatically mean friendship; physical presence does not mean someone heard or understood a remark. A successful build does not certify literary quality.
 
-## 3. The main writing workspace: vertical scene timeline and scene writer
+## 3. Two views at two zoom levels: story overview and scene writer
 
-The vertical timeline provides story navigation and ordering; the selected scene opens in a dedicated scene writer beside it. The writer edits one scene at a time while keeping its place in the story visible. Structured fields remain available through a selected block's inspector and never replace the freeform beat editor. The accepted functional model is the hybrid scene writer: scene summary plus separate, reorderable freeform beat cards.
+Use two distinct views, at two conceptual zoom levels. **Story view** is the whole-story overview with a vertical timeline of draggable scene blocks. Opening a block switches to **Scene view**, the dedicated scene writer for that scene. Back to story returns to the overview; Story/Scene controls switch between the two levels. The timeline does not occupy a permanent sidebar in Scene view. A chapter/scene breadcrumb preserves orientation. Keep the accepted scene-writer design: scene summary plus separate, reorderable freeform beat cards, with its existing appearance and library/inspector arrangement. Structured details support the editor rather than replacing it.
 
 ### Two useful scales
 
 - **Story scale:** a vertical timeline of draggable scene blocks grouped by chapter/part, read from top to bottom. Each block shows its title, summary excerpt, and a compact review indicator when relevant. Select a block to edit that scene; drag a block up or down to reorder scenes, with a clear insertion marker. Provide keyboard movement and visible move actions as equivalents. New scenes can begin with only an idea.
-- **Scene scale:** open the selected scene in the adjacent scene writer, with its title, main idea/summary box, scene tone, and ordered beat cards. Each card contains freeform text with optional inline character, emotion, tone, and voice/delivery blocks. A beat can describe atmosphere without characters, one character's thoughts, a conversation among several characters, or a longer passage with several actions. There is no one-character-per-beat or one-utterance-per-beat rule. Use a simple sequence initially; permit an explicit overlap group when the direction needs simultaneous contributions. A graph or automatic time simulation is unnecessary for the first release.
+- **Scene scale:** switch into the selected scene's writer, with its title, main idea/summary box, scene tone, and ordered beat cards. Each card contains freeform text with optional inline character, emotion, tone, and voice/delivery blocks. A beat can describe atmosphere without characters, one character's thoughts, a conversation among several characters, or a longer passage with several actions. There is no one-character-per-beat or one-utterance-per-beat rule. Use a simple sequence initially; permit an explicit overlap group when the direction needs simultaneous contributions. A graph or automatic time simulation is unnecessary for the first release.
 
 The timeline initially represents **reading order**. Period labels can appear on it, but proportional spacing must not imply exact elapsed time. Chronological grouping or lanes are a later view over explicit time data; unknown dates and overlapping viewpoints remain visible.
 
@@ -59,21 +61,21 @@ The timeline initially represents **reading order**. Period labels can appear on
 
 | Area | Primary content and actions |
 |---|---|
-| Left story rail | Vertical timeline with draggable scene blocks, chapter groups, selected scene, and scene creation/reordering actions |
-| Central scene writer | Individually editable scene title and summary, scene tone, ordered freeform beat cards, and generation/revision actions |
-| Right library and contextual details | Reusable characters, emotions, tones, voices/delivery, extra roles, optional stages, and saved fragments; selected-block scope and character details appear when needed |
+| Story view (zoomed out) | Vertical timeline of draggable scene blocks, chapter groups, summary excerpts, and scene creation/reordering actions; opening a scene switches to its writer |
+| Scene view (zoomed in) | Individually editable scene title and summary, scene tone, ordered freeform beat cards, and generation/revision actions; Back to story returns to the overview |
+| Scene library and contextual details | Preserve the accepted editor layout: reusable blocks in the library, freeform writing in the center, and local scope/character details in the inspector |
 | Prose drawer or split view | Generated candidates, comparisons, direct prose edits, and acceptance |
 | Optional physical stage | A scene-local board for placing characters, extras, and props over a reusable location layout; writing works without it |
 
-Keep the selected scene and its main idea visible while composing. Collapse the library and inspector for prose review. Support keyboard navigation, visible focus, adjustable text size, and text labels alongside status colours. Every drag action also has an Add action and keyboard movement equivalent.
+Keep the main idea above the beats while composing. Preserve the selected scene and overview scroll position when moving between views. Collapse the library and inspector for prose review. Support keyboard navigation, visible focus, adjustable text size, and text labels alongside status colours. Every drag action also has an Add action and keyboard movement equivalent.
 
 ### Scene selection, editing, and visual direction
 
 - A scene block and its editor refer to one stable scene identity. Editing the title or summary updates the timeline block; switching scenes preserves unfinished title, summary, beat, and prose buffers.
 - Moving a scene changes its timeline position and dependent context, while its summary, beats, candidates, and prose remain attached to the same scene. Provide undo for movement and clear feedback about affected continuity views.
-- Keep beat cards visually distinct but quiet. Use comfortable prose typography, compact secondary controls, consistent spacing, and a strong distinction between story navigation, writing content, and reusable tools. The center receives the largest share of the workspace.
+- Preserve the existing accepted scene-writer composition and appearance. Beat cards remain visually distinct, with freeform contents. Further visual redesign is not a prerequisite for the two-view workflow.
 - Keep the established warm neutral surfaces and restrained character/emotion/tone colors. Selection, focus, hover, and drop targets must be legible in light and dark modes. Avoid permanent forms or repeated metadata around every beat.
-- On smaller windows, collapse supporting rails behind labeled controls while preserving a vertical scene list. The timeline never changes into a horizontal row of scene cards.
+- On smaller windows, reflow scene tools around the editor; Story and Scene remain separate views. The overview timeline stays vertical at every size.
 - The revised design reference is [the scene writer prototype](../outputs/scene-writer-studio.html). It illustrates the intended interaction and visual hierarchy; it is a local prototype, not the installed application or a connected AI generator.
 
 ### Reusable blocks and ordinary text
@@ -217,7 +219,7 @@ These are dependency-ordered milestones, not calendar commitments. Estimate effo
 | Milestone | Deliverable | Acceptance gate |
 |---|---|---|
 | 1. Engine and packaging spike | Independent repository, worker contract, read-only import, and a minimal packaged Electron shell | Opens a disposable vault copy, enumerates all three sequences correctly, reproduces representative replay results, and launches without system Python |
-| 2. Timeline and scene writer | Vertical draggable scene timeline, individual scene editing, summary boxes, freeform beat cards, reusable character/emotion/tone/voice library, optional stages, scoped drop targets, tags, raw fallback, and safe persistence | A writer can select and independently edit scenes, reorder scenes vertically while preserving their identities, write beats with zero/one/multiple characters, reuse a preset in two scenes, edit one instance independently, reorder beats with evidence intact, and preserve unknown Markdown; external edits and crashes do not lose work |
+| 2. Two-view timeline and scene writer | Story overview with vertical draggable scene timeline; separate individual scene view preserving the accepted editor; summary boxes, freeform beat cards, reusable blocks, optional stages, scoped drop targets, tags, raw fallback, and safe persistence | Open a scene, edit it, return without losing edits/overview position, and open another independently; reorder scenes vertically while preserving identities; write beats with zero/one/multiple characters; reuse and locally edit presets; reorder beats with evidence intact; preserve unknown Markdown and recover after external edits/crashes |
 | 3. AI prose loop | Scene context assembler, one provider, streaming, candidates, comparison, and acceptance | Generate from structured shorthand, revise, accept prose, and recover the previous source; no automatic canon/state/hash updates occur |
 | 4. State and continuity review | Entering/exiting inspector, source-linked histories, intended-outcome handling, packet review, and derived views | Intended knowledge never enters actual replay; stale inputs stay visible; review refreshes evidence only for the prose actually inspected |
 | 5. Usable desktop release | New/move scene transactions, search/filter refinement, accessible keyboard flows, installer, and explicit exports | Complete the entire authoring loop on a disposable real project, reopen it successfully in Obsidian, and install on a clean Windows environment |
@@ -232,6 +234,7 @@ Package the Python worker with its interpreter, then include it with the desktop
 - **Story semantics:** directed attitudes stay directed; events do not overwrite standing relationships; local moods do not persist; reader revelations do not become character knowledge; periods reset appropriately; uncertain chronology is visible.
 - **Authoring lifecycle:** a scene with no prose remains editable; intended updates cannot affect replay; source changes require renewed evidence review; beat moves preserve references; scene moves preserve identity.
 - **Timeline and reuse:** scenes appear in a vertical timeline; drag and keyboard scene moves retain scene/summary/beat identities and invalidate affected context; switching scenes preserves independent edits and unfinished buffers; title and summary edits update the matching timeline block; freeform beat text/block order survives save/reopen; beats with no characters, one character, and multiple characters all remain editable and generate successfully; multiple actions or paragraphs need no extra mandatory fields; character-specific emotions never spread to other characters in a beat; optional stages and inherited narration settings never block writing; preset edits do not change past instances without an explicit update; keyboard controls can perform every drag operation; author-only comments stay out of generation requests.
+- **Two-view navigation:** the overview and scene writer are distinct screens; opening/returning preserves selected scene, independent editing buffers, and overview scroll position. The overview stays vertical at all widths, and the accepted scene editor retains its summary and freeform beat cards.
 - **Durability:** conflicting external edits, interrupted multi-file writes, app crashes, missing source files, and restarting a failed worker preserve recoverable work.
 - **AI behaviour:** mock the provider for repeatable streaming, stop, timeout, rate-limit, partial-output, and changed-input tests. Inspect assembled requests for missing constraints and future-state leakage. Use a small real generation evaluation separately; prose quality needs editorial judgement.
 - **Desktop:** bounded end-to-end checks for project opening, authoring, generation, review, keyboard operation, and installer startup. Verify packaged operation without developer runtimes.

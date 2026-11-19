@@ -10,7 +10,8 @@ A proposed local desktop writing application: each scene sits on a timeline and 
 
 - A separate software repository from the story vault.
 - An Electron-style desktop app with a web interface.
-- A vertical timeline of draggable scene blocks, with individual scenes opening in the scene writer.
+- Two views at two zoom levels: a whole-story overview with a vertical timeline of draggable scene blocks, and an individual scene writer retaining its accepted design.
+- Open any scene to edit it; return to the overview while preserving its independent edits and timeline position.
 - A main scene idea/summary box above each scene's beat cards.
 - Ordered beat cards containing freeform text, with no required cast size or actor fields.
 - Separate reusable, draggable character, emotion, tone, and voice/delivery blocks mixed with regular text.
