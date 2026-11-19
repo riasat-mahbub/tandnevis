@@ -1,0 +1,19 @@
+# Application dependencies and build products
+node_modules/
+dist/
+out/
+build/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local credentials and editor state
+.env
+.env.*
+!.env.example
+.vscode/
+.DS_Store
+
+# Local story workspaces and private test data
+local-projects/
+private-fixtures/
