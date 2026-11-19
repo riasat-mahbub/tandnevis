@@ -4,14 +4,18 @@ A proposed local desktop writing application: each scene sits on a timeline and 
 
 **Status:** development plan only; implementation has not started.
 
+**Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. Markdown/manifests remain the local story source; cloud AI is optional during ordinary authoring.
+
 [Read the development plan](docs/development-plan.md).
+
+[Read the detailed Tauri implementation plan](docs/tauri-implementation-plan.md): architecture, entities and storage, native command contracts, editor/drag-and-drop implementation, AI jobs, recovery, packaging, and milestone acceptance gates.
 
 [Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
 
 ## Agreed direction
 
 - A separate software repository from the story vault.
-- An Electron-style desktop app with a web interface.
+- A Tauri full-stack desktop app with a React/TypeScript UI and Rust application backend.
 - Two views at two zoom levels: a whole-story overview with a vertical timeline of draggable scene blocks, and an individual scene writer retaining its accepted design.
 - Open any scene to edit it; return to the overview while preserving its independent edits and timeline position.
 - A main scene idea/summary box above each scene's beat cards.

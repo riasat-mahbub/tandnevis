@@ -42,3 +42,5 @@ Add clear New/Add actions, and expose drag handles, Duplicate, and Delete direct
 ## Implementation boundaries
 
 The prototype demonstrates scene selection, independent editing, scene/beat creation and reordering, inline blocks, local scope, optional placement, and prose review layout. Cloud generation, workspace persistence/recovery, continuity replay, and transaction-safe saves belong to the application milestones. The prototype's illustrative prose preview never calls an AI provider.
+
+The desktop implementation targets Tauri 2 with React/TypeScript and a Rust backend. [The implementation plan](docs/tauri-implementation-plan.md) defines native boundaries and delivery gates; this platform change preserves the two views, both timelines, freeform beats, visible quick actions, and the accepted visual direction.

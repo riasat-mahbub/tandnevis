@@ -2,11 +2,13 @@
 
 Status: proposal, 19 November 2026. This plan changes no story canon or source files.
 
+**Implementation platform:** Tauri 2 desktop with a React/TypeScript frontend and Rust application backend. This replaces the earlier Electron proposal. The detailed build plan, module ownership, storage/IPC contracts, work tickets, and verification gates are in [the Tauri implementation plan](tauri-implementation-plan.md).
+
 ## 1. Product direction
 
 Build a local desktop writing application around the existing scene-shorthand framework. Scenes sit on a vertical story timeline as draggable scene blocks. Selecting a block opens that individual scene in the scene writer. Each scene has a main idea/summary box and an ordered set of beat cards; each beat is a freeform text editor that can mix ordinary writing with reusable draggable blocks. A beat can contain zero, one, or any number of characters. AI develops that direction into a lived scene. The writer can edit prose directly, compare alternatives, and decide which draft becomes the current source.
 
-**Confirmed requirements:** separate application repository; an Electron-like local app; a vertical timeline of draggable scene blocks; individual scene editing in the scene writer; the main scene idea/summary in a box; ordered beat cards with freeform text and no required cast size or actor/recipient fields; separate reusable character, emotion, tone, and voice/delivery blocks; optional stage references and a possible physical stage board; human-authored shorthand and tags; AI primarily for prose generation.
+**Confirmed requirements:** separate application repository; a Tauri desktop app with a complete local frontend/backend; a vertical timeline of draggable scene blocks; individual scene editing in the scene writer; the main scene idea/summary in a box; ordered beat cards with freeform text and no required cast size or actor/recipient fields; separate reusable character, emotion, tone, and voice/delivery blocks; optional stage references and a possible physical stage board; human-authored shorthand and tags; AI primarily for prose generation.
 
 **Confirmed navigation:** use separate Story and Scene views as two conceptual zoom levels. Story shows the whole-story vertical timeline; opening a scene switches into its writer. Preserve the accepted scene-writer workflow and hierarchy, with a clear return to the overview.
 
@@ -183,40 +185,39 @@ Acceptance is a deliberate replacement of the current prose with a recoverable p
 
 AI may optionally suggest missing evidence or continuity concerns after drafting; those are suggestions until the writer records them. Preserve creative room: a compressed beat can expand into multiple exchanges, and incidental compatible detail remains provisional staging.
 
-Show which content will be sent to the selected provider and usage/cost information where available. Keep keys outside Git using OS-backed storage, with no plaintext fallback. Electron provides an OS-backed storage facility; its exact platform semantics and supported API must be checked against the release version. [Electron safeStorage documentation](https://www.electronjs.org/docs/latest/api/safe-storage).
+Show which content will be sent to the selected provider and usage/cost information where available. Keep keys outside Git using an OS-backed credential store behind a Rust `SecretStore`, with no plaintext fallback. Stored keys are retrieved only by the backend; the UI receives key-present status. Verify the chosen Windows credential backend in the Tauri spike. [Windows native keyring store](https://docs.rs/windows-native-keyring-store/latest/windows_native_keyring_store/).
 
-## 6. Proposed technical architecture
+## 6. Tauri full-stack desktop architecture
 
-Use Electron for the desktop shell, React with TypeScript for the web UI, and a Python worker for the existing parsing and replay algorithms. This keeps the web presentation separate from the story engine. React documents TypeScript support for components and UI contracts. [React TypeScript documentation](https://react.dev/learn/typescript).
+Use Tauri 2 for the desktop shell, React/TypeScript/Vite for the frontend, and Rust for the application backend. Full stack includes workspace services, durable local storage, domain operations, credentials, AI/provider requests, jobs, and exports; a hosted server/database is not required. The installed application loads bundled frontend assets and does not require Node. See [the detailed implementation plan](tauri-implementation-plan.md) for module boundaries, proposed packages, entities, commands, schemas, and delivery slices.
 
-```mermaid
-flowchart TD
-    UI[React timeline, block library, and prose review] <--> Bridge[Restricted preload bridge]
-    Bridge <--> Main[Electron main process]
-    Main <--> Engine[Python story engine over stdio]
-    Engine <--> Vault[Selected local story workspace]
-    Main <--> Provider[Configured AI provider]
-    Main <--> Secrets[OS-backed credential storage]
-```
+| Layer | Ownership |
+|---|---|
+| React frontend | Two writing views, rich-text beat editors, timeline drag previews, quick actions, library, review, focus/accessibility |
+| Typed Tauri command/channel boundary | Validated requests, acknowledged revisions, structured errors, cancellable progress/token streams |
+| Rust backend | Workspace sessions, all story-file writes, transactions/recovery, domain mutations, jobs, provider requests, credentials, exports |
+| Engine adapter | Existing parsing/replay behind a verified adapter; initially a bundled Python sidecar if packaging/parity pass |
+| Local workspace | Markdown/manifests plus documented portable metadata; indexes remain disposable |
 
-The Python worker owns story-file reads, writes, validation, and replay. Electron owns native dialogs, application settings, provider requests, and worker lifecycle. The renderer receives typed commands and results through a narrow preload API. Electron documents this separation through its IPC model; keep renderer isolation and sandboxing enabled, validate messages, and render Markdown without executable content. [Electron IPC](https://www.electronjs.org/docs/latest/tutorial/ipc), [Electron security guidance](https://www.electronjs.org/docs/latest/tutorial/security).
+Rust is the single workspace writer and owns native integration and provider/network work. The frontend calls narrow application commands instead of performing arbitrary filesystem or shell operations. Restrict application-command permissions as well as plugin capabilities, validate workspace sessions/paths and message revisions, and render Markdown without executable content. [Tauri commands](https://v2.tauri.app/develop/calling-rust/), [Tauri capabilities](https://v2.tauri.app/security/capabilities/).
 
-Communicate with the worker using versioned request/response messages over standard input/output. No localhost web server is required for the installed app. Include request IDs, cancellation, structured errors, job progress, and worker restart/recovery.
+Use Tauri channels for generation/progress streams and low-volume events for invalidation. If the engine worker is retained, Rust controls its versioned standard-input/output protocol and supplies authorized snapshots; the worker returns derived results or proposed patches rather than writing story files. No localhost web server is required in the installed app. Include request/operation IDs, cancellation, structured errors, progress, and controlled worker recovery.
 
 ### Keep software and story repositories independent
 
 The application opens a chosen workspace directory; it never assumes the vault is beneath its installation or application repository. Ship the reusable engine with the app, rather than executing arbitrary scripts found in an opened project.
 
-Initially adapt the existing `build_scene_maps.py` and `build_character_pilot.py` logic into a reusable engine package, preserving attribution and behavioural parity. Generalise fixed repository roots, the Year One selection, and draft endpoints through explicit project configuration. Preserve the original vault's command-line workflows during this work.
+The referenced `build_scene_maps.py` and `build_character_pilot.py` sources are not in this repository. Inspect the external framework and adapt their verified logic behind an engine interface, preserving attribution and behavioural parity. Generalise fixed roots/period selections through explicit project configuration. Validate a bundled Python worker before choosing it over a Rust port; preserve unchanged imported packets and the original vault's supported command-line workflows. New freeform formats require an explicit codec/parser compatibility gate.
 
 Proposed application layout:
 
 ```text
-desktop/                 Electron main process and preload
-ui/                      React authoring and review interface
-engine/                  Python parsers, serializers, replay, and worker
-contracts/               Versioned IPC schemas
+src/                     React/TypeScript app, features, editors, services, and styles
+src-tauri/               Rust commands, domain/workspace services, jobs, security, and packaging
+engine/                  Adapted Python engine source/protocol, if sidecar reuse is validated
+contracts/               Versioned IPC/schema fixtures and generated frontend types
 tests/fixtures/          Synthetic miniature story projects
+tests/e2e/               Installed Tauri/WebView workflows
 docs/                    Product, format, and development documentation
 ```
 
@@ -234,11 +235,11 @@ Watch external file changes and invalidate affected views. Reject paths outside 
 
 ## 7. Delivery milestones and acceptance gates
 
-These are dependency-ordered milestones, not calendar commitments. Estimate effort after the first engine and packaging spike.
+These are dependency-ordered milestones, not calendar commitments. Estimate effort after the first engine and packaging spike. The detailed M0–M8 breakdown is in [the Tauri implementation plan](tauri-implementation-plan.md#13-implementation-milestones-and-tickets): coarse milestone 1 maps to M0–M1, 2 to M2–M4, 3 to M5, 4 to M6, and 5 to M8. Optional staging is M7.
 
 | Milestone | Deliverable | Acceptance gate |
 |---|---|---|
-| 1. Engine and packaging spike | Independent repository, worker contract, read-only import, and a minimal packaged Electron shell | Opens a disposable vault copy, enumerates all three sequences correctly, reproduces representative replay results, and launches without system Python |
+| 1. Tauri, engine, and packaging spike | React/TypeScript + Tauri/Rust scaffold, command/capability contracts, format/engine decision, read-only import, and a minimal installer | Opens a disposable vault copy, enumerates all three sequences correctly, reproduces representative replay results, and launches without system Python/Node |
 | 2. Two-view authoring, editing controls, and visual treatment | Separate Story/Scene views; vertical timeline; summary and freeform beats; chapter/scene/beat create/edit/duplicate/move/recoverable delete; basic character/preset management; optional stages; playful styling and Calm appearance; safe persistence | Complete the authoring/library/Trash/Undo flows and visual-accessibility gates in the interface plan; preserve independent buffers, stable identities, local/global scope, evidence references, unknown Markdown, and recoverable work |
 | 3. AI prose loop | Scene context assembler, one provider, streaming, candidate labels/editing/comparison/recoverable removal, and deliberate acceptance | Generate from structured shorthand, revise, remove an unaccepted candidate without affecting the manuscript, accept prose, and recover the previous source; no automatic canon/state/hash updates occur |
 | 4. State and continuity review | Entering/exiting inspector, source-linked histories, intended-outcome handling, packet review, and derived views | Intended knowledge never enters actual replay; stale inputs stay visible; review refreshes evidence only for the prose actually inspected |
@@ -246,7 +247,7 @@ These are dependency-ordered milestones, not calendar commitments. Estimate effo
 
 For milestone 1, select synthetic scenes covering a directed relationship, a local mood, a continuing mood, received testimony, and a stale source. Treat packaging as an early feasibility test rather than postponing it until the UI is complete.
 
-Package the Python worker with its interpreter, then include it with the desktop installer. PyInstaller supports self-contained distributions but requires platform-specific builds and explicit handling of dynamic imports and bundled resources. [PyInstaller operating model](https://pyinstaller.org/en/stable/operating-mode.html). Electron Forge is a proposed installer/build pipeline. [Electron Forge documentation](https://www.electronforge.io/).
+If selected, package the Python engine with its interpreter as a target-specific sidecar. Build the Windows installer through the Tauri bundler, initially proposing NSIS. Verify WebView2/runtime installation policy and native-resource lookup on a clean machine; manual installation comes before any automatic-update service. [Tauri sidecars](https://v2.tauri.app/develop/sidecar/), [Windows installers](https://v2.tauri.app/distribute/windows-installer/).
 
 ## 8. Validation strategy
 

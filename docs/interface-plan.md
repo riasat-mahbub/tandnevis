@@ -4,6 +4,8 @@ Status: planned application work, with an [interactive playful preview](../outpu
 
 The latest additions—an alternating beat timeline, direct Delete/Duplicate quick actions, and the complete drag-and-drop contract at both levels—are recorded here as requirements. Existing previews are earlier references; this update does not modify them.
 
+The application target is now Tauri 2 with a React/TypeScript frontend and Rust backend. [The detailed implementation plan](tauri-implementation-plan.md) maps these UI requirements to native services, persistence, IPC, engine integration, testing, and packaging.
+
 ## 1. Goal and boundaries
 
 Give a writer a welcoming place to arrange a story and develop scenes without turning writing into form filling. Add a playful touch through selective skew and asymmetry, while making creation, editing, duplication, removal, and recovery easy to find.
