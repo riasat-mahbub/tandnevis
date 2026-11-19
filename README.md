@@ -15,7 +15,9 @@ A proposed local desktop writing application: each scene sits on a timeline and 
 - Two views at two zoom levels: a whole-story overview with a vertical timeline of draggable scene blocks, and an individual scene writer retaining its accepted design.
 - Open any scene to edit it; return to the overview while preserving its independent edits and timeline position.
 - A main scene idea/summary box above each scene's beat cards.
-- Ordered beat cards containing freeform text, with no required cast size or actor fields.
+- A matching vertical timeline of freeform beat cards inside each scene, alternating left/right when space allows, with no required cast size or actor fields.
+- Drag-and-drop reordering for both scenes and beats, with keyboard equivalents and before/after drop targets.
+- Directly visible Duplicate/Delete quick actions on scene and beat blocks, with Trash/Undo recovery.
 - Separate reusable, draggable character, emotion, tone, and voice/delivery blocks mixed with regular text.
 - Optional stages; writing and generation work without a physical layout.
 - Story-level narration defaults, with optional scene overrides.

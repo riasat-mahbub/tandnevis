@@ -2,6 +2,8 @@
 
 Status: planned application work, with an [interactive playful preview](../outputs/scene-writer-playful.html). This brief extends the [development plan](development-plan.md) and [design record](../DESIGN.md). The preview demonstrates the visual treatment, core scene/beat actions, recoverable removal, Calm appearance, and basic character-profile editing. It does not implement the full control inventory, installed-app persistence, or real AI generation.
 
+The latest additions—an alternating beat timeline, direct Delete/Duplicate quick actions, and the complete drag-and-drop contract at both levels—are recorded here as requirements. Existing previews are earlier references; this update does not modify them.
+
 ## 1. Goal and boundaries
 
 Give a writer a welcoming place to arrange a story and develop scenes without turning writing into form filling. Add a playful touch through selective skew and asymmetry, while making creation, editing, duplication, removal, and recovery easy to find.
@@ -9,7 +11,7 @@ Give a writer a welcoming place to arrange a story and develop scenes without tu
 Retain two writing views:
 
 - **Story:** the whole-story vertical timeline, with draggable scene blocks grouped by chapter. Open a scene to zoom in.
-- **Scene:** the accepted scene writer, with a scene idea/summary, scene tone, ordered freeform beat cards, reusable blocks, and optional staging. Back to story zooms out.
+- **Scene:** the scene writer, with a scene idea/summary and scene tone above a matching vertical timeline of freeform beat cards, reusable blocks, and optional staging. Back to story zooms out.
 
 Beat cards can contain zero, one, or many characters. Stages and narration overrides remain optional. Preserve the existing hierarchy, navigation, and writing behavior while refining the visual treatment. Library management and Trash open as contextual panels within these views; they do not add another writing zoom level.
 
@@ -28,10 +30,13 @@ The interface should feel like arranging story notes on a writing desk. Warm pap
 ### Scene view
 
 - Keep the scene summary visually distinct, with a slightly offset backing or label tab. The editable summary remains horizontal.
+- Arrange beats on a vertical timeline like the story's scenes: alternating left/right cards, staggered top-to-bottom, numbered nodes, and clear connections to one spine. Side follows beat order, not character identity. A beat can still contain no characters or several characters.
+- Keep beat editing inline in Scene view; the beat timeline does not introduce another view or zoom level. The summary remains above it.
 - Keep beat text and editable surfaces flat. Put any playful treatment on small labels, card backings, or secondary chips, leaving the caret, selection, focus outline, and drop targets aligned to their controls.
 - Use unequal column widths to emphasize the editor: a compact library, a generous writing column, and quieter contextual details. Asymmetry comes from useful proportions and spacing.
 - Use occasional offset tabs or gently angled preset labels. Apply a small set of component variants consistently; do not tilt every control independently.
 - Preserve Georgia for writing and the platform sans for controls in this iteration. Keep toolbars and menus aligned, with consistent control sizes and spacing.
+- Adapt to the available editor width, not just the window width. Collapse supporting panels or use a single-column beat timeline when alternating cards would make freeform paragraphs too narrow. Long beats grow vertically or collapse/expand without overlapping other cards.
 
 ### Comfort and accessibility
 
@@ -43,7 +48,7 @@ The interface should feel like arranging story notes on a writing desk. Warm pap
 
 ## 3. Controls where writers need them
 
-Keep a visible primary creation control in each context. Put less frequent actions in a labeled Actions menu; never depend on hover or right-click alone. Use familiar user-facing verbs rather than the technical label “CRUD.”
+Keep a visible primary creation control in each context. Every scene block and beat card has a compact strip containing its drag handle, Duplicate, and Delete. These actions remain visible without hover or opening a menu. Put less frequent actions in a labeled More/Actions menu. Use familiar user-facing verbs rather than the technical label “CRUD.”
 
 | Object | Create and inspect | Edit and organize | Duplicate and remove |
 |---|---|---|---|
@@ -58,15 +63,23 @@ Keep a visible primary creation control in each context. Put less frequent actio
 
 ### Story controls
 
-New scene is always visible. Each scene block has Open and an Actions menu containing Rename, Duplicate, Insert before, Insert after, Move up/down, and Move to Trash. The normal title/summary editing remains in Scene view. Chapters provide New chapter and a compact chapter Actions menu. Trash and Restore are available from the overview.
+New scene is always visible. Each scene block opens its scene and exposes a drag handle, Duplicate, and Delete directly. Delete moves the scene to recoverable Trash; label its accessible action with the scene name and explain its destination where needed. The More menu contains Rename, Insert before/after, and Move up/down. Provide insertion controls between scene blocks as well as at the end. Normal title/summary editing remains in Scene view. Chapters provide New chapter and a compact chapter Actions menu. Trash and Restore are available from the overview.
 
 Returning from a scene preserves its selection and the overview position. Removing the open scene returns to the overview and focuses a sensible neighboring scene, or New scene when none remain. An empty story explains how to create the first scene.
 
 ### Beat controls
 
-Each card has a clear drag handle and an Actions menu for Insert above/below, Duplicate, Move up/down, Collapse/expand, and Delete. Keep Add beat visible below the list. Do not surround every beat with a row of equally prominent buttons.
+Each beat timeline card has a clear drag handle, a directly visible Duplicate action, and a directly visible Delete action. Keep the strip compact and secondary to the text. Its More menu contains Insert above/below, Move up/down, and Collapse/expand. Keep Add beat below the timeline and add insertion controls between beats. Both quick actions work without first selecting the card or opening a menu. Give controls object-specific accessible names, such as Delete beat 3, and readable tooltips when using icons.
 
 New or duplicated beats receive focus in their text editor. After a move, focus follows the moved beat. After deletion, focus goes to the next beat, previous beat, or Add beat. Deleting the final beat leaves a valid scene with its summary and an inviting empty state.
+
+### Drag-and-drop contract for both timelines
+
+- Scene blocks reorder within the current chapter; beat cards reorder within the open scene. Both support pointer/touch dragging through an explicit handle, plus native-button and keyboard movement equivalents. Cross-chapter scene movement follows the existing impact-preview workflow.
+- Text selection, caret movement, inline character/emotion dragging, and Delete/Duplicate clicks do not start a drag of the containing scene or beat. Structural dragging requires the handle and an intentional movement threshold.
+- Show a clear insertion marker before or after a target in reading order, regardless of which side its card occupies. Accept drops before the first item, between items, and after the last; scroll the timeline when dragging toward a long view's edge.
+- A completed drop commits one reorder. Escape/cancellation restores the original order. Update numbering, sides, and connectors afterward; preserve object identity, text, local block scope, prose/draft associations, and evidence references.
+- Make each move one undoable operation. Persist the new order through the existing safe-write transaction and invalidate affected continuity/generation context. Announce the new position and keep keyboard focus on the moved item.
 
 ### Library controls
 
@@ -104,7 +117,7 @@ An inspector explicitly distinguishes **This scene/beat** from **Reusable profil
 
 These are slices of the existing milestones, not a replacement schedule.
 
-1. **Authoring controls:** after the engine/schema spike, implement chapter/scene/beat create, inspect, edit, duplicate, move, and recoverable delete. Keep stable identities, switching buffers, evidence references, and undo/redo correct before styling those controls.
+1. **Authoring timelines and controls:** after the engine/schema spike, implement matching scene/beat timelines, drag-and-drop reordering at both levels, and directly visible Duplicate/Delete quick actions. Include chapter/scene/beat creation, editing, insertion, movement, and recovery. Keep stable identities, switching buffers, evidence references, and undo/redo correct before styling those controls.
 2. **Reusable library:** basic character creation/profile editing, preset/template editing, usage inspection, local-vs-global scope, archive/delete, and restoration. Optional physical layout remains independent of the writing loop.
 3. **Playful treatment:** apply restrained skew/backings, deterministic asymmetric offsets, improved spacing, and Calm appearance to the working two-view interface. Preserve the accepted content hierarchy.
 4. **AI candidate controls:** extend the AI milestone with candidate labels, comparison, editing, recoverable removal, and deliberate acceptance.
@@ -114,6 +127,9 @@ These are slices of the existing milestones, not a replacement schedule.
 
 - Create a chapter and two scenes, open/edit each independently, duplicate one, reorder them vertically, move one to Trash, and restore it with its contents and identity intact.
 - Create beats containing no characters, one character, and several characters; edit multiple paragraphs; duplicate/reorder/delete/undo without requiring actor forms or breaking evidence references.
+- Verify that both timelines alternate cards left/right with legible top-to-bottom numbering, that a scene's summary remains above its beat timeline, and that narrow editor widths use one readable column. Beat side is independent of cast size or character identity.
+- Drag scenes and beats before/between/after items, including long-list scrolling; cancel a drag; repeat the same moves by keyboard. Verify new numbering/sides, unchanged identities/content/scope/evidence links, a single Undo step, and useful focus after each move.
+- Delete and duplicate a scene or beat directly from its visible quick-action strip without opening a menu or hovering. Verify Trash/Undo behavior, referenced-beat resolution, and deletion of the final scene/beat. Selecting text and clicking quick actions must never accidentally start a structural drag.
 - Create a character with only a name, expand its profile, inspect where it is used, and confirm that local emotion edits do not change its baseline. Archive a used character and keep old references readable.
 - Rename a reusable preset, review its usages, and verify that scene snapshots change only through an explicit update operation. Remove a local chip without deleting the reusable entry.
 - Exercise empty story, empty chapter, empty scene, long titles/summaries, long beat text, repeated character references, and archived/missing entries. Controls remain discoverable and errors preserve work.

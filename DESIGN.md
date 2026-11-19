@@ -8,6 +8,8 @@ The accepted scene-writer workflow remains: two views at two conceptual zoom lev
 
 **Scene view (zoomed in)** retains the accepted scene writer: editable title, scene tone, a distinct scene idea/summary field, and ordered freeform beat cards. A beat can contain any text and zero or more character references. Back to story returns to the overview; Story/Scene controls switch zoom levels. A chapter/scene breadcrumb preserves orientation.
 
+The latest planned extension arranges those beats on a matching vertical timeline: alternate left/right around numbered nodes, preserve freeform editing, and keep the scene summary above the timeline. This remains part of Scene view, with no third zoom level. Collapse to one column when the editor cannot provide comfortable alternating-card widths.
+
 Preserve the accepted scene layout: reusable blocks on the left, writing in the center, and contextual details/optional staging on the right. Physical staging and narration are collapsed until needed. The whole-story timeline does not occupy a permanent sidebar beside the scene writer.
 
 ## Visual system
@@ -26,7 +28,7 @@ Asymmetry should emphasize the writing area through unequal useful proportions, 
 
 ## Planned editing controls
 
-Add clear New/Add actions and labeled Actions menus for chapter, scene, and beat creation, inspection, editing, duplication, movement, and recoverable removal. Add character/profile and preset/template editing, usage inspection, and archive/delete rules to the library. Scene/chapter Trash and beat Undo make everyday removal reversible. Local removal never deletes a global definition; duplicates receive new identities and retain explicit shared references. See the interface plan for the object-by-object inventory and acceptance gates.
+Add clear New/Add actions, and expose drag handles, Duplicate, and Delete directly on every scene block and beat card. Keep less frequent commands in More/Actions menus. Scenes and beats both support drag-and-drop reordering, before/after insertion markers, and keyboard equivalents; editing text does not initiate structural dragging. Renumber and alternate sides after moves while retaining stable identities and evidence links. Add character/profile and preset/template editing, usage inspection, and archive/delete rules to the library. Scene/chapter Trash and beat Undo make everyday removal reversible. Local removal never deletes a global definition; duplicates receive new identities and retain explicit shared references. See the interface plan for the object-by-object inventory and acceptance gates. These latest timeline/quick-action requirements are planning-only additions to the existing previews.
 
 ## Interaction contract
 
