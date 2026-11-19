@@ -17,3 +17,10 @@ __pycache__/
 # Local story workspaces and private test data
 local-projects/
 private-fixtures/
+
+# Native build products and machine-local tooling
+src-tauri/target/
+src-tauri/gen/schemas/
+*.tsbuildinfo
+*.log
+.tools/

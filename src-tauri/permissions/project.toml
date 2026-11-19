@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-project-commands"
+description = "Allow validated project session commands. File and SQL access remains in Rust."
+commands.allow = [
+  "create_project",
+  "open_project",
+  "read_project",
+  "apply_operation",
+  "export_markdown",
+  "import_markdown",
+]

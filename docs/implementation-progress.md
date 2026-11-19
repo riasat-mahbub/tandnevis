@@ -17,9 +17,9 @@ Updated 19 November 2026. This ledger separates approved direction from implemen
    - [x] Record the delivery sequence and later milestones here.
    - [x] Review and commit this documentation step.
 2. **Scaffold the application** — `chore: scaffold Tauri React desktop application`.
-   - [ ] Add React/TypeScript/Vite, Tauri 2/Rust configuration, dependency lockfiles, a typed command gateway, and a narrow native permission boundary.
-   - [ ] Add reproducible developer commands and separate the desktop app from historical HTML mockups.
-   - [ ] Record frontend typecheck/build and native scaffold compilation results; identify environmental blockers precisely.
+   - [x] Add React/TypeScript/Vite, Tauri 2/Rust configuration, dependency lockfiles, and a narrow native permission boundary. The typed authoring gateway lands with step 4.
+   - [x] Add developer commands and separate the desktop app from historical HTML mockups. Isolated-toolchain convenience wrappers follow in step 5.
+   - [x] Scaffold agent verified frontend typecheck/build and zero dependency-audit findings. Native backend compilation/tests follow in step 3.
 3. **Implement durable SQLite authoring** — `feat: add transactional SQLite project backend`.
    - [ ] Add versioned schema/migrations, connection/session lifecycle, stories/chapters/scenes/beats, shared profiles/presets, local scope, revisions, and Trash.
    - [ ] Implement typed Rust domain operations for create/read/edit/duplicate/reorder/archive/trash/restore with reference validation and transaction rollback.
