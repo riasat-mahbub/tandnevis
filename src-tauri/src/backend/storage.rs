@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
@@ -33,6 +33,7 @@ const SAVE_TABLES: &[&str] = &[
     "history",
     "generation_jobs",
     "accepted_prose_revisions",
+    "project_extensions",
 ];
 
 fn sql(error: rusqlite::Error) -> String {
@@ -76,7 +77,9 @@ fn connect(path: &Path) -> Result<Connection> {
 impl Database {
     pub fn create(path: &str, title: String) -> Result<Self> {
         let path = validate_path(path)?;
-        let snapshot = ProjectSnapshot::empty(title)?;
+        let mut snapshot = ProjectSnapshot::empty(title)?;
+        snapshot.add_starters(PresetKind::Tone);
+        snapshot.add_starters(PresetKind::Emotion);
         // Atomic create_new means even a race with another process cannot overwrite a project.
         let file = OpenOptions::new()
             .write(true)
@@ -100,7 +103,8 @@ impl Database {
                 CREATE TABLE scenes (id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL REFERENCES chapters(id), title TEXT NOT NULL, summary TEXT NOT NULL, tone TEXT NOT NULL, prose TEXT NOT NULL DEFAULT '', narration TEXT NOT NULL CHECK(json_valid(narration)), position INTEGER NOT NULL CHECK(position>=0), UNIQUE(chapter_id,position));
                 CREATE TABLE beats (id TEXT PRIMARY KEY, scene_id TEXT NOT NULL REFERENCES scenes(id), document TEXT NOT NULL CHECK(json_valid(document) AND json_type(document)='object'), text TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0), UNIQUE(scene_id,position));
                 CREATE TABLE characters (id TEXT PRIMARY KEY, name TEXT NOT NULL, background TEXT NOT NULL, voice TEXT NOT NULL, personality TEXT NOT NULL, archived INTEGER NOT NULL CHECK(archived IN (0,1)), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
-                CREATE TABLE trash (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('chapter','scene','beat')), title TEXT NOT NULL, deleted_at_revision INTEGER NOT NULL CHECK(deleted_at_revision>=0), payload TEXT NOT NULL CHECK(json_valid(payload)), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
+                CREATE TABLE trash (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('chapter','scene','beat','character','tone','emotion')), title TEXT NOT NULL, deleted_at_revision INTEGER NOT NULL CHECK(deleted_at_revision>=0), payload TEXT NOT NULL CHECK(json_valid(payload)), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
+                CREATE TABLE project_extensions (singleton INTEGER PRIMARY KEY CHECK(singleton=1), data TEXT NOT NULL CHECK(json_valid(data)));
                 CREATE TABLE import_sources (id TEXT PRIMARY KEY, markdown TEXT NOT NULL, imported_at_revision INTEGER NOT NULL CHECK(imported_at_revision>=0), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
                 CREATE TABLE history (sequence INTEGER PRIMARY KEY CHECK(sequence>0), before_state TEXT NOT NULL CHECK(json_valid(before_state)), after_state TEXT NOT NULL CHECK(json_valid(after_state)));
                 CREATE TABLE generation_jobs (
@@ -132,6 +136,7 @@ impl Database {
                 params![snapshot.project_id, snapshot.title],
             )
             .map_err(sql)?;
+            persist(&tx, &snapshot, 0)?;
             tx.commit().map_err(sql)?;
             Ok(Self {
                 connection,
@@ -332,6 +337,7 @@ impl Database {
                 title: None,
                 summary: None,
                 tone: None,
+                tone_id: None,
                 prose: Some(prose),
                 narration: None,
             }),
@@ -648,6 +654,17 @@ fn migrate(connection: &mut Connection, version: i32) -> Result<()> {
             )
             .map_err(sql)?;
             tx.commit().map_err(sql)?;
+            migrate(connection, 2)
+        }
+        2 => {
+            let tx = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(sql)?;
+            tx.execute_batch("CREATE TABLE project_extensions (singleton INTEGER PRIMARY KEY CHECK(singleton=1), data TEXT NOT NULL CHECK(json_valid(data)));
+              ALTER TABLE trash RENAME TO trash_v2;
+              CREATE TABLE trash (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('chapter','scene','beat','character','tone','emotion')), title TEXT NOT NULL, deleted_at_revision INTEGER NOT NULL CHECK(deleted_at_revision>=0), payload TEXT NOT NULL CHECK(json_valid(payload)), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
+              INSERT INTO trash SELECT * FROM trash_v2; DROP TABLE trash_v2; PRAGMA user_version=3;").map_err(sql)?;
+            tx.commit().map_err(sql)?;
             Ok(())
         }
         SCHEMA_VERSION => Ok(()),
@@ -783,6 +800,9 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
         chapters: vec![],
         scenes: vec![],
         characters: vec![],
+        tones: vec![],
+        emotions: vec![],
+        starter_types: vec![],
         trash: vec![],
         import_sources: vec![],
         can_undo: cursor > 0,
@@ -839,6 +859,7 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
             title,
             summary,
             tone,
+            tone_id: String::new(),
             prose,
             narration: decode(narration)?,
             beats: vec![],
@@ -881,6 +902,8 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
                 voice: r.get(3)?,
                 personality: r.get(4)?,
                 archived: r.get(5)?,
+                default_tone_id: String::new(),
+                default_emotion_id: String::new(),
             })
         })
         .map_err(sql)?
@@ -925,6 +948,40 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
         .map_err(sql)?
     {
         project.import_sources.push(row.map_err(sql)?);
+    }
+    let extras: Option<String> = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(sql)?;
+    if let Some(extras) = extras {
+        let v: serde_json::Value = decode(extras)?;
+        project.tones = serde_json::from_value(v["tones"].clone()).map_err(|e| e.to_string())?;
+        project.emotions =
+            serde_json::from_value(v["emotions"].clone()).map_err(|e| e.to_string())?;
+        project.starter_types =
+            serde_json::from_value(v["starterTypes"].clone()).map_err(|e| e.to_string())?;
+        for s in &mut project.scenes {
+            s.tone_id = v["sceneTones"][&s.id].as_str().unwrap_or_default().into();
+        }
+        for c in &mut project.characters {
+            c.default_tone_id = v["characterDefaults"][&c.id]["toneId"]
+                .as_str()
+                .unwrap_or_default()
+                .into();
+            c.default_emotion_id = v["characterDefaults"][&c.id]["emotionId"]
+                .as_str()
+                .unwrap_or_default()
+                .into();
+        }
+    }
+    for s in &mut project.scenes {
+        for b in &mut s.beats {
+            normalize_occurrences(&mut b.document, &b.id);
+        }
     }
     project.validate()?;
     Ok(project)
@@ -1028,5 +1085,22 @@ fn persist(connection: &Connection, project: &ProjectSnapshot, cursor: i64) -> R
             params![project.title, project.revision, cursor],
         )
         .map_err(sql)?;
+    let scene_tones: serde_json::Map<String, serde_json::Value> = project
+        .scenes
+        .iter()
+        .map(|s| (s.id.clone(), serde_json::json!(s.tone_id)))
+        .collect();
+    let character_defaults: serde_json::Map<String, serde_json::Value> = project
+        .characters
+        .iter()
+        .map(|c| {
+            (
+                c.id.clone(),
+                serde_json::json!({"toneId":c.default_tone_id,"emotionId":c.default_emotion_id}),
+            )
+        })
+        .collect();
+    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"characterDefaults":character_defaults});
+    connection.execute("INSERT INTO project_extensions(singleton,data) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET data=excluded.data",[encode(&extensions)?]).map_err(sql)?;
     Ok(())
 }

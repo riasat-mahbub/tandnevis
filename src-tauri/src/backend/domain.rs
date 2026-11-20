@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -17,6 +17,12 @@ pub struct ProjectSnapshot {
     pub chapters: Vec<Chapter>,
     pub scenes: Vec<Scene>,
     pub characters: Vec<Character>,
+    #[serde(default)]
+    pub tones: Vec<Preset>,
+    #[serde(default)]
+    pub emotions: Vec<Preset>,
+    #[serde(default)]
+    pub starter_types: Vec<String>,
     pub trash: Vec<TrashEntry>,
     pub import_sources: Vec<ImportedSource>,
     pub can_undo: bool,
@@ -44,6 +50,8 @@ pub struct Scene {
     pub title: String,
     pub summary: String,
     pub tone: String,
+    #[serde(default)]
+    pub tone_id: String,
     #[serde(default)]
     pub prose: String,
     pub narration: Narration,
@@ -132,6 +140,27 @@ pub struct Character {
     pub voice: String,
     pub personality: String,
     pub archived: bool,
+    #[serde(default)]
+    pub default_tone_id: String,
+    #[serde(default)]
+    pub default_emotion_id: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Preset {
+    pub id: String,
+    pub name: String,
+    pub meaning: String,
+    pub guidance: String,
+    pub example: String,
+    pub archived: bool,
+    pub revision: u64,
+}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PresetKind {
+    Tone,
+    Emotion,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +212,7 @@ pub enum Operation {
         title: Option<String>,
         summary: Option<String>,
         tone: Option<String>,
+        tone_id: Option<String>,
         prose: Option<String>,
         narration: Option<Narration>,
     },
@@ -222,6 +252,12 @@ pub enum Operation {
     CreateCharacter {
         name: String,
     },
+    DuplicateCharacter {
+        character_id: String,
+    },
+    DeleteCharacter {
+        character_id: String,
+    },
     UpdateCharacter {
         character_id: String,
         name: Option<String>,
@@ -229,6 +265,32 @@ pub enum Operation {
         voice: Option<String>,
         personality: Option<String>,
         archived: Option<bool>,
+        default_tone_id: Option<String>,
+        default_emotion_id: Option<String>,
+    },
+    CreatePreset {
+        kind: PresetKind,
+        name: String,
+    },
+    UpdatePreset {
+        kind: PresetKind,
+        preset_id: String,
+        name: Option<String>,
+        meaning: Option<String>,
+        guidance: Option<String>,
+        example: Option<String>,
+        archived: Option<bool>,
+    },
+    DuplicatePreset {
+        kind: PresetKind,
+        preset_id: String,
+    },
+    DeletePreset {
+        kind: PresetKind,
+        preset_id: String,
+    },
+    AddStarterPresets {
+        kind: PresetKind,
     },
     Undo,
     Redo,
@@ -239,6 +301,78 @@ fn title(value: &str) -> Result<()> {
         Err("Titles and names must contain 1–1000 bytes on one line.".into())
     } else {
         Ok(())
+    }
+}
+impl PresetKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tone => "tone",
+            Self::Emotion => "emotion",
+        }
+    }
+}
+
+pub fn walk_nodes(value: &Value, action: &mut impl FnMut(&Value)) {
+    action(value);
+    if let Some(nodes) = value.get("content").and_then(Value::as_array) {
+        for child in nodes {
+            walk_nodes(child, action);
+        }
+    }
+}
+fn walk_nodes_mut(value: &mut Value, action: &mut impl FnMut(&mut Value)) {
+    action(value);
+    if let Some(nodes) = value.get_mut("content").and_then(Value::as_array_mut) {
+        for child in nodes {
+            walk_nodes_mut(child, action);
+        }
+    }
+}
+pub fn normalize_occurrences(document: &mut Value, beat_id: &str) {
+    let mut index = 0;
+    walk_nodes_mut(document, &mut |node| {
+        if node["type"] == "characterReference" {
+            let missing = node["attrs"]["occurrenceId"]
+                .as_str()
+                .is_none_or(str::is_empty);
+            if missing {
+                node["attrs"]["occurrenceId"] = json!(format!("{beat_id}:legacy:{index}"));
+            }
+            index += 1;
+        }
+    });
+}
+fn refresh_occurrences(document: &mut Value) {
+    let mut ids = HashMap::new();
+    walk_nodes_mut(document, &mut |node| {
+        if node["type"] == "characterReference" {
+            let old = node["attrs"]["occurrenceId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            let next = new_id();
+            ids.insert(old, next.clone());
+            node["attrs"]["occurrenceId"] = json!(next);
+        }
+    });
+    walk_nodes_mut(document, &mut |node| {
+        if node["type"] == "emotionReference" {
+            let old = node["attrs"]["targetOccurrenceId"]
+                .as_str()
+                .unwrap_or_default();
+            if let Some(next) = ids.get(old) {
+                node["attrs"]["targetOccurrenceId"] = json!(next);
+            }
+        }
+    });
+}
+fn value_uses(value: &Value, key: &str, id: &str) -> bool {
+    match value {
+        Value::Object(map) => map
+            .iter()
+            .any(|(k, v)| (k == key && v.as_str() == Some(id)) || value_uses(v, key, id)),
+        Value::Array(values) => values.iter().any(|v| value_uses(v, key, id)),
+        _ => false,
     }
 }
 fn permutation(actual: &[String], proposed: &[String]) -> Result<()> {
@@ -253,10 +387,17 @@ fn permutation(actual: &[String], proposed: &[String]) -> Result<()> {
 
 /// Validate the supported Tiptap document subset and derive its portable text.
 /// Character names resolve from the project library, including archived profiles.
-fn document_text(document: &Value, characters: &[Character]) -> Result<String> {
+fn document_text(
+    document: &Value,
+    characters: &[Character],
+    tones: &[Preset],
+    emotions: &[Preset],
+) -> Result<String> {
     fn node(
         value: &Value,
         characters: &[Character],
+        tones: &[Preset],
+        emotions: &[Preset],
         depth: usize,
         count: &mut usize,
     ) -> Result<String> {
@@ -331,6 +472,24 @@ fn document_text(document: &Value, characters: &[Character]) -> Result<String> {
                     .name
                     .clone())
             }
+            "toneReference" | "emotionReference" => {
+                if !children.is_empty() {
+                    return Err("Reusable references cannot contain nodes.".into());
+                }
+                let (entries, key, label) = if kind == "toneReference" {
+                    (tones, "toneId", "Beat tone")
+                } else {
+                    (emotions, "emotionId", "Emotion")
+                };
+                let id = value["attrs"][key]
+                    .as_str()
+                    .ok_or("Reusable reference needs an ID.")?;
+                let p = entries
+                    .iter()
+                    .find(|p| p.id == id)
+                    .ok_or("Reusable reference points to an unknown definition.")?;
+                Ok(format!("[{label}: {}]", p.name))
+            }
             "hardBreak" | "horizontalRule" => {
                 if !children.is_empty() {
                     return Err("Break nodes cannot contain nodes.".into());
@@ -355,7 +514,14 @@ fn document_text(document: &Value, characters: &[Character]) -> Result<String> {
                     let child_kind = child["type"]
                         .as_str()
                         .ok_or("Document child needs a type.")?;
-                    let inline = ["text", "hardBreak", "characterReference"].contains(&child_kind);
+                    let inline = [
+                        "text",
+                        "hardBreak",
+                        "characterReference",
+                        "toneReference",
+                        "emotionReference",
+                    ]
+                    .contains(&child_kind);
                     let allowed = match kind {
                         "paragraph" | "heading" => inline,
                         "codeBlock" => child_kind == "text",
@@ -365,7 +531,7 @@ fn document_text(document: &Value, characters: &[Character]) -> Result<String> {
                     if !allowed {
                         return Err(format!("Unsupported {child_kind} inside {kind}."));
                     }
-                    parts.push(node(child, characters, depth + 1, count)?);
+                    parts.push(node(child, characters, tones, emotions, depth + 1, count)?);
                 }
                 let separator = if ["paragraph", "heading", "codeBlock"].contains(&kind) {
                     ""
@@ -380,7 +546,40 @@ fn document_text(document: &Value, characters: &[Character]) -> Result<String> {
     if document["type"].as_str() != Some("doc") {
         return Err("Beat document root must be type doc.".into());
     }
-    node(document, characters, 0, &mut 0)
+    let mut occurrences = HashSet::new();
+    let mut targets = HashSet::new();
+    let mut tone_count = 0;
+    let mut invalid = false;
+    walk_nodes(document, &mut |value| match value["type"].as_str() {
+        Some("characterReference") => {
+            if let Some(id) = value["attrs"]["occurrenceId"]
+                .as_str()
+                .filter(|v| !v.is_empty())
+            {
+                if id.len() > 256 || !occurrences.insert(id.to_owned()) {
+                    invalid = true;
+                }
+            }
+        }
+        Some("emotionReference") => {
+            if let Some(id) = value["attrs"]["targetOccurrenceId"]
+                .as_str()
+                .filter(|v| !v.is_empty())
+            {
+                if !targets.insert(id.to_owned()) {
+                    invalid = true;
+                }
+            } else {
+                invalid = true;
+            }
+        }
+        Some("toneReference") => tone_count += 1,
+        _ => {}
+    });
+    if invalid || tone_count > 1 || targets.iter().any(|id| !occurrences.contains(id)) {
+        return Err("Blocks need unique character occurrences, valid same-beat emotion targets, and at most one beat tone.".into());
+    }
+    node(document, characters, tones, emotions, 0, &mut 0)
 }
 fn reorder<T, F: Fn(&T) -> &str>(items: &mut [T], ids: &[String], get: F) -> Result<()> {
     permutation(
@@ -392,6 +591,68 @@ fn reorder<T, F: Fn(&T) -> &str>(items: &mut [T], ids: &[String], get: F) -> Res
 }
 
 impl ProjectSnapshot {
+    pub fn presets(&self, kind: PresetKind) -> &[Preset] {
+        match kind {
+            PresetKind::Tone => &self.tones,
+            PresetKind::Emotion => &self.emotions,
+        }
+    }
+    fn presets_mut(&mut self, kind: PresetKind) -> &mut Vec<Preset> {
+        match kind {
+            PresetKind::Tone => &mut self.tones,
+            PresetKind::Emotion => &mut self.emotions,
+        }
+    }
+    pub fn add_starters(&mut self, kind: PresetKind) {
+        if self.starter_types.iter().any(|k| k == kind.as_str()) {
+            return;
+        }
+        let starters:&[(&str,&str)] =match kind {
+            PresetKind::Tone=>&[("Tender","Emphasize small gestures of care, warmth, and vulnerability."),("Tense","Emphasize uncertainty and restrained pressure without inventing extra danger."),("Playful","Allow light teasing and gentle humor while preserving character voice.")],
+            PresetKind::Emotion=>&[("Serious","Focused and restrained; keep attention on the immediate task."),("Awe","Let wonder or admiration interrupt the character's usual reactions."),("Angry","Show irritation or frustration through responses and actions, without requiring shouting."),("Embarrassed","Show self-consciousness through hesitation, deflection, or awkward reactions.")],
+        };
+        let entries = self.presets_mut(kind);
+        for (name, guidance) in starters {
+            if !entries.iter().any(|p| p.name.eq_ignore_ascii_case(name)) {
+                entries.push(Preset {
+                    id: new_id(),
+                    name: (*name).into(),
+                    meaning: String::new(),
+                    guidance: (*guidance).into(),
+                    example: String::new(),
+                    archived: false,
+                    revision: 0,
+                });
+            }
+        }
+        self.starter_types.push(kind.as_str().into());
+    }
+    fn character_is_used(&self, id: &str) -> bool {
+        self.scenes
+            .iter()
+            .flat_map(|s| &s.beats)
+            .any(|b| value_uses(&b.document, "characterId", id))
+            || self
+                .trash
+                .iter()
+                .any(|t| value_uses(&t.payload, "characterId", id))
+    }
+    fn preset_is_used(&self, kind: PresetKind, id: &str) -> bool {
+        let (key, default_key) = match kind {
+            PresetKind::Tone => ("toneId", "defaultToneId"),
+            PresetKind::Emotion => ("emotionId", "defaultEmotionId"),
+        };
+        self.scenes.iter().any(|s| {
+            (kind == PresetKind::Tone && s.tone_id == id)
+                || s.beats.iter().any(|b| value_uses(&b.document, key, id))
+        }) || self.characters.iter().any(|c| match kind {
+            PresetKind::Tone => c.default_tone_id == id,
+            PresetKind::Emotion => c.default_emotion_id == id,
+        }) || self
+            .trash
+            .iter()
+            .any(|t| value_uses(&t.payload, key, id) || value_uses(&t.payload, default_key, id))
+    }
     pub fn empty(name: String) -> Result<Self> {
         title(&name)?;
         Ok(Self {
@@ -401,6 +662,9 @@ impl ProjectSnapshot {
             chapters: vec![],
             scenes: vec![],
             characters: vec![],
+            tones: vec![],
+            emotions: vec![],
+            starter_types: vec![],
             trash: vec![],
             import_sources: vec![],
             can_undo: false,
@@ -490,6 +754,7 @@ impl ProjectSnapshot {
                     title: name,
                     summary: String::new(),
                     tone: String::new(),
+                    tone_id: String::new(),
                     prose: String::new(),
                     narration: Narration::default(),
                     beats: vec![],
@@ -500,6 +765,7 @@ impl ProjectSnapshot {
                 title: name,
                 summary,
                 tone,
+                tone_id,
                 prose,
                 narration,
             } => {
@@ -516,6 +782,9 @@ impl ProjectSnapshot {
                 if let Some(v) = tone {
                     scene.tone = v;
                 }
+                if let Some(v) = tone_id {
+                    scene.tone_id = v;
+                }
                 if let Some(v) = prose {
                     scene.prose = v;
                 }
@@ -529,6 +798,7 @@ impl ProjectSnapshot {
                 scene.title.push_str(" (copy)");
                 for beat in &mut scene.beats {
                     beat.id = new_id();
+                    refresh_occurrences(&mut beat.document);
                 }
                 let chapter = self.chapter_mut(&scene.chapter_id)?;
                 let pos = chapter
@@ -586,6 +856,7 @@ impl ProjectSnapshot {
                 let (s, b) = self.beat_location(&beat_id)?;
                 let mut beat = self.scenes[s].beats[b].clone();
                 beat.id = new_id();
+                refresh_occurrences(&mut beat.document);
                 self.scenes[s].beats.insert(b + 1, beat);
             }
             Operation::ReorderBeats { scene_id, ids } => {
@@ -645,6 +916,24 @@ impl ProjectSnapshot {
                             .map_err(|_| "Restore the beat's scene first.")?;
                         scene.beats.insert(position.min(scene.beats.len()), beat);
                     }
+                    "tone" | "emotion" => {
+                        let preset: Preset =
+                            serde_json::from_value(entry.payload["preset"].clone())
+                                .map_err(|e| e.to_string())?;
+                        let entries = if entry.kind == "tone" {
+                            &mut self.tones
+                        } else {
+                            &mut self.emotions
+                        };
+                        entries.insert(position.min(entries.len()), preset);
+                    }
+                    "character" => {
+                        let character: Character =
+                            serde_json::from_value(entry.payload["character"].clone())
+                                .map_err(|e| e.to_string())?;
+                        self.characters
+                            .insert(position.min(self.characters.len()), character);
+                    }
                     _ => return Err("Unknown Trash entry kind.".into()),
                 }
                 self.trash.remove(pos);
@@ -658,6 +947,8 @@ impl ProjectSnapshot {
                     voice: String::new(),
                     personality: String::new(),
                     archived: false,
+                    default_tone_id: String::new(),
+                    default_emotion_id: String::new(),
                 });
             }
             Operation::UpdateCharacter {
@@ -667,6 +958,8 @@ impl ProjectSnapshot {
                 voice,
                 personality,
                 archived,
+                default_tone_id,
+                default_emotion_id,
             } => {
                 if let Some(ref name) = name {
                     title(name)?;
@@ -691,14 +984,131 @@ impl ProjectSnapshot {
                 if let Some(v) = archived {
                     c.archived = v;
                 }
+                if let Some(v) = default_tone_id {
+                    c.default_tone_id = v;
+                }
+                if let Some(v) = default_emotion_id {
+                    c.default_emotion_id = v;
+                }
             }
+            Operation::DuplicateCharacter { character_id } => {
+                let mut c = self
+                    .characters
+                    .iter()
+                    .find(|c| c.id == character_id)
+                    .ok_or("Character does not exist.")?
+                    .clone();
+                c.id = new_id();
+                c.name.push_str(" (copy)");
+                self.characters.push(c);
+            }
+            Operation::DeleteCharacter { character_id } => {
+                if self.character_is_used(&character_id) {
+                    return Err("This character is used in the project. Archive it to preserve its references.".into());
+                }
+                let position = self
+                    .characters
+                    .iter()
+                    .position(|c| c.id == character_id)
+                    .ok_or("Character does not exist.")?;
+                let c = self.characters.remove(position);
+                self.trash(
+                    "character",
+                    c.name.clone(),
+                    json!({"character": c,"position":position}),
+                );
+            }
+            Operation::CreatePreset { kind, name } => {
+                title(&name)?;
+                self.presets_mut(kind).push(Preset {
+                    id: new_id(),
+                    name,
+                    meaning: String::new(),
+                    guidance: String::new(),
+                    example: String::new(),
+                    archived: false,
+                    revision: 0,
+                });
+            }
+            Operation::UpdatePreset {
+                kind,
+                preset_id,
+                name,
+                meaning,
+                guidance,
+                example,
+                archived,
+            } => {
+                if let Some(ref value) = name {
+                    title(value)?;
+                }
+                let p = self
+                    .presets_mut(kind)
+                    .iter_mut()
+                    .find(|p| p.id == preset_id)
+                    .ok_or("Reusable block does not exist.")?;
+                if let Some(v) = name {
+                    p.name = v;
+                }
+                if let Some(v) = meaning {
+                    p.meaning = v;
+                }
+                if let Some(v) = guidance {
+                    p.guidance = v;
+                }
+                if let Some(v) = example {
+                    p.example = v;
+                }
+                if let Some(v) = archived {
+                    p.archived = v;
+                }
+                p.revision = p
+                    .revision
+                    .checked_add(1)
+                    .ok_or("Reusable block revision overflow.")?;
+            }
+            Operation::DuplicatePreset { kind, preset_id } => {
+                let mut p = self
+                    .presets(kind)
+                    .iter()
+                    .find(|p| p.id == preset_id)
+                    .ok_or("Reusable block does not exist.")?
+                    .clone();
+                p.id = new_id();
+                p.name.push_str(" (copy)");
+                p.revision = 0;
+                self.presets_mut(kind).push(p);
+            }
+            Operation::DeletePreset { kind, preset_id } => {
+                if self.preset_is_used(kind, &preset_id) {
+                    return Err("This reusable block is used in the project. Archive it to preserve its references.".into());
+                }
+                let entries = self.presets_mut(kind);
+                let position = entries
+                    .iter()
+                    .position(|p| p.id == preset_id)
+                    .ok_or("Reusable block does not exist.")?;
+                let p = entries.remove(position);
+                self.trash(
+                    kind.as_str(),
+                    p.name.clone(),
+                    json!({"preset":p,"position":position}),
+                );
+            }
+            Operation::AddStarterPresets { kind } => self.add_starters(kind),
             Operation::Undo | Operation::Redo => {
                 return Err("History operations require a project transaction.".into())
             }
         }
         for scene in &mut self.scenes {
             for beat in &mut scene.beats {
-                beat.text = document_text(&beat.document, &self.characters)?;
+                normalize_occurrences(&mut beat.document, &beat.id);
+                beat.text = document_text(
+                    &beat.document,
+                    &self.characters,
+                    &self.tones,
+                    &self.emotions,
+                )?;
             }
         }
         self.validate()
@@ -753,7 +1163,9 @@ impl ProjectSnapshot {
                 {
                     return Err("Beat exceeds the 4 MB limit.".into());
                 }
-                if b.text != document_text(&b.document, &self.characters)? {
+                if b.text
+                    != document_text(&b.document, &self.characters, &self.tones, &self.emotions)?
+                {
                     return Err("Beat text does not match its structured document.".into());
                 }
             }
@@ -761,6 +1173,39 @@ impl ProjectSnapshot {
         for c in &self.characters {
             add(&c.id)?;
             title(&c.name)?;
+            if !c.default_tone_id.is_empty()
+                && !self.tones.iter().any(|p| p.id == c.default_tone_id)
+            {
+                return Err("Character default tone is missing.".into());
+            }
+            if !c.default_emotion_id.is_empty()
+                && !self.emotions.iter().any(|p| p.id == c.default_emotion_id)
+            {
+                return Err("Character default emotion is missing.".into());
+            }
+        }
+        for s in &self.scenes {
+            if !s.tone_id.is_empty() && !self.tones.iter().any(|p| p.id == s.tone_id) {
+                return Err("Scene tone is missing.".into());
+            }
+        }
+        for p in self.tones.iter().chain(&self.emotions) {
+            add(&p.id)?;
+            title(&p.name)?;
+            if p.meaning.len() > 20_000
+                || p.guidance.len() > 20_000
+                || p.example.len() > 20_000
+                || p.revision > i64::MAX as u64
+            {
+                return Err("Reusable block guidance exceeds the supported limits.".into());
+            }
+        }
+        if self
+            .starter_types
+            .iter()
+            .any(|k| k != "tone" && k != "emotion")
+        {
+            return Err("Unknown starter block category.".into());
         }
         for t in &self.trash {
             add(&t.id)?;

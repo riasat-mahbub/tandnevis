@@ -156,6 +156,7 @@ struct SceneDirection {
     title: String,
     summary: String,
     tone: String,
+    tone_id: String,
     narration: domain::Narration,
 }
 
@@ -164,6 +165,7 @@ struct SceneDirection {
 struct CharacterOccurrence {
     path: Vec<usize>,
     character_id: String,
+    occurrence_id: String,
     label: String,
     emotion: String,
     delivery: String,
@@ -179,6 +181,8 @@ struct GenerationBeat {
     document: Value,
     readable_text: String,
     references: Vec<CharacterOccurrence>,
+    tone: String,
+    tone_source: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -190,6 +194,15 @@ struct GenerationCharacter {
     personality: String,
     voice: String,
     archived: bool,
+    default_tone_id: String,
+    default_emotion_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct GenerationPreset {
+    kind: String,
+    #[serde(flatten)]
+    preset: domain::Preset,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -209,6 +222,7 @@ struct SceneGenerationContext {
     scene: SceneDirection,
     beats: Vec<GenerationBeat>,
     referenced_characters: Vec<GenerationCharacter>,
+    referenced_presets: Vec<GenerationPreset>,
     unresolved_references: Vec<UnresolvedReference>,
     readable_context: String,
 }
@@ -257,6 +271,7 @@ fn collect_references(
         occurrences.push(CharacterOccurrence {
             path: path.clone(),
             character_id: character_id.clone(),
+            occurrence_id: attr_string(node, "occurrenceId"),
             label: label.clone(),
             emotion,
             delivery,
@@ -376,7 +391,7 @@ fn clean_block(value: String) -> String {
     value.trim().to_owned()
 }
 
-fn format_character(character: &GenerationCharacter) -> String {
+fn format_character(character: &GenerationCharacter, project: &ProjectSnapshot) -> String {
     let mut facts = Vec::new();
     if !character.background.trim().is_empty() {
         facts.push(format!("Background: {}", character.background.trim()));
@@ -387,6 +402,20 @@ fn format_character(character: &GenerationCharacter) -> String {
     if !character.voice.trim().is_empty() {
         facts.push(format!("Baseline voice: {}", character.voice.trim()));
     }
+    if let Some(p) = project
+        .tones
+        .iter()
+        .find(|p| p.id == character.default_tone_id)
+    {
+        facts.push(format!("Default tone: {}", p.name));
+    }
+    if let Some(p) = project
+        .emotions
+        .iter()
+        .find(|p| p.id == character.default_emotion_id)
+    {
+        facts.push(format!("Default emotion: {}", p.name));
+    }
     if character.archived {
         facts.push(
             "This profile is archived; it remains attached to an existing beat reference.".into(),
@@ -396,6 +425,124 @@ fn format_character(character: &GenerationCharacter) -> String {
         format!("- {}", character.name)
     } else {
         format!("- {}\n  {}", character.name, facts.join("\n  "))
+    }
+}
+
+fn add_preset(
+    project: &ProjectSnapshot,
+    kind: domain::PresetKind,
+    id: &str,
+    referenced: &mut Vec<GenerationPreset>,
+) -> Result<Option<domain::Preset>> {
+    if id.is_empty() {
+        return Ok(None);
+    }
+    let preset =
+        project.presets(kind).iter().find(|p| p.id == id).ok_or(
+            "A reusable block definition is missing. Repair its reference before generating.",
+        )?;
+    if !referenced
+        .iter()
+        .any(|p| p.kind == kind.as_str() && p.preset.id == id)
+    {
+        referenced.push(GenerationPreset {
+            kind: kind.as_str().into(),
+            preset: preset.clone(),
+        });
+    }
+    Ok(Some(preset.clone()))
+}
+
+fn block_document(
+    project: &ProjectSnapshot,
+    document: &Value,
+    referenced: &mut Vec<GenerationPreset>,
+) -> Result<(Value, Option<domain::Preset>)> {
+    let mut owners = HashMap::new();
+    domain::walk_nodes(document, &mut |node| {
+        if node["type"] == "characterReference" {
+            let character_id = attr_string(node, "characterId");
+            let name = project
+                .characters
+                .iter()
+                .find(|c| c.id == character_id)
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| attr_string(node, "label"));
+            owners.insert(attr_string(node, "occurrenceId"), name);
+        }
+    });
+    fn transform(
+        project: &ProjectSnapshot,
+        node: &Value,
+        owners: &HashMap<String, String>,
+        referenced: &mut Vec<GenerationPreset>,
+        tone: &mut Option<domain::Preset>,
+    ) -> Result<Value> {
+        let kind = node["type"].as_str().unwrap_or_default();
+        if kind == "toneReference" {
+            if tone.is_some() {
+                return Err("A beat can contain only one tone block.".into());
+            }
+            let p = add_preset(
+                project,
+                domain::PresetKind::Tone,
+                &attr_string(node, "toneId"),
+                referenced,
+            )?
+            .ok_or("A beat tone reference is missing its definition.")?;
+            let text = format!("[Beat tone: {}]", p.name);
+            *tone = Some(p);
+            return Ok(json!({"type":"text","text":text}));
+        }
+        if kind == "emotionReference" {
+            let p = add_preset(
+                project,
+                domain::PresetKind::Emotion,
+                &attr_string(node, "emotionId"),
+                referenced,
+            )?
+            .ok_or("An emotion reference is missing its definition.")?;
+            let target = attr_string(node, "targetOccurrenceId");
+            let name = owners
+                .get(&target)
+                .filter(|_| !target.is_empty())
+                .ok_or("An emotion block needs a character occurrence in the same beat.")?;
+            return Ok(
+                json!({"type":"text","text":format!("[Emotion: {} \u{2192} {}]",p.name,name)}),
+            );
+        }
+        let mut result = node.clone();
+        if let Some(nodes) = node["content"].as_array() {
+            result["content"] = Value::Array(
+                nodes
+                    .iter()
+                    .map(|n| transform(project, n, owners, referenced, tone))
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        }
+        Ok(result)
+    }
+    let mut tone = None;
+    let result = transform(project, document, &owners, referenced, &mut tone)?;
+    Ok((result, tone))
+}
+
+fn format_preset(p: &GenerationPreset) -> String {
+    let mut facts = Vec::new();
+    for (label, value) in [
+        ("Meaning", &p.preset.meaning),
+        ("Guidance", &p.preset.guidance),
+        ("Example", &p.preset.example),
+    ] {
+        if !value.trim().is_empty() {
+            facts.push(format!("{label}: {}", value.trim()));
+        }
+    }
+    let label = if p.kind == "tone" { "Tone" } else { "Emotion" };
+    if facts.is_empty() {
+        format!("- {label}: {}", p.preset.name)
+    } else {
+        format!("- {label}: {}\n  {}", p.preset.name, facts.join("\n  "))
     }
 }
 
@@ -417,8 +564,19 @@ fn build_scene_context(
     let mut referenced_seen = HashSet::new();
     let mut unresolved_references = Vec::new();
     let mut beats = Vec::with_capacity(scene.beats.len());
+    let mut referenced_presets = Vec::new();
+    let scene_tone = add_preset(
+        project,
+        domain::PresetKind::Tone,
+        &scene.tone_id,
+        &mut referenced_presets,
+    )?
+    .map(|p| p.name)
+    .unwrap_or_else(|| scene.tone.clone());
 
     for (index, beat) in scene.beats.iter().enumerate() {
+        let (display_document, beat_tone) =
+            block_document(project, &beat.document, &mut referenced_presets)?;
         let mut references = Vec::new();
         collect_references(
             &beat.document,
@@ -434,8 +592,20 @@ fn build_scene_context(
             id: beat.id.clone(),
             order: index + 1,
             document: beat.document.clone(),
-            readable_text: clean_block(render_node(&beat.document, &characters)),
+            readable_text: clean_block(render_node(&display_document, &characters)),
             references,
+            tone: beat_tone
+                .as_ref()
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| scene_tone.clone()),
+            tone_source: if beat_tone.is_some() {
+                "beat"
+            } else if !scene_tone.is_empty() {
+                "scene"
+            } else {
+                "none"
+            }
+            .into(),
         });
     }
 
@@ -449,14 +619,31 @@ fn build_scene_context(
             personality: character.personality.clone(),
             voice: character.voice.clone(),
             archived: character.archived,
+            default_tone_id: character.default_tone_id.clone(),
+            default_emotion_id: character.default_emotion_id.clone(),
         })
         .collect::<Vec<_>>();
+    for character in &referenced_characters {
+        add_preset(
+            project,
+            domain::PresetKind::Tone,
+            &character.default_tone_id,
+            &mut referenced_presets,
+        )?;
+        add_preset(
+            project,
+            domain::PresetKind::Emotion,
+            &character.default_emotion_id,
+            &mut referenced_presets,
+        )?;
+    }
 
     let direction = SceneDirection {
         id: scene.id.clone(),
         title: scene.title.clone(),
         summary: scene.summary.clone(),
-        tone: scene.tone.clone(),
+        tone: scene_tone,
+        tone_id: scene.tone_id.clone(),
         narration: scene.narration.clone(),
     };
     let mut blocks = vec![format!("Scene: {}", direction.title)];
@@ -488,7 +675,17 @@ fn build_scene_context(
             "Referenced character profiles:\n{}",
             referenced_characters
                 .iter()
-                .map(format_character)
+                .map(|c| format_character(c, project))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+    if !referenced_presets.is_empty() {
+        blocks.push(format!(
+            "Referenced reusable blocks:\n{}",
+            referenced_presets
+                .iter()
+                .map(format_preset)
                 .collect::<Vec<_>>()
                 .join("\n")
         ));
@@ -498,8 +695,21 @@ fn build_scene_context(
         beats
             .iter()
             .map(|beat| format!(
-                "Beat {}:\n{}",
-                beat.order,
+                "{}:\n{}",
+                if beat.tone.is_empty() {
+                    format!("Beat {}", beat.order)
+                } else {
+                    format!(
+                        "Beat {} (tone: {}; {})",
+                        beat.order,
+                        beat.tone,
+                        if beat.tone_source == "beat" {
+                            "beat override"
+                        } else {
+                            "inherited scene"
+                        }
+                    )
+                },
                 if beat.readable_text.is_empty() {
                     "(empty)"
                 } else {
@@ -529,6 +739,7 @@ fn build_scene_context(
         scene: direction,
         beats,
         referenced_characters,
+        referenced_presets,
         unresolved_references,
         readable_context,
     })
@@ -539,6 +750,7 @@ fn fingerprint(context: &SceneGenerationContext, guidance: &str) -> Result<Strin
         "scene": context.scene,
         "beats": context.beats,
         "referencedCharacters": context.referenced_characters,
+        "referencedPresets": context.referenced_presets,
         "unresolvedReferences": context.unresolved_references,
         "defaultGuidance": guidance,
     });
@@ -1226,6 +1438,18 @@ pub async fn discard_scene_generation(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shared_global_blocks_match_frontend_fingerprint() {
+        let project: ProjectSnapshot =
+            serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
+                .unwrap();
+        let context = build_scene_context(&project, "scene").unwrap();
+        assert_eq!(context.beats[0].tone, "Tense");
+        assert_eq!(context.beats[1].tone, "Tender");
+        assert!(context.readable_context.contains("[Emotion: Awe → Maya]"));
+        assert!(!context.readable_context.contains("Must not leak"));
+        assert_eq!(fingerprint(&context, "").unwrap(), "873d7120b011db30");
+    }
     use super::*;
     use domain::{Beat, Chapter, Narration, Scene};
 
@@ -1246,6 +1470,9 @@ mod tests {
             ]}]
         });
         ProjectSnapshot {
+            tones: vec![],
+            emotions: vec![],
+            starter_types: vec![],
             project_id: "project-a".into(),
             title: "Private title excluded from request".into(),
             revision: 12,
@@ -1256,6 +1483,7 @@ mod tests {
             }],
             scenes: vec![
                 Scene {
+                    tone_id: String::new(),
                     id: "scene-a".into(),
                     chapter_id: "chapter-a".into(),
                     title: "Infirmary".into(),
@@ -1270,6 +1498,7 @@ mod tests {
                     beats: vec![beat("beat-a", document)],
                 },
                 Scene {
+                    tone_id: String::new(),
                     id: "scene-b".into(),
                     chapter_id: "chapter-a".into(),
                     title: "Unrelated other scene".into(),
@@ -1282,6 +1511,8 @@ mod tests {
             ],
             characters: vec![
                 Character {
+                    default_tone_id: String::new(),
+                    default_emotion_id: String::new(),
                     id: "maya".into(),
                     name: "Maya".into(),
                     background: "A careful apprentice healer.".into(),
@@ -1290,6 +1521,8 @@ mod tests {
                     archived: true,
                 },
                 Character {
+                    default_tone_id: String::new(),
+                    default_emotion_id: String::new(),
                     id: "unreferenced".into(),
                     name: "Unrelated private profile".into(),
                     background: "Secret profile facts.".into(),
@@ -1336,7 +1569,7 @@ mod tests {
         let original = fingerprint(&context, "").unwrap();
         // Same canonical JSON/FNV vector as the frontend helper, including a
         // non-ASCII em dash in the rendered character reference.
-        assert_eq!(original, "16a90f9dbbf2df6c");
+        assert_eq!(original, "3637622f5f45db80");
         let mut unrelated_edit = project.clone();
         unrelated_edit.revision += 1;
         unrelated_edit.title = "A renamed project".into();

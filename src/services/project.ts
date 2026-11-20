@@ -4,12 +4,14 @@ import type { JSONContent } from '@tiptap/core';
 
 export interface Narration { pointOfView: string; tense: string; instructions: string }
 export interface Beat { id: string; document: JSONContent; text: string }
-export interface Scene { id: string; chapterId: string; title: string; summary: string; tone: string; prose: string; narration: Narration; beats: Beat[] }
+export interface Scene { id: string; chapterId: string; title: string; summary: string; tone: string; toneId: string; prose: string; narration: Narration; beats: Beat[] }
 export interface Chapter { id: string; title: string; sceneIds: string[] }
-export interface Character { id: string; name: string; background: string; voice: string; personality: string; archived: boolean }
+export interface Character { id: string; name: string; background: string; voice: string; personality: string; archived: boolean; defaultToneId: string; defaultEmotionId: string }
+export type PresetKind = 'tone' | 'emotion';
+export interface Preset { id: string; name: string; meaning: string; guidance: string; example: string; archived: boolean; revision: number }
 export interface TrashEntry { id: string; kind: string; title: string; deletedAtRevision: number; payload: unknown }
 export interface ImportedSource { id: string; markdown: string; importedAtRevision: number }
-export interface ProjectSnapshot { projectId: string; title: string; revision: number; chapters: Chapter[]; scenes: Scene[]; characters: Character[]; trash: TrashEntry[]; importSources: ImportedSource[]; canUndo: boolean; canRedo: boolean }
+export interface ProjectSnapshot { projectId: string; title: string; revision: number; chapters: Chapter[]; scenes: Scene[]; characters: Character[]; tones: Preset[]; emotions: Preset[]; starterTypes: string[]; trash: TrashEntry[]; importSources: ImportedSource[]; canUndo: boolean; canRedo: boolean }
 export interface ProjectSession { sessionId: string; project: ProjectSnapshot }
 export type Operation =
   | { type: 'renameProject'; title: string }
@@ -18,7 +20,7 @@ export type Operation =
   | { type: 'reorderChapters'; ids: string[] }
   | { type: 'deleteChapter'; chapterId: string }
   | { type: 'createScene'; chapterId: string; title: string }
-  | ({ type: 'updateScene'; sceneId: string } & Partial<Pick<Scene, 'title' | 'summary' | 'tone' | 'prose' | 'narration'>>)
+  | ({ type: 'updateScene'; sceneId: string } & Partial<Pick<Scene, 'title' | 'summary' | 'tone' | 'toneId' | 'prose' | 'narration'>>)
   | { type: 'duplicateScene' | 'deleteScene'; sceneId: string }
   | { type: 'reorderScenes'; chapterId: string; ids: string[] }
   | { type: 'createBeat'; sceneId: string; document: JSONContent; text: string }
@@ -27,7 +29,12 @@ export type Operation =
   | { type: 'reorderBeats'; sceneId: string; ids: string[] }
   | { type: 'restoreTrash'; trashId: string }
   | { type: 'createCharacter'; name: string }
+  | { type: 'duplicateCharacter' | 'deleteCharacter'; characterId: string }
   | ({ type: 'updateCharacter'; characterId: string } & Partial<Omit<Character, 'id'>>)
+  | { type: 'createPreset'; kind: PresetKind; name: string }
+  | ({ type: 'updatePreset'; kind: PresetKind; presetId: string } & Partial<Pick<Preset, 'name' | 'meaning' | 'guidance' | 'example' | 'archived'>>)
+  | { type: 'duplicatePreset' | 'deletePreset'; kind: PresetKind; presetId: string }
+  | { type: 'addStarterPresets'; kind: PresetKind }
   | { type: 'undo' | 'redo' };
 
 export interface ProjectGateway {

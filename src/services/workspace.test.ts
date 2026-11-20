@@ -4,6 +4,24 @@ import type { ProjectSession, ProjectSnapshot } from './project';
 import { deferred, gateway, project, session } from '../test/fixtures';
 
 describe('revisioned authoring queue', () => {
+  it('keeps newer global preset guidance visible across slow native acknowledgements', async () => {
+    const snapshot = project();
+    snapshot.tones = [{ id: 'tone-1', name: 'Tender', meaning: '', guidance: 'Warm.', example: '', archived: false, revision: 1 }];
+    const g = gateway(snapshot), first = deferred<ProjectSnapshot>(), second = deferred<ProjectSnapshot>();
+    vi.mocked(g.apply).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const w = new Workspace(g); w.attach(session(snapshot));
+    const initial = w.dispatch({ type: 'updatePreset', kind: 'tone', presetId: 'tone-1', guidance: 'Warm and careful.' });
+    const newer = w.dispatch({ type: 'updatePreset', kind: 'tone', presetId: 'tone-1', guidance: 'Warm, careful, and understated.' });
+    const last = w.dispatch({ type: 'updatePreset', kind: 'tone', presetId: 'tone-1', meaning: 'Small gestures of care' });
+    expect(w.getSnapshot().project!.tones[0]).toMatchObject({ guidance: 'Warm, careful, and understated.', meaning: 'Small gestures of care' });
+    const acknowledged = structuredClone(snapshot); acknowledged.revision = 1; acknowledged.tones[0].guidance = 'Warm and careful.';
+    first.resolve(acknowledged); await initial;
+    expect(w.getSnapshot().project!.tones[0].guidance).toBe('Warm, careful, and understated.');
+    const latest = structuredClone(acknowledged); latest.revision = 2; latest.tones[0].guidance = 'Warm, careful, and understated.'; latest.tones[0].meaning = 'Small gestures of care';
+    second.resolve(latest); await Promise.all([newer, last, w.flush()]);
+    expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, { type: 'updatePreset', kind: 'tone', presetId: 'tone-1', guidance: latest.tones[0].guidance, meaning: latest.tones[0].meaning });
+    expect(w.getSnapshot().dirty).toBe(true); expect(g.save).not.toHaveBeenCalled();
+  });
   it('keeps complete working edits out of the save gateway until explicitly saved', async () => {
     const g = gateway(), saved = project(); saved.revision = 1; saved.title = 'Manual project';
     vi.mocked(g.apply).mockResolvedValue(saved); vi.mocked(g.save).mockResolvedValue(saved);

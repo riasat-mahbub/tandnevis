@@ -13,6 +13,7 @@ export function projectEdits(project: ProjectSnapshot, operations: Operation[]):
     if (op.type === 'updateScene') { const s = result.scenes.find(s => s.id === op.sceneId); if (s) Object.assign(s, op); }
     if (op.type === 'updateBeat') { const b = result.scenes.flatMap(s => s.beats).find(b => b.id === op.beatId); if (b) { b.document = op.document; b.text = op.text; } }
     if (op.type === 'updateCharacter') { const c = result.characters.find(c => c.id === op.characterId); if (c) Object.assign(c, op); }
+    if (op.type === 'updatePreset') { const preset = (op.kind === 'tone' ? result.tones : result.emotions).find(p => p.id === op.presetId); if (preset) Object.assign(preset, op); }
     if (op.type === 'reorderScenes') { const c = result.chapters.find(c => c.id === op.chapterId); if (c) c.sceneIds = op.ids; }
     if (op.type === 'reorderBeats') { const s = result.scenes.find(s => s.id === op.sceneId); if (s) s.beats.sort((a,b) => op.ids.indexOf(a.id) - op.ids.indexOf(b.id)); }
     if (op.type === 'reorderChapters') result.chapters.sort((a,b) => op.ids.indexOf(a.id) - op.ids.indexOf(b.id));
@@ -23,6 +24,7 @@ function editKey(op?: Operation) {
   if (op?.type === 'updateBeat') return `beat:${op.beatId}`;
   if (op?.type === 'updateScene') return `scene:${op.sceneId}`;
   if (op?.type === 'updateCharacter') return `character:${op.characterId}`;
+  if (op?.type === 'updatePreset') return `${op.kind}:${op.presetId}`;
   return null;
 }
 export class Workspace {

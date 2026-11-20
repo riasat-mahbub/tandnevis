@@ -1,0 +1,12 @@
+{
+  "projectId":"global-golden","title":"Private title","revision":7,
+  "chapters":[{"id":"chapter","title":"Chapter","sceneIds":["scene"]}],
+  "scenes":[{"id":"scene","chapterId":"chapter","title":"Infirmary","summary":"A quiet treatment.","tone":"Legacy","toneId":"tender","prose":"","narration":{"pointOfView":"Third person","tense":"Past","instructions":""},"beats":[
+    {"id":"beat1","text":"Mirror is not the request","document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"toneReference","attrs":{"toneId":"tense","label":"Old tone"}},{"type":"text","text":" "},{"type":"characterReference","attrs":{"characterId":"maya","occurrenceId":"maya-once","label":"Old Maya","emotion":"","delivery":"dryly"}},{"type":"emotionReference","attrs":{"emotionId":"awe","label":"Old emotion","targetOccurrenceId":"maya-once"}},{"type":"text","text":" holds still. 🌿"}]}]}},
+    {"id":"beat2","text":"Rain falls.","document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Rain falls."}]}]}}
+  ]}],
+  "characters":[{"id":"maya","name":"Maya","background":"A medic.","personality":"Practical.","voice":"Clipped.","archived":false,"defaultToneId":"tender","defaultEmotionId":"serious"},{"id":"unrelated","name":"Hidden","background":"Must not leak","personality":"","voice":"","archived":false,"defaultToneId":"","defaultEmotionId":""}],
+  "tones":[{"id":"tender","name":"Tender","meaning":"Warm","guidance":"Small gestures of care.","example":"","archived":false,"revision":1},{"id":"tense","name":"Tense","meaning":"Pressure","guidance":"Restrained uncertainty.","example":"","archived":false,"revision":2},{"id":"unused","name":"Unused","meaning":"","guidance":"Must not leak","example":"","archived":false,"revision":0}],
+  "emotions":[{"id":"awe","name":"Awe","meaning":"Admiration","guidance":"Attention catches.","example":"","archived":true,"revision":3},{"id":"serious","name":"Serious","meaning":"Focused","guidance":"Stay with the task.","example":"","archived":false,"revision":0}],
+  "starterTypes":["tone","emotion"],"trash":[],"importSources":[],"canUndo":true,"canRedo":false
+}

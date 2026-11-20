@@ -24,6 +24,128 @@ fn apply(db: &mut Database, operation: domain::Operation) -> ProjectSnapshot {
     let revision = db.read().unwrap().revision;
     db.apply(revision, operation).unwrap()
 }
+fn apply_json(db: &mut Database, value: serde_json::Value) -> ProjectSnapshot {
+    apply(db, serde_json::from_value(value).unwrap())
+}
+
+#[test]
+fn shared_definitions_defaults_and_trash_survive_manual_save() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let initial = db.read().unwrap();
+    assert_eq!(initial.tones.len(), 3);
+    assert_eq!(initial.emotions.len(), 4);
+    let p = apply_json(
+        &mut db,
+        json!({"type":"createPreset","kind":"tone","name":"Quiet"}),
+    );
+    let id = p.tones.last().unwrap().id.clone();
+    let p = apply_json(
+        &mut db,
+        json!({"type":"updatePreset","kind":"tone","presetId":id,"guidance":"Keep the pauses."}),
+    );
+    assert_eq!(p.tones.last().unwrap().guidance, "Keep the pauses.");
+    let p = apply_json(
+        &mut db,
+        json!({"type":"deletePreset","kind":"tone","presetId":id}),
+    );
+    let trash = p.trash.last().unwrap().id.clone();
+    let p = apply_json(&mut db, json!({"type":"restoreTrash","trashId":trash}));
+    assert!(p.tones.iter().any(|t| t.id == id));
+    assert!(!Database::open(file.path())
+        .unwrap()
+        .read()
+        .unwrap()
+        .tones
+        .iter()
+        .any(|t| t.id == id));
+    db.save().unwrap();
+    drop(db);
+    assert!(Database::open(file.path())
+        .unwrap()
+        .read()
+        .unwrap()
+        .tones
+        .iter()
+        .any(|t| t.id == id && t.guidance == "Keep the pauses."));
+}
+
+#[test]
+fn separate_local_blocks_duplicate_targets_and_guard_global_deletion() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let sid = p.scenes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"Maya"}));
+    let cid = p.characters[0].id.clone();
+    let eid = p
+        .emotions
+        .iter()
+        .find(|e| e.name == "Awe")
+        .unwrap()
+        .id
+        .clone();
+    let tid = p
+        .tones
+        .iter()
+        .find(|e| e.name == "Tense")
+        .unwrap()
+        .id
+        .clone();
+    let document = json!({"type":"doc","content":[{"type":"paragraph","content":[
+        {"type":"characterReference","attrs":{"characterId":cid,"occurrenceId":"occ-1","label":"Maya","emotion":"","delivery":""}},
+        {"type":"emotionReference","attrs":{"emotionId":eid,"label":"Awe","targetOccurrenceId":"occ-1"}},
+        {"type":"toneReference","attrs":{"toneId":tid,"label":"Tense"}}
+    ]}]});
+    let p = apply_json(
+        &mut db,
+        json!({"type":"createBeat","sceneId":sid,"document":document,"text":"ignored"}),
+    );
+    let bid = p.scenes[0].beats[0].id.clone();
+    assert!(db
+        .apply(
+            p.revision,
+            serde_json::from_value(json!({"type":"deletePreset","kind":"emotion","presetId":eid}))
+                .unwrap()
+        )
+        .is_err());
+    let p = apply_json(&mut db, json!({"type":"duplicateBeat","beatId":bid}));
+    let copy = &p.scenes[0].beats[1].document["content"][0]["content"];
+    let fresh = copy[0]["attrs"]["occurrenceId"].as_str().unwrap();
+    assert_ne!(fresh, "occ-1");
+    assert_eq!(
+        copy[1]["attrs"]["targetOccurrenceId"].as_str().unwrap(),
+        fresh
+    );
+    let p = apply_json(&mut db, json!({"type":"deleteScene","sceneId":sid}));
+    assert!(db
+        .apply(
+            p.revision,
+            serde_json::from_value(json!({"type":"deletePreset","kind":"tone","presetId":tid}))
+                .unwrap()
+        )
+        .is_err());
+}
+
+#[test]
+fn removing_starters_does_not_reseed_on_open_or_repeated_initialization() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = db.read().unwrap();
+    let id = p.emotions[0].id.clone();
+    apply_json(
+        &mut db,
+        json!({"type":"deletePreset","kind":"emotion","presetId":id}),
+    );
+    apply_json(
+        &mut db,
+        json!({"type":"addStarterPresets","kind":"emotion"}),
+    );
+    drop(db);
+    let p = Database::open(file.path()).unwrap().read().unwrap();
+    assert_eq!(p.emotions.len(), 3);
+    assert!(!p.emotions.iter().any(|e| e.id == id));
+}
 fn scene(db: &mut Database) -> ProjectSnapshot {
     let p = apply(
         db,
@@ -70,6 +192,8 @@ fn empty_project_and_full_authoring_survive_reopen() {
     apply(
         &mut db,
         UpdateCharacter {
+            default_tone_id: None,
+            default_emotion_id: None,
             character_id: p.characters[0].id.clone(),
             name: None,
             background: Some("Synthetic background".into()),
@@ -81,6 +205,7 @@ fn empty_project_and_full_authoring_survive_reopen() {
     let p = apply(
         &mut db,
         UpdateScene {
+            tone_id: None,
             scene_id,
             title: None,
             summary: Some("A short idea.".into()),
@@ -499,6 +624,8 @@ fn character_reference_validation_and_text_follow_profile_rename_and_archive() {
     let p = apply(
         &mut db,
         UpdateCharacter {
+            default_tone_id: None,
+            default_emotion_id: None,
             character_id,
             name: Some("Synthetic Bea".into()),
             background: None,
@@ -599,6 +726,7 @@ fn manual_save_keeps_structural_and_text_edits_out_of_the_file_until_saved() {
     let current = apply(
         &mut working,
         UpdateScene {
+            tone_id: None,
             scene_id: scene_id.clone(),
             title: None,
             summary: Some("Working summary".into()),
@@ -677,14 +805,15 @@ fn full_save_detects_external_writes_even_without_a_revision_change() {
 }
 
 #[test]
-fn schema_v1_migrates_to_v2_without_losing_story_or_undo_history() {
+fn schema_v1_migrates_to_v3_without_losing_story_or_undo_history() {
     let file = ProjectFile::new();
     let mut db = file.create();
     let p = scene(&mut db);
     let p = beat(&mut db, &p.scenes[0].id, "The infirmary is quiet.");
-    let expected = apply(
+    let mut expected = apply(
         &mut db,
         UpdateScene {
+            tone_id: None,
             scene_id: p.scenes[0].id.clone(),
             title: None,
             summary: Some("Maya tends to Damian.".into()),
@@ -702,10 +831,14 @@ fn schema_v1_migrates_to_v2_without_losing_story_or_undo_history() {
             "ALTER TABLE scenes DROP COLUMN prose;
              DROP TABLE generation_jobs;
              DROP TABLE accepted_prose_revisions;
+             DROP TABLE project_extensions;
              PRAGMA user_version=1;",
         )
         .unwrap();
     drop(connection);
+    expected.tones.clear();
+    expected.emotions.clear();
+    expected.starter_types.clear();
 
     let mut migrated = Database::open(file.path()).unwrap();
     assert_eq!(migrated.read().unwrap(), expected);
@@ -717,7 +850,7 @@ fn schema_v1_migrates_to_v2_without_losing_story_or_undo_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
@@ -834,6 +967,7 @@ fn generation_checkpoints_survive_authoring_saves_and_acceptance_is_undoable() {
         .apply(
             p.revision,
             UpdateScene {
+                tone_id: None,
                 scene_id: scene_id.clone(),
                 title: None,
                 summary: Some("A first aid scene.".into()),
@@ -950,6 +1084,7 @@ fn draft_acceptance_rejects_stale_prose_mismatched_or_missing_jobs_and_wrong_sce
         .apply(
             other_scene.revision,
             UpdateScene {
+                tone_id: None,
                 scene_id: scene_id.clone(),
                 title: None,
                 summary: None,
