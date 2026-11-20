@@ -16,7 +16,7 @@ import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import './styles.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway }
-const PLATINUM_DEFAULT_VERSION = 'platinum-light-v2';
+const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
   if (state.status === 'disconnected') return 'not-configured';

@@ -45,7 +45,7 @@ describe('connected writing views', () => {
     const firstLaunch = render(<App gateway={gateway()}/>);
     expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'light');
     expect(window.localStorage.getItem('shorthand.appearance')).toBe('light');
-    expect(window.localStorage.getItem('shorthand.appearance-default')).toBe('platinum-light-v2');
+    expect(window.localStorage.getItem('shorthand.appearance-default')).toBe('platinum-light-v3');
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
     fireEvent.click(screen.getByRole('radio', { name: /Dark/ }));
@@ -56,11 +56,11 @@ describe('connected writing views', () => {
   it('upgrades installs that already recorded the previous default marker', () => {
     window.localStorage.clear();
     window.localStorage.setItem('shorthand.appearance', 'dark');
-    window.localStorage.setItem('shorthand.appearance-default', 'platinum-light-v1');
+    window.localStorage.setItem('shorthand.appearance-default', 'platinum-light-v2');
     render(<App gateway={gateway()}/>);
     expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'light');
     expect(window.localStorage.getItem('shorthand.appearance')).toBe('light');
-    expect(window.localStorage.getItem('shorthand.appearance-default')).toBe('platinum-light-v2');
+    expect(window.localStorage.getItem('shorthand.appearance-default')).toBe('platinum-light-v3');
   });
   it('requires plan-use acknowledgement and a successful model test before showing ChatGPT as ready', async () => {
     const connected: NativeChatGPTState = {
