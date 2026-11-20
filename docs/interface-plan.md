@@ -19,7 +19,7 @@ Beat cards can contain zero, one, or many characters. Stages and narration overr
 
 ## 2. Visual direction
 
-The interface should feel like arranging story notes on a writing desk. Warm paper, moss green, dusty rose, and ochre carry forward from the accepted design. Use color consistently to distinguish character, emotion, and tone/delivery blocks, with text labels for every category.
+The interface should feel like arranging story notes on a writing desk. The next implementation replaces moss/rose/ochre with Harvest Orange `#FF7700`, Platinum `#E5EBEA`, Iron Grey `#435058`, and contrasting ink/neutrals. Use orange for enabled primary actions and accents, platinum for light surfaces, and grey/ink for readable writing and controls. Block labels communicate character/emotion/delivery scope independently of color. The [palette contract](install-and-ai-plan.md#5-harvest-orange-theme) specifies contrast and light/dark behavior; existing previews remain historical references.
 
 ### Story view
 
@@ -117,7 +117,7 @@ An inspector explicitly distinguishes **This scene/beat** from **Reusable profil
 
 ## 5. Delivery slices
 
-The [connected AI interface plan](install-and-ai-plan.md#3-generate-button-and-connection-ui) extends the AI slice below. Add Generate scene/Stop near the scene controls, an account/model/usage indicator, an AI connections panel for supported sign-in, and streamed candidates with deliberate Accept/Revise/Compare actions. Preserve both existing zoom levels. First connection setup returns to the selected scene; subsequent generation reuses that connection. Subscription limits never silently switch the writer to an API-billed route.
+The [scoped scene-generation plan](install-and-ai-plan.md#4-generate-button-and-draft-flow) narrows the next AI slice: ChatGPT only, one selected scene from its ordered beats, a real global Settings page, Generate/Stop, and draft Accept/Copy/Discard. Generate is grey and disabled until Settings has verified the account/model; place an explanation and a usable Open Settings link beside it. Character drag/click insertion encodes profile IDs and local direction for the request. Preserve both writing zoom levels and return to the selected scene after Settings. Other providers, API-key fallback, comparison/revision workspaces, and stage simulation are deferred.
 
 These are slices of the existing milestones, not a replacement schedule.
 

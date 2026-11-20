@@ -1,164 +1,138 @@
-# Installation and connected AI generation
+# Portable app and ChatGPT scene generation
 
-Status: proposed next tranche, 19 November 2026. This is a development plan, not implemented functionality. It extends the [Tauri implementation plan](tauri-implementation-plan.md), [interface plan](interface-plan.md), and [delivery ledger](implementation-progress.md). Preserve the existing Story/Scene views and SQLite authoring workflows.
+Status: narrowed next tranche, 19 November 2026. Planning only; none of the features below are claimed implemented. This replaces the earlier installer-first, multiple-provider proposal. The existing SQLite authoring app and two writing views remain the foundation.
 
-## Intended experience
+## Agreed scope
 
-Install Shorthand Writer, open a story, and click **Generate scene**. On first use, choose an AI connection and complete that service's supported sign-in. Later generations use the selected connection without asking the writer to log in again unless authorization expires. The writer sees the active account, model, and billing route before sending anything.
+Ship a portable Windows app with a Settings page and one ChatGPT connection. Generate **one selected scene at a time from its ordered beats**. Character blocks encode structured instructions for the model. Generate stays greyed out until Settings has a verified, usable connection. Apply the Harvest Orange / Platinum / Iron Grey theme throughout the application.
 
-The installed core app requires neither Rust nor Node. Authoring remains available without an AI connection. Provider helpers are optional components with their own installation/authentication status.
+This is a smaller extension of the current app: no new provider framework, helper CLI, installer service, whole-story agent, or stage simulation is needed. Authentication and persistence still need real native integration tests; a documented sign-in route alone does not prove the app's account eligibility.
 
-## 1. Installation scripts
+## 1. Portable Windows app
 
-### End-user installation
+Primary artifact: a versioned Windows 11 x64 ZIP containing the release executable, required native libraries/resources, a short README, and a checksum. Extract to a writable folder and double-click `Shorthand Writer.exe`. No npm, Node, Rust, Python, terminal, or admin installation is required for the shipped app.
 
-Use Tauri's existing per-user NSIS configuration as the actual installer. Add `scripts/install.ps1` as a convenient launcher around a built installer; do not implement a second application-copying/update mechanism. Tauri documents Windows packaging and WebView2 installation modes in its [Windows installer guide](https://v2.tauri.app/distribute/windows-installer/).
+The first package uses the machine's Microsoft WebView2 runtime. Document that prerequisite and handle a missing runtime with a readable startup diagnostic or a small checked launcher, rather than a silent failure. A ZIP around an executable does not make WebView2 disappear as a dependency. A fully self-contained archive with a fixed WebView2 runtime can follow if needed; it increases distribution size and needs its own runtime-path and update verification. [Tauri runtime distribution options](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options).
 
-Proposed interface, to be implemented:
+Portable storage contract:
 
-```powershell
-# Install a locally built or downloaded release; default opens the installer UI.
-.\scripts\install.ps1 -InstallerPath '.\Shorthand-Writer-setup.exe'
+- An explicit portable marker selects a `data/` directory beside the executable for non-secret settings, recovery state, and the WebView2 profile. Resolve paths from the executable directory, never from the shell's working directory. Verify all Tauri/WebView2 data locations respect this mode.
+- `.shorthand` projects remain ordinary files in writer-chosen locations. Do not force manuscripts into the application folder. Use relative recent-project paths when a project is inside the portable folder; gracefully handle unavailable external paths.
+- Tokens stay in the Windows credential store, scoped to this app/user/connection. Copying the folder to another Windows user or computer carries settings and project files, **not a working ChatGPT login**. Settings shows Reconnect there. Keep a stable per-installation host identifier on the same machine; moving a copy to another host creates that host's identity without reusing another machine's tokens.
+- Treat a read-only folder as a clear startup/storage error with an action to move the app or choose a writable data location. Do not silently fall back to an undocumented directory.
+- Updating means closing the app after saving and replacing application binaries/resources. Preserve `data/` and all projects; the update archive contains application files only and never replaces those directories or terminates a saving process.
 
-# Explicit unattended mode for automation.
-.\scripts\install.ps1 -InstallerPath '.\Shorthand-Writer-setup.exe' -Silent
+Add a small developer packaging script, proposed `scripts/package-portable.ps1`, around the existing build launcher. Build in release mode without the NSIS bundler, collect the verified runtime files, add the marker/README, and archive into a versioned output directory. Test the packaged copy outside the source checkout. Local packaging needs no release host, signing account, or download service.
 
-# Download mode follows only after an actual trusted release channel exists.
-.\scripts\install.ps1 -Version '<published-version>'
+The earlier install script, silent NSIS flow, automatic downloads/updater, and developer bootstrap script are deferred. Existing developer commands remain the supported source workflow; they are not prerequisites for writers using the ZIP.
+
+## 2. Settings page
+
+Add a globally visible **Settings** action in the app header, available before a project is open. Settings is an application configuration page, not another writing zoom level. Back returns to the exact Story/Scene selection and scroll position. Unsaved authoring changes must finish saving or retain their buffers during navigation.
+
+Keep the page small:
+
+| Section | Controls and information |
+|---|---|
+| ChatGPT | Connection status, recognizable account/workspace, **Continue with ChatGPT**, **Test connection**, **Reconnect**, **Disconnect**, and a Manage usage link |
+| Generation | Model picker populated for the connected account; optional default writing guidance. Model capabilities determine available controls; do not expose unsupported temperature/token parameters |
+| Appearance | Harvest Orange palette, existing Calm option, and System/Light/Dark preference with a legible version of the same palette |
+| Portable data | Current data folder, project-storage explanation, app version, and the WebView2 prerequisite/status where available |
+
+Use one active ChatGPT connection/model in this release. No provider picker, other-service placeholders, API-key fallback, or general-purpose agent configuration. Changing model requires access verification for the new selection. Disconnect cancels/stops new requests, clears the app's credentials, and immediately disables Generate while preserving writing and drafts.
+
+Use the documented ChatGPT browser sign-in and plan-use authorization. Rust owns PKCE/state/nonce, callback validation, account identity, token storage/refresh/revocation, model discovery, and network requests. Never collect a ChatGPT password or read another app's token files. Confirm that this app's local distribution qualifies for the supported plan-usage flow, then complete a real inference request before calling the connection ready. [ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source), [registration/sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+
+Show **Using ChatGPT plan** and **Manage usage** near generation, following the provider's first-sign-in confirmation and usage guidance. Account limits remain account limits; a failed connection never switches to paid API billing. [ChatGPT connection UX](https://developers.openai.com/siwc/ui-ux-guidelines).
+
+## 3. Beats and character blocks are the scene instructions
+
+Generation always targets a stable selected scene ID. Take that scene's ordered beats, summary/tone, and existing optional narration guidance. Do not loop through chapters or generate the whole story. No stage, character count, or mandatory POV form is required.
+
+Character dragging is an authoring shortcut for inserting a structured inline reference at the beat caret/drop position. Clicking to insert remains an accessible alternative. It does not mean the character moves around a simulated physical stage.
+
+Each reference keeps a character ID and occurrence-specific direction. Rust resolves the ID into the selected global profile and baseline voice/personality/background when preparing the request. Explicit local emotion/delivery overrides baseline guidance for that occurrence; it does not edit the reusable profile or apply silently to another character/reference.
+
+Conceptual request representation:
+
+```text
+scene: { id, title, summary, tone }
+beats: [
+  { id, order, document: freeform text + inline character references },
+  ...
+]
+referencedCharacters: { characterId: { name, background, personality, voice } }
+references: embedded in the beat document with characterId and local emotion/delivery
+writingGuidance: optional scene/default instructions
 ```
 
-The script will:
+The inline document preserves where each reference occurs; a flat cast list cannot replace it. Include readable directions alongside the structured context so the model understands both actions and scope. Preserve paragraph/beat order and distinguish scene tone, character baseline, local emotion, and spoken delivery. The writer never has to type pipe markup or internal IDs.
 
-1. Check supported Windows version/architecture and reject unsupported builds with a concrete message. Initial target: Windows 11 x64. Report the installed app version and requested version; default to the same-user install scope.
-2. Prefer an explicit local installer. Download mode requires a configured HTTPS release origin, versioned release manifest, artifact size, architecture, SHA-256 digest, and trusted authenticity verification. Do not invent a GitHub release URL: this repository currently has no configured release host or signing identity. Local development artifacts are identified as unsigned development builds; published mode must fail closed when authenticity cannot be verified.
-3. Validate the local file as an expected installer artifact. Resolve paths before execution; downloaded artifacts use a unique staging directory and an atomic final rename. Reject partial downloads and mismatched hashes/signatures. A checksum fetched beside an installer is corruption detection, not independent proof of publisher identity.
-4. Show the existing application's install/upgrade flow. Offer closing a running app after it saves; do not terminate it and risk pending edits. Confirm NSIS silent switches and exit-code/reboot behavior against the generated installer before enabling `-Silent`.
-5. Let the NSIS/WebView2 prerequisite path manage WebView2. A connected installer may download its runtime; an offline distribution must carry the supported offline runtime installer. No surprise global installation of Node, Rust, Python, or provider CLIs.
-6. Wait for the installer, propagate failure/reboot results, and verify the installed executable/version. Offer launch after success; silent mode does not open a UI. Do not promise application readiness just because the installer process started.
-7. Remove only the script's own validated temporary files. Log versions, step outcomes, and error codes; exclude credentials and manuscript content.
+For the infirmary example, the request contains Maya and Damian's referenced profiles, the ordered wound-stitching/flinching/staring/dialogue beats, and local serious/awe/angry/embarrassed direction. Output is one prose scene. Changing or renaming a global profile still resolves by ID; characters mentioned only as ordinary text remain ordinary text unless explicitly linked.
 
-Install/upgrade owns application binaries and shortcuts. User-selected `.shorthand` projects stay in their chosen folders. App settings/recovery data belong under Tauri's per-user app-data directory. Uninstall preserves projects; clearing app-owned connections/settings is a separately explained option. Ordinary upgrade must preserve connection identities and not sign users out unnecessarily. Project-format migration occurs on project open with a recoverable backup, independently of installer replacement.
+Preview exactly the context being sent. Send only this scene and its referenced profiles/instructions; exclude unrelated scenes, Trash, credentials, and the project database. Legacy replay, automatic continuity reconstruction, private-knowledge modelling, and prior-chapter retrieval are not prerequisites for this first slice.
 
-Ship an actual offline installation option after its runtime packaging is tested. A script cannot make an installer that depends on downloading WebView2 work offline simply by adding an `-Offline` flag.
+## 4. Generate button and draft flow
 
-### Developer setup
+Place **Generate scene** in Scene view beside its scene controls. It is visibly grey and natively disabled until the selected ChatGPT connection/model is ready. Do not open sign-in by clicking a disabled button. Put a readable reason and an independently clickable **Open Settings** link beside it.
 
-Add `scripts/setup-dev.ps1` alongside the end-user script:
-
-- Default to inspecting Node/npm, Rust/MSVC, Windows SDK, and WebView2; report exact missing components and official setup links. Support an explicit dependency-install option for supported packages, with no system-wide execution-policy changes or command-string evaluation.
-- Use `npm ci` and committed lockfiles. Reuse `tools/desktop.mjs` and its existing local-toolchain detection. Run the prerequisite check and renderer build; optional test/native-build flags perform the documented checks.
-- Keep downloaded toolchains and build caches under documented developer locations. Do not require provider login, API credentials, a private manuscript, or an AI subscription to build/test the app.
-
-### Installation acceptance
-
-Test clean Windows without developer runtimes; an existing WebView2 runtime; missing WebView2 with network; offline package installation; cancelled/failed downloads; corrupt/wrong-architecture artifacts; paths with spaces/Unicode; install/reinstall/upgrade; a running app with pending edits; and uninstall preserving projects. Check both visible and silent installer flows. A repeat run is safe and never resets story data. Signed public distribution and updater hosting remain release gates, not assumptions.
-
-## 2. AI connections and subscriptions
-
-An AI connection is global application configuration. The selected provider/model may be remembered per project, but authentication material never enters the project database or Markdown exports. Separate the inference service, account identity, connection mechanism, and usage route; OpenCode is also a client/gateway, not one universal model subscription.
-
-Current documentation was checked on 19 November 2026. Recheck it during each adapter spike and record tested versions/account types; a documentation-supported route is not an integration test.
-
-| Connection shown to the writer | Planned mechanism | What must be true before enabling it |
+| State | Generate behavior | Nearby explanation/action |
 |---|---|---|
-| **ChatGPT plan** | Native Sign in with ChatGPT; Rust calls the documented Responses endpoint with the granted OAuth access token | Validate the app's distribution/eligibility for the documented open-source/locally hosted flow, granted plan-use permission, account model access, and a completed request |
-| **Gemini account** | Official Gemini CLI helper signs in with Google; the app drives its documented structured headless output using that cached authorization | Qualify Windows helper packaging, account entitlement, credential protection, text-only permissions, streaming, cancellation, and prose use |
-| **OpenCode account / Go** | Supported Console key or an explicitly configured OpenCode bridge; identify the actual upstream provider and usage source | Qualify the particular service and permitted workload. Go is documented for coding-agent requests; do not claim this story app is eligible without confirmation |
-| **API key** (advanced) | Direct OpenAI, Gemini, or supported OpenCode API adapter | User explicitly selects this separately metered route and supplies its own credential; no silent substitution when subscription usage fails |
-| **More connections** | Extend the same adapter contract after a documented authentication/use-case check | No generic promise that every consumer subscription grants third-party inference access |
+| Not configured | Grey, disabled | Connect ChatGPT in Settings · Open Settings |
+| Signing in/checking | Grey, disabled | Checking your ChatGPT connection |
+| Signed in without plan permission, reconnect required, or model unverified | Grey, disabled | Finish setup or test the selected model in Settings |
+| Ready, but scene has no non-empty beats | Grey, disabled | Add a beat to describe this scene; character references are optional |
+| Ready with saved scene direction | Enabled in the orange primary-action treatment | Selected model · Using ChatGPT plan · Manage usage |
+| Saving | Wait for the queued save before submitting; never send an older draft silently | Saving scene direction |
+| Generating | One active request; expose **Stop generating** | Streaming draft for this scene |
+| Offline, provider limit, or unusable authorization | Disabled until usable again | Concrete failure reason and Settings/Manage usage/Retry as appropriate |
 
-OpenAI now documents an optional ChatGPT-plan permission for eligible Responses requests from open-source/locally hosted apps. This does not grant access to the user's existing ChatGPT conversations. Choose this direct route for the first vertical AI slice, subject to the eligibility spike; no Codex executable is needed for plain scene generation. A paid/hosted distribution must follow the applicable provider onboarding route. [ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source).
+Readiness means validated account/permission, selected supported model, and a successful small connection test for that selection. Label the test as sending a small request using the plan. Persist configuration, recheck/refresh authorization on launch, and disable Generate while readiness is unknown. A non-secret boolean from a previous run cannot by itself authorize a request. Network/usage errors may still occur after a successful test and must preserve partial output.
 
-Google documents Google-account authentication for Gemini CLI, including Google AI Pro/Ultra accounts, and reuse of cached authentication in headless mode. This is a CLI integration path, not evidence that arbitrary Google OAuth grants consumer Gemini web-app access. [Gemini CLI authentication](https://geminicli.com/docs/get-started/authentication/), [structured headless output](https://geminicli.com/docs/cli/headless/).
+Check the same preconditions in Rust; bypassing a disabled button must not start inference. Bind the prepared request, job, and stream events to project/session, scene, connection, and model IDs. Settings changes or project switching cannot attach late output to another scene/account.
 
-OpenCode documents ChatGPT sign-in as a client option, Console API access, and Go credentials. These are distinct routes. Its Go guide asks clients to send coding-agent traffic, so prose eligibility is unresolved for this product; never disguise story requests as code or another client to obtain access. Console/API mode is an explicit alternative after its supported workload and billing are verified. [OpenCode providers](https://opencode.ai/docs/providers/), [Go requirements](https://opencode.ai/docs/console/go/), [Console inference](https://opencode.ai/docs/console/api/inference/).
+Simple first-release flow:
 
-## 3. Generate button and connection UI
+1. Flush the selected scene's pending writes and capture its ordered beats/profiles into an immutable request snapshot.
+2. Start one job and stream into a separate draft area below the scene direction. Keep beat editing available. Limit to one active generation request for this release.
+3. Offer **Accept draft**, **Copy**, and **Discard** when done; **Stop** retains clearly marked partial output. Regenerating creates a separate attempt. Side-by-side comparison and a dedicated revision workflow are deferred.
+4. Acceptance updates only that scene's prose, keeps the beats intact, preserves previous prose, and is undoable. Edits to request inputs during streaming mark its result **Based on earlier direction** and require review before acceptance.
+5. Save jobs, request snapshots, draft checkpoints, terminal states, and accepted prose/revisions in SQLite through a versioned migration. Streaming checkpoints do not create a full authoring-history snapshot for every token. Restore interrupted drafts after restart; do not silently restart remote requests.
 
-Preserve the two zoom levels. Add a compact **Generate scene** action to Scene view near the summary/scene controls, with the selected connection/model beside it. Story view does not gain a third editor pane. Scene summary, beats, stage-free writing, character profiles, and local direction remain the inputs.
+The direct ChatGPT route uses its documented streaming request format and supported settings. Mark completion only on the successful terminal event, not stream EOF; preserve incomplete/error output. No tools, shell, filesystem access, helper CLI, or autonomous scene editing is required. [ChatGPT inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [current request limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
 
-First use opens **AI connections** in the existing settings/panel pattern. Preserve the selected scene and any unsent generation settings during connection setup. Each connection shows the provider, recognizable account/workspace, status, model picker, usage route, and **Connect**, **Reconnect**, **Test connection**, or **Disconnect** as appropriate. Do not show a subscription as connected merely because a CLI executable exists.
+## 5. Harvest Orange theme
 
-For ChatGPT, use the provider's **Continue with ChatGPT** sign-in wording. Show its first-success plan-use confirmation once, **Using ChatGPT plan** near generation, and a **Manage usage** link. Account labels must distinguish registrations/workspaces even if email addresses match. A sign-in with identity-only permission cannot enable plan generation. [Sign-in UX guidelines](https://developers.openai.com/siwc/ui-ux-guidelines), [account/session handling](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions).
+Replace the moss/rose/ochre base theme with these anchors across the app, Settings, and draft states:
 
-Normal writing flow:
-
-1. Click **Generate scene**. Flush pending authoring writes. Show connection/model, optional length/style instruction, and a collapsed **Context being sent** summary that can expand to the exact outgoing content. After a connection is set up, generation does not require a repeated login wizard.
-2. Submit an immutable scene/context snapshot. Stream into a distinct draft candidate below the scene direction; keep shorthand edits available. Replace the action with **Stop generating** and a clear state label.
-3. On completion, offer **Accept draft**, **Revise**, **Compare**, **Copy**, and recoverable **Discard**. Acceptance is explicit and undoable; a generation never replaces the writer's beats or existing prose automatically.
-4. If direction changes during generation, keep the result and label it **Based on earlier direction**. If the scene moves or is deleted, retain the job/candidate with its captured context and mark its status; never write into another scene by index.
-5. Preserve partial output after cancellation, disconnect, crash, or a limit error. **Try again** creates a visibly separate attempt; never invisibly repeat an uncertain remote request or switch to a different paid route/account.
-
-Connection states: not connected, component missing, signing in, signed in without generation permission, checking access, ready, reconnect needed, usage limit reached, offline, and service unavailable. Only a successful generation request proves the selected model works for that account; a catalog entry alone is insufficient. Expired credentials and limits show a concrete next action while keeping drafts and authoring intact. Do not label quota usage as zero-cost or unlimited because an API cost field is absent.
-
-## 4. Native authentication and provider adapters
-
-Add Rust-owned `ConnectionService`, `SecretStore`, `ProviderRegistry`, and `GenerationService`. The webview receives connection summaries and generation events, not saved credentials or direct network access. Extend the current command permission allowlist explicitly; do not grant general shell, filesystem, or remote-script capabilities.
-
-### ChatGPT direct connection
-
-- Follow the current public-client OAuth registration flow, rather than extracting browser cookies or copying another app's OAuth client identity. Persist a stable opaque host ID; retain each issued client registration with its validated account identity.
-- Rust starts a bounded loopback callback listener before opening the system browser. Use PKCE S256, fresh state/nonce, exact redirect matching, callback timeout/cancel, and ID-token signature/issuer/audience/expiry validation. Validate granted plan-use scopes and the returning account before activating a connection. No client secret is embedded in a desktop binary. [Registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
-- Store access/refresh/ID tokens through the native credential store. Serialize refresh per connection and replace rotating tokens together. Disconnect stops new jobs, attempts documented revocation, and clears local credentials; distinguish unconfirmed remote revocation from a failed local sign-out. [Session lifecycle](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions).
-- Discover current account models and use the public Responses endpoint. In the documented preview, HTTP generation requires streaming with storage disabled and has a restricted parameter set; build a route-specific request serializer instead of forwarding generic settings such as temperature or maximum-output-token fields. Only a successful terminal completion makes the candidate complete. Preserve partial output on incomplete/error termination. [Models/inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [preview limits](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
-
-### Gemini helper and optional OpenCode bridge
-
-Qualify each helper before bundling it. Pin the binary/runtime version, source, digest, license notices, and Windows architecture. Prefer a self-contained app-private component; do not make ordinary installation depend on a global npm installation. A bridge to an already installed helper is an advanced option requiring a verified executable/version and explicit connection choice.
-
-Invoke fixed executables with argument arrays and structured input through stdin, never a user-assembled shell command. Use a disposable working directory rather than the manuscript/project folder. Disable filesystem modification, shell, MCP, plugins, browsing, and tool execution for prose generation, and verify this in the supported helper version; if an agent helper cannot be constrained, that adapter does not ship. No local instruction file or generated text can enable tools.
-
-Gemini connection setup may need the official interactive helper before cached-auth headless use. Determine how to present that supported login flow from the desktop without collecting a Google password or reimplementing private endpoints. Report progress/cancel back to the connection panel. Normalize documented streaming JSON events into text/status/usage events; tool requests are rejected.
-
-Native-owned credentials use the OS store. A helper-owned authentication cache needs a separate documented location, same-user ACLs, and an approved at-rest protection strategy; do not claim Shorthand's keyring protects a third-party cache automatically. The spike must demonstrate credential handling or leave the subscription helper unavailable, with an explicit supported alternative. Never import another app's token files behind the user's back.
-
-If OpenCode integration is pursued, first choose direct Console inference or a pinned bridge and document why. Its current embedded SDK hosts JavaScript services and therefore introduces a packaged runtime; it must not be imported as backend code into the Tauri webview. A direct Rust gateway adapter avoids that runtime for supported API routes. [OpenCode SDK architecture](https://opencode.ai/docs/build/sdk/), [permissions](https://opencode.ai/docs/permissions/).
-
-## 5. Jobs, context, and SQLite changes
-
-Keep global connection metadata in app settings, separate from user projects. Metadata includes connection ID, provider/adapter, credential reference, auth kind, verified account/workspace label, capability status, and component version. The OS secret store holds credentials. A project can remember a connection ID/model preference; opening a copied project asks the writer to choose a local connection when that ID is unavailable.
-
-Introduce versioned project migrations for:
-
-- `generation_jobs`: stable job ID, scene ID, captured authoring revision/context hash, immutable request snapshot, connection/model IDs, prompt-template version, state, timestamps, terminal reason, and reported usage.
-- `generation_candidates`: candidate/job/scene IDs, checkpointed text, completion status, local edits/label, parent candidate for revisions, and recoverable discard state.
-- Accepted scene prose and its recoverable revisions, linked to the accepted candidate and source context. Acceptance remains a Rust domain transaction, participates in Undo/Redo, and preserves the prior prose.
-
-Connection secrets and credential-bearing headers never enter these tables. Checkpoint job output separately from authoring revisions/history; streaming every token must not create a full-project undo snapshot or invalidate the job's own input revision.
-
-Initial context: scene summary and tone, ordered freeform beat documents/text, referenced character profiles and occurrence-specific emotion/delivery, narration guidance if present, optional writer-selected prior prose, and explicit revision instructions. Zero-character and empty-stage scenes work. Exclude Trash, unrelated scenes, unselected private notes, credentials, and the whole database. Show actual scope and truncation; do not silently drop constraints. Advanced entering-state/legacy continuity results are included only after those systems are implemented and verified, with provenance. The first AI slice can use explicit scene context without claiming replay compatibility.
-
-Proposed narrow commands: `list_ai_connections`, `begin_ai_connection`, `cancel_ai_connection`, `disconnect_ai_connection`, `list_ai_models`, `test_ai_connection`, `prepare_scene_generation`, `start_scene_generation`, `cancel_generation`, `read_generation`, `revise_candidate`, `accept_candidate`, and `discard_candidate`. Final schemas are fixed in the implementation commit. The start command validates project session, expected revision, prepared-context hash, connection identity, and a unique local request ID before sending. A repeated command returns the existing job rather than starting duplicate inference. Cancellation is idempotent. No database lock is held while waiting for browser auth or network streams.
-
-Persist states `prepared`, `running`, `completed`, `cancelled`, `failed`, and `interrupted`; derive a separate outdated flag from context changes. After restart, restore candidates and mark unfinished network jobs interrupted. A candidate is not accepted or declared complete on stream EOF alone. Selecting another project/account cannot attach late events or acceptance to the new selection: bind every event to project/session, scene, job, and connection identities.
-
-## 6. Commit-sized delivery sequence
-
-Each row is a reviewable commit or small sequence split at its stated boundary. Commit after its checks pass. Installer work and AI spikes may proceed independently; the native authoring app stays usable throughout.
-
-| Step | Proposed commit | Scope and exit evidence |
+| Token | Value | Intended role |
 |---|---|---|
-| I1 | `feat: add repeatable Windows developer setup` | Add setup-dev script; verify missing prerequisites, existing local/global toolchains, lockfile install, and rerun behavior using a disposable developer environment |
-| I2 | `build: package a Windows desktop installer` | Produce NSIS release with tested WebView2 policy and runtime dependencies; install/start offline authoring on clean Windows without developer tooling |
-| I3 | `feat: add verified installer launcher` | Add local installer path, visible/silent flows, staging/cleanup/version checks; test corrupt inputs, cancellation, reinstall/upgrade, and preserved projects |
-| I4 | `build: add authenticated release downloads` | Add real release origin and authenticity policy, then download mode; requires release ownership/signing decisions before enabling public downloads |
-| A1 | `docs: qualify subscription connection adapters` | Spike ChatGPT eligibility/auth/completed inference, Gemini helper login/text-only isolation, and OpenCode workload access; record tested versions and blockers, without claiming working integrations from docs alone |
-| A2 | `feat: add native AI connection management` | Global connection settings, OS credential store, ChatGPT browser flow/refresh/revocation, model discovery, identity validation, and reconnect/limit states; synthetic OAuth tests cover cancelled, mismatched, expired, and out-of-order callbacks |
-| A3 | `feat: persist generation jobs and draft candidates` | Migration/backup tests, immutable scene-context preview, typed commands, fake streaming adapter, checkpoint recovery, scoped cancellation, idempotent start, outdated detection, and transactional Accept/Undo |
-| A4 | `feat: generate scenes with a connected ChatGPT plan` | Add Scene Generate/Stop/candidate controls and direct adapter; prove one real sign-in plus completed generation on an eligible test account, interruption and limit handling, then native Generate/Revise/Accept/Undo end to end |
-| A5 | `feat: add qualified Gemini and OpenCode connections` | Add only adapters that passed A1; connect/test/model selection/stream/cancel/expiry in native app, optional helper package checks, clear usage labels, no silent paid fallback |
-| V1 | `test: verify installed generation and recovery` | Installed-app native flows, light/dark/minimum width/keyboard states, offline authoring, safe upgrades, crash/stream recovery, diagnostics redaction, and credential removal behavior |
+| Harvest Orange | `#FF7700` | Enabled primary actions, selected accents, timeline emphasis, restrained decorative backings |
+| Platinum | `#E5EBEA` | Main light background and pale supporting surfaces |
+| Iron Grey | `#435058` | Text, controls, outlines, timeline structure, secondary surfaces |
+| Deep ink | `#20282D` | High-contrast writing text/on-orange labels and dark surfaces |
+| Neutral derivatives | Derived light/dark shades | Raised writing surfaces, borders, hover states, muted/disabled controls, and semantic feedback |
 
-A real-provider test is an explicit developer/user operation on a connected test account, not part of routine CI. Routine tests use deterministic mock authorization and stream servers; no developer credentials or manuscripts enter fixtures. One working provider delivers the first generation release; Gemini/OpenCode are staged additions, not blockers to shipping the initial loop.
+Use Iron Grey on Platinum for readable text. Harvest Orange on Platinum is approximately 2.21:1, so it cannot carry normal body text or the sole focus indicator. Iron Grey on orange is approximately 3.12:1; primary orange buttons need the darker ink label, not white/platinum or Iron Grey small text. Verify every final combination, including dark mode, against normal text/focus requirements.
 
-## 7. Acceptance scenarios
+Disabled Generate uses an intentionally grey neutral surface, readable grey label, disabled cursor/semantics, and its adjacent reason. It must not retain the orange enabled appearance. Focus/error/success states use labels/icons as well as color. Character, emotion, and delivery remain distinguishable by explicit labels and scope, not three conflicting theme palettes.
 
-- On a clean Windows machine, install and launch without Node/Rust, create/edit/reopen a story offline, then connect an eligible AI account without touching a terminal for the direct ChatGPT path.
-- Click Generate, inspect outgoing context, stream a candidate, Stop, retain partial text, retry deliberately, revise, accept, undo acceptance, close, and reopen with all saved work intact.
-- Use the Maya/Damian infirmary scene as a synthetic fixture: baseline profiles remain global; serious/awe/angry/embarrassed references stay local; the preview shows those scopes and generation targets the selected scene only. Staging and a mandatory POV form are unnecessary.
-- Edit/reorder beats or change profiles during a job, switch scenes/projects/accounts, delete/restore the source scene, and deliver late callbacks/stream chunks. Results never overwrite another scene or attach to the wrong account; outdated results remain reviewable.
-- Exercise declined sign-in, identity-only permission, invalid OAuth state/nonce/identity, concurrent refresh, expired/revoked tokens, unavailable credential store, missing helper, denied tool execution, unsupported model, network loss, limits during streaming, and abrupt process exit. Explain the next action and preserve authoring/candidate text.
-- Verify plan-vs-API usage labels and provider privacy links. A limit cannot silently trigger API billing or a different provider. If a provider itself supports account-controlled overage, identify that billing source rather than claiming a hard subscription-only spending cap the app cannot enforce.
-- Install/upgrade/uninstall with existing projects and connections, including interrupted migration. Preserve projects, avoid credential logging/exports, and verify the documented connection-removal behavior.
+Retain the two timelines, useful asymmetry, flat writing surfaces, Georgia writing font, platform controls, and Calm/reduced-motion support. Apply orange sparingly around content. Do not redesign the layout or recolor only selected components; update shared semantic tokens and their light/dark overrides together.
 
-Implementation and publishing are separate from this plan. No installer, OAuth login, provider download, subscription purchase, or AI request is executed by creating this document.
+## 6. Commit-sized implementation sequence
+
+| Step | Proposed commit | Completion evidence |
+|---|---|---|
+| S1 | `feat: add settings navigation and harvest orange theme` | Real global Settings page, appearance persistence, return-to-scene behavior, consistent palette in both writing views and settings; disabled Generate has a setup reason/link |
+| S2 | `feat: connect ChatGPT from native settings` | Eligible test-account browser sign-in, protected credentials, refresh/disconnect, model selection and test; readiness state gates UI and Rust; no API fallback |
+| S3 | `feat: encode scene beats and character references for generation` | Drag/click character insertion, local direction scope, stable profile resolution and context preview; infirmary fixture encodes exact beat order with zero/one/multiple-character cases |
+| S4 | `feat: generate and accept individual scene drafts` | SQLite migration, immutable request/job, streaming/stop/checkpoints, Accept/Undo, one active job, outdated/interrupted handling; native end-to-end generation from the selected scene |
+| S5 | `build: package and verify portable Windows release` | Versioned ZIP opens outside the checkout without developer tools; data-folder/host behavior, WebView2 prerequisite, clean-machine launch, offline authoring, update preservation, Settings connection and real scene generation |
+
+Commit after each step's relevant checks pass. Do not require the legacy engine or other providers before S4. Deterministic tests use mock OAuth/stream servers and synthetic writing; real sign-in/generation tests use an explicitly connected test account and remain separate from routine CI.
+
+Acceptance includes fresh startup with Generate disabled; Settings setup/test enabling it; disconnect/expiry disabling it again; keyboard-accessible Settings links; Maya/Damian profile and local-direction encoding; empty and character-free beats; stop/restart recovery; input edits and project/account switches during a job; Accept/Undo; and both themes at desktop/minimum widths. No source change or implementation test is performed merely by updating this plan.
+
+## 7. Deferred scope
+
+Gemini/OpenCode and other providers; API-key configuration; installer/bootstrap/download/updater scripts; bundled fixed WebView2 distribution; batch chapter/story generation; automatic continuity/replay; physical stages; tool-using agents; comparison/revision workspaces; release hosting/signing; and multi-platform packaging. These remain possible later work, not controls or blockers in this release.

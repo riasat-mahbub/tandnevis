@@ -14,15 +14,15 @@ Preserve the accepted scene layout: reusable blocks on the left, writing in the 
 
 ## Visual system
 
-- Preserve warm paper and neutral secondary surfaces.
+- Next implementation palette: Harvest Orange `#FF7700`, Platinum `#E5EBEA`, and Iron Grey `#435058`, with deep ink `#20282D` and derived neutrals for contrast. This supersedes the moss/rose/ochre colors in the existing implementation and historical previews; recoloring is planned work.
 - Preserve Georgia for writing content and the platform sans for controls/navigation.
-- Restrained green character blocks, rose emotion blocks, and ochre tone/delivery blocks. Labels identify each meaning independently of color.
+- Use orange for primary actions and restrained emphasis, platinum for light surfaces, and grey/ink for readable content and controls. Character, emotion, and delivery labels preserve meaning independently of color. Orange on platinum is unsuitable for normal small text; orange buttons use darker ink labels. Update light/dark tokens together.
 - One-pixel boundaries, small consistent radii, compact control groups, and generous space between writing sections. No decorative shadows or dashboard statistics.
 - Clear selected, hover, focus, disabled, empty, and drop states in light and dark appearances. Motion only communicates state and respects reduced-motion preferences.
 
 ## Planned playful refinement
 
-Alternate scenes to the left and right of a central vertical timeline, staggered from top to bottom, with numbered nodes and clear connectors. Slightly unequal card widths provide asymmetry while same-side cards stay separated. Side follows reading order after reordering; subtle backing angles remain tied to scene identity. Collapse to a single column with a left spine on narrow screens. Put gentle skew/rotation on backings and tabs; keep editable text and controls horizontal. Retain the existing palette, writing typography, scene summary, and editor/library hierarchy.
+Alternate scenes to the left and right of a central vertical timeline, staggered from top to bottom, with numbered nodes and clear connectors. Slightly unequal card widths provide asymmetry while same-side cards stay separated. Side follows reading order after reordering; subtle backing angles remain tied to scene identity. Collapse to a single column with a left spine on narrow screens. Put gentle skew/rotation on backings and tabs; keep editable text and controls horizontal. Apply the Harvest Orange palette while retaining writing typography, scene summary, and editor/library hierarchy.
 
 Asymmetry should emphasize the writing area through unequal useful proportions, not obscure order or scatter tools. Calm appearance removes decorative transforms and normalizes offsets. Narrow layouts reduce the effect before sacrificing readable width. No looping wobble or bouncing; reduced motion remains an independent preference.
 
@@ -31,6 +31,9 @@ Asymmetry should emphasize the writing area through unequal useful proportions, 
 Add clear New/Add actions, and expose drag handles, Duplicate, and Delete directly on every scene block and beat card. Keep less frequent commands in More/Actions menus. Scenes and beats both support drag-and-drop reordering, before/after insertion markers, and keyboard equivalents; editing text does not initiate structural dragging. Renumber and alternate sides after moves while retaining stable identities and evidence links. Add character/profile and preset/template editing, usage inspection, and archive/delete rules to the library. Scene/chapter Trash and beat Undo make everyday removal reversible. Local removal never deletes a global definition; duplicates receive new identities and retain explicit shared references. See the interface plan for the object-by-object inventory and acceptance gates. These latest timeline/quick-action requirements are planning-only additions to the existing previews.
 
 ## Interaction contract
+
+- The next tranche adds a global Settings page for one ChatGPT connection and appearance settings. It returns to the selected writing view and does not add a third writing zoom level.
+- Generate one selected scene from its ordered beats and resolved character-reference data. Inline blocks encode model instructions, not physical simulation. Generate stays grey/disabled until the Settings connection/model test succeeds, with an adjacent explanation and Open Settings link. See the [scoped plan](docs/install-and-ai-plan.md).
 
 - Title and summary edits update the corresponding timeline block. Switching scenes preserves separate title, summary, beat, prose, and optional stage state.
 - Scene and beat identities survive movement. Ordering is reading order, not proportional elapsed time.
