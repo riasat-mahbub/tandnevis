@@ -55,17 +55,19 @@ Updated 19 November 2026. This ledger separates approved direction from implemen
 
 ## Later milestones
 
-The requested next tranche is specified in [Portable app and ChatGPT scene generation](install-and-ai-plan.md). This narrows and supersedes the earlier I/A/V multiple-provider/installer sequence. S1 is complete; the remaining tranche work is:
+The requested next tranche is specified in [Portable app and ChatGPT scene generation](install-and-ai-plan.md). This narrows and supersedes the earlier I/A/V multiple-provider/installer sequence. S1 is complete. The S2 native implementation and deterministic Rust coverage are committed; the real eligible-account sign-in/inference gate remains open. The remaining tranche work is:
 
 - [x] S1: global Settings page, Light/Platinum first-run default, Harvest Orange `#FF7700` / Platinum `#E5EBEA` / Iron Grey `#435058` theme, appearance persistence, and disabled Generate with a Settings link.
-- [ ] S2: one native ChatGPT connection, account/model verification, protected credentials, refresh/disconnect, and readiness enforced in UI and Rust.
+- [ ] S2 completion: one native ChatGPT connection, account/model verification, protected credentials, refresh/disconnect, and readiness enforced in UI and Rust are implemented. The 47-test Rust suite passes, including JWT signature/claim checks and Responses streaming limits. A real eligible-account browser sign-in and live inference test are still required to verify account eligibility and provider behavior.
 - [ ] S3: drag/click character references encode profiles and occurrence-local direction into ordered scene-beat context; inspect the exact outgoing request.
 - [ ] S4: generate one scene at a time, with streaming/Stop, durable draft recovery, Accept/Copy/Discard, and undoable scene-prose acceptance.
 - [ ] S5: portable Windows ZIP, explicit writable data location, documented WebView2 prerequisite, clean-machine/native verification, and preserved projects/settings during replacement.
 
 Gemini/OpenCode, API-key setup, install/bootstrap/download/updater scripts, batch generation, and advanced comparison/staging are deferred from this tranche. Older milestone requirements below remain the longer-term backlog.
 
-S1 verification: `npm run typecheck`, `npm run build`, and `npm test -- --run src/App.test.tsx` pass (8 App tests). The Settings page is global, preserves the hidden Story/Scene view and scroll position, persists Light/Platinum by default plus explicit appearance/Calm choices, and keeps Generate disabled with a separate Open Settings action. Scene generation and live ChatGPT setup are not implemented by S1.
+S1 verification: `npm run typecheck`, `npm run build`, and `npm test -- --run src/App.test.tsx` pass. The original S1 commit passed 8 App tests; follow-up `f26208d` migrates existing installs to Platinum light once while retaining later explicit choices, with a regression committed in `6dbc86e`. The current App suite has 10 tests, including the S2 acknowledgement/model-test flow. The Settings page is global, preserves the hidden Story/Scene view and scroll position, persists Light/Platinum by default plus explicit appearance/Calm choices, and keeps Generate disabled with a separate Open Settings action.
+
+S2 implementation: browser OAuth/PKCE and identity validation, Windows Credential Manager tokens, token refresh/disconnect, model discovery/selection, usage confirmation, connection test, and native readiness enforcement are in place. Renderer/native contract typecheck and frontend production build pass. `npm run test:rust` passes 47 tests. Native compilation currently reports expected dead-code warnings for S4 generation storage methods until that module is wired. No ChatGPT account was available for real sign-in or inference validation, and this app's distribution eligibility has not been established.
 
 - [ ] Rich inline reference editing, clipboard/IME and range-scope hardening beyond the initial freeform document support; full structural undo/redo wherever not delivered in the first tranche.
 - [ ] Inspect the external legacy parser/replay engine, preserve licensing, establish a disposable compatibility corpus, and decide sidecar versus Rust port using parity/build evidence. No legacy compatibility is claimed yet.

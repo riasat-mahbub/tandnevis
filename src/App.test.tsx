@@ -2,6 +2,7 @@ import './test/dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import type { ProjectSnapshot } from './services/project';
 import { deferred, gateway, project, session } from './test/fixtures';
 
@@ -51,6 +52,30 @@ describe('connected writing views', () => {
     firstLaunch.unmount();
     render(<App gateway={gateway()}/>);
     expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'dark');
+  });
+  it('requires plan-use acknowledgement and a successful model test before showing ChatGPT as ready', async () => {
+    const connected: NativeChatGPTState = {
+      status: 'connected', account: 'writer@example.test', models: [{ slug: 'gpt-test', displayName: 'GPT Test' }],
+      selectedModel: 'gpt-test', ready: false, usageAcknowledged: false, firstUsePending: true, reason: null, remoteRevocationConfirmed: null,
+    };
+    const acknowledged = { ...connected, usageAcknowledged: true, firstUsePending: false };
+    const ready = { ...acknowledged, ready: true };
+    const service: ChatGPTGateway = {
+      desktop: true,
+      connectionState: vi.fn().mockResolvedValue(connected),
+      connect: vi.fn().mockResolvedValue(connected),
+      acknowledgeUsage: vi.fn().mockResolvedValue(acknowledged),
+      setModel: vi.fn().mockResolvedValue(connected),
+      testConnection: vi.fn().mockResolvedValue(ready),
+      disconnect: vi.fn().mockResolvedValue({ ...connected, status: 'disconnected', account: null, models: [], selectedModel: null }),
+    };
+    render(<App gateway={gateway()} initialSession={session()} chatGPTService={service}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Got it' }));
+    await waitFor(() => expect(service.acknowledgeUsage).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+    await waitFor(() => expect(service.testConnection).toHaveBeenCalledWith('gpt-test'));
+    expect(await screen.findByText('Ready to write')).toBeVisible();
   });
   it('clearly requires the desktop app without inserting a sample manuscript', () => {
     render(<App gateway={gateway()}/>);

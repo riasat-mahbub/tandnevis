@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-chatgpt-commands"
+description = "Allow validated ChatGPT connection, model selection, plan-use test, and disconnect commands. Tokens remain in the native credential store."
+commands.allow = [
+  "chatgpt_connection_state",
+  "chatgpt_acknowledge_usage",
+  "chatgpt_connect",
+  "chatgpt_set_model",
+  "chatgpt_test_connection",
+  "chatgpt_disconnect",
+]

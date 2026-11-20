@@ -3039,13 +3039,18 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "shorthand-writer"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
+ "form_urlencoded",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "url",
  "uuid",
+ "windows",
 ]
 
 [[package]]

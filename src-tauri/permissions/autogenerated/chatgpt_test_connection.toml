@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-chatgpt-test-connection"
+description = "Enables the chatgpt_test_connection command without any pre-configured scope."
+commands.allow = ["chatgpt_test_connection"]
+
+[[permission]]
+identifier = "deny-chatgpt-test-connection"
+description = "Denies the chatgpt_test_connection command without any pre-configured scope."
+commands.deny = ["chatgpt_test_connection"]

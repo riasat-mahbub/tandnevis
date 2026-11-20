@@ -1,13 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "Local main window may invoke typed project operations and native project dialogs.",
+  "description": "Local main window may invoke typed project operations, native dialogs, and validated ChatGPT connection actions.",
   "windows": ["main"],
   "local": true,
   "permissions": [
     "core:default",
     "dialog:allow-open",
     "dialog:allow-save",
-    "allow-project-commands"
+    "allow-project-commands",
+    "allow-chatgpt-commands"
   ]
 }

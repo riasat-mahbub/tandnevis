@@ -11,12 +11,26 @@ import StoryView from './components/StoryView';
 import SceneView from './components/SceneView';
 import SettingsView from './components/SettingsView';
 import type { ChatGPTSettingsState, ThemePreference } from './components/SettingsView';
+import { desktopChatGPTGateway } from './services/chatgpt';
+import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import './styles.css';
 
-interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession }
+interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway }
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v1';
 
-export default function App({ gateway = desktopGateway, initialSession }: Props) {
+function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
+  if (state.status === 'disconnected') return 'not-configured';
+  if (state.status === 'connected') return state.ready ? 'ready' : 'connected';
+  if (state.status === 'needs_reconnect') return 'reconnect-required';
+  if (state.status === 'needs_plan_permission') return 'needs-plan-permission';
+  // Native `unavailable` includes transient refresh/model/network failures.
+  // Keep the Settings retry action available instead of treating it as a build
+  // that cannot support sign-in.
+  return 'error';
+}
+
+export default function App({ gateway = desktopGateway, initialSession, chatGPTService }: Props) {
+  const [chatGPTGateway] = useState(() => chatGPTService ?? desktopChatGPTGateway);
   const [workspace] = useState(() => { const w = new Workspace(gateway); if (initialSession) w.attach(initialSession); return w; });
   const { project, pending, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const [sceneId, setSceneId] = useState<string | null>(null);
@@ -45,7 +59,25 @@ export default function App({ gateway = desktopGateway, initialSession }: Props)
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsScroll = useRef(0);
   const settingsButton = useRef<HTMLButtonElement>(null);
-  const chatGPT: ChatGPTSettingsState = { status: 'not-configured', models: [], defaultGuidance: '' };
+  const [nativeChatGPTState, setNativeChatGPTState] = useState<NativeChatGPTState | null>(null);
+  const [chatGPTError, setChatGPTError] = useState('');
+  const [defaultGuidance, setDefaultGuidance] = useState(() => {
+    try { return localStorage.getItem('shorthand.chatgpt-guidance') ?? ''; } catch { return ''; }
+  });
+  const chatGPT: ChatGPTSettingsState = nativeChatGPTState ? {
+    status: toSettingsStatus(nativeChatGPTState),
+    accountLabel: nativeChatGPTState.account ?? undefined,
+    models: nativeChatGPTState.models.map(model => ({ id: model.slug, name: model.displayName })),
+    selectedModel: nativeChatGPTState.selectedModel ?? undefined,
+    defaultGuidance,
+    message: chatGPTError || nativeChatGPTState.reason || (nativeChatGPTState.remoteRevocationConfirmed === false ? 'Disconnected locally, but ChatGPT did not confirm remote token revocation.' : undefined),
+    firstUsePending: nativeChatGPTState.firstUsePending,
+  } : {
+    status: chatGPTGateway.desktop ? (chatGPTError ? 'error' : 'checking') : 'not-configured',
+    models: [],
+    defaultGuidance,
+    message: chatGPTError || undefined,
+  };
   const [notice, setNotice] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [characterId, setCharacterId] = useState<string | null>(null);
@@ -55,6 +87,15 @@ export default function App({ gateway = desktopGateway, initialSession }: Props)
   const chapter = project?.chapters.find(c => c.id === scene?.chapterId);
   const locked = pending > 0 || !!error || !ready;
   const run = (action: () => Promise<unknown>) => { void action().catch(e => setNotice(e instanceof Error ? e.message : String(e))); };
+  const runChatGPT = (action: () => Promise<NativeChatGPTState>) => {
+    setChatGPTError('');
+    void action().then(setNativeChatGPTState).catch(async e => {
+      const message = e instanceof Error ? e.message : String(e);
+      setChatGPTError(message);
+      setNativeChatGPTState(previous => previous ? { ...previous, ready: false } : previous);
+      try { setNativeChatGPTState(await chatGPTGateway.connectionState()); } catch { /* Keep the safe, not-ready state. */ }
+    });
+  };
   const backToStory = () => { setSceneId(null); requestAnimationFrame(() => window.scrollTo(0, storyScroll.current)); };
   const openScene = (id: string) => { if (!scene) storyScroll.current = window.scrollY; setSceneId(id); setLastSceneId(id); window.scrollTo(0, 0); };
   const openSettings = () => {
@@ -85,6 +126,14 @@ export default function App({ gateway = desktopGateway, initialSession }: Props)
     }).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(() => {});
     return () => { disposed = true; stop?.(); window.removeEventListener('beforeunload', beforeUnload); };
   }, [gateway.desktop, workspace]);
+  useEffect(() => {
+    if (!chatGPTGateway.desktop) return;
+    let disposed = false;
+    void chatGPTGateway.connectionState().then(state => { if (!disposed) setNativeChatGPTState(state); }).catch(e => {
+      if (!disposed) setChatGPTError(e instanceof Error ? e.message : String(e));
+    });
+    return () => { disposed = true; };
+  }, [chatGPTGateway]);
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
@@ -120,7 +169,15 @@ export default function App({ gateway = desktopGateway, initialSession }: Props)
         {scene ? <><div className="breadcrumb"><button className="quiet" onClick={backToStory}><ArrowLeft size={15}/>Back to story</button><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => { if (id) setCharacterId(id); setPanel('characters'); }}/></> : <StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/>}</fieldset>
     </>}
     </div>
-    {settingsOpen && <SettingsView appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT} onBack={closeSettings}/>}
+    {settingsOpen && <SettingsView appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT}
+      onConnect={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.connect()) : undefined}
+      onReconnect={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.connect()) : undefined}
+      onTestConnection={chatGPTGateway.desktop ? () => { if (nativeChatGPTState?.selectedModel) runChatGPT(() => chatGPTGateway.testConnection(nativeChatGPTState.selectedModel!)); } : undefined}
+      onAcknowledgeUsage={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.acknowledgeUsage()) : undefined}
+      onDisconnect={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.disconnect()) : undefined}
+      onModelChange={chatGPTGateway.desktop ? model => runChatGPT(() => chatGPTGateway.setModel(model)) : undefined}
+      onGuidanceChange={chatGPTGateway.desktop ? guidance => { setDefaultGuidance(guidance); try { localStorage.setItem('shorthand.chatgpt-guidance', guidance); } catch { /* Current session value still applies. */ } } : undefined}
+      onBack={closeSettings}/>}
     <footer className="app-footer"><span>Shorthand Writer</span><span>{project ? `Local project · revision ${project.revision}` : 'Your words, on your computer.'}</span></footer>
   </div>;
 }
