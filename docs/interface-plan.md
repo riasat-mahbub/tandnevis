@@ -117,6 +117,8 @@ An inspector explicitly distinguishes **This scene/beat** from **Reusable profil
 
 ## 5. Delivery slices
 
+The [connected AI interface plan](install-and-ai-plan.md#3-generate-button-and-connection-ui) extends the AI slice below. Add Generate scene/Stop near the scene controls, an account/model/usage indicator, an AI connections panel for supported sign-in, and streamed candidates with deliberate Accept/Revise/Compare actions. Preserve both existing zoom levels. First connection setup returns to the selected scene; subsequent generation reuses that connection. Subscription limits never silently switch the writer to an API-billed route.
+
 These are slices of the existing milestones, not a replacement schedule.
 
 1. **Authoring timelines and controls:** after the scaffold and durable SQLite slice, connect matching scene/beat timelines, drag-and-drop reordering at both levels, and directly visible Duplicate/Delete quick actions to Rust domain commands. Include chapter/scene/beat creation, editing, insertion, movement, and recovery. Keep stable identities, switching buffers, evidence references, and undo/redo correct before styling those controls. The unavailable legacy engine is not a prerequisite.

@@ -1,6 +1,6 @@
 # Tauri desktop implementation plan
 
-Status: approved architecture, implementation starting. This document turns the [product/development plan](development-plan.md), [interface requirements](interface-plan.md), and [design record](../DESIGN.md) into buildable work. It supersedes the earlier Electron and Markdown-first architectures. [Implementation progress](implementation-progress.md) records actual delivery and verification; requirements here are not claims of completed features.
+Status: approved architecture; the first native authoring tranche is implemented. This document turns the [product/development plan](development-plan.md), [interface requirements](interface-plan.md), and [design record](../DESIGN.md) into buildable work. It supersedes the earlier Electron and Markdown-first architectures. [Implementation progress](implementation-progress.md) records actual delivery and verification; requirements here are not claims of completed features. The [installation and connected AI plan](install-and-ai-plan.md) details the proposed next tranche.
 
 ## 1. Deliverable and architectural decisions
 
@@ -16,7 +16,7 @@ Build an installed, local-first desktop application with a React/TypeScript fron
 | Data | Local SQLite project database is canonical | Rust domain/repository code alone reads and writes the database; no frontend SQL plugin |
 | Markdown | Explicit import/export interchange | No live two-way filesystem or Obsidian synchronization; imported originals remain untouched |
 | Existing engine | Later compatibility adapter, after inspection and parity fixtures | Native authoring does not depend on Python or an unavailable external engine |
-| AI | One provider adapter in Rust; provider choice remains open | No provider key or network request is required for ordinary authoring |
+| AI | Subscription-aware provider adapters owned by Rust; direct ChatGPT plan access is the proposed first slice, subject to eligibility verification | No AI sign-in or network request is required for ordinary authoring; Gemini/OpenCode follow separate qualification gates |
 | Tests | Rust/domain tests, frontend behavior tests, browser interaction checks, and installed Tauri/WebView tests | A browser-only mockup does not verify native IPC, persistence, or packaging |
 
 Tauri supports frontend calls into Rust commands and streaming through channels. Use those mechanisms as the application boundary. [Calling Rust](https://v2.tauri.app/develop/calling-rust/), [calling the frontend](https://v2.tauri.app/develop/calling-frontend/).
@@ -237,13 +237,13 @@ Build the worker with its interpreter if used; end users install neither Python 
 
 Advanced AI and the integrated provider loop are later milestones; ordinary native authoring must work first. Candidate/review controls remain requirements until implemented and verified.
 
-Define a provider trait for credential validation, supported model/settings, request construction, streaming, usage, cancellation, and classified errors. Select one provider for the first integrated release. Avoid a generic “compatible API” claim until an adapter is tested.
+Define a provider trait for credential validation, supported model/settings, request construction, streaming, usage, cancellation, and classified errors. Deliver one provider in the first integrated release. The [installation and connected AI plan](install-and-ai-plan.md) specifies the Generate button, ChatGPT plan sign-in, staged Gemini/OpenCode connections, credential lifecycle, and commit-sized delivery. It supersedes the assumption that every connection requires a separately billed API key. Avoid a generic “compatible API” claim until an adapter is tested.
 
 Before starting, flush the selected scene's dirty authoring state and create an immutable request snapshot containing summary, beat order/text, local scope, stage if present, narration, intended outcomes, style guidance, and relevant entering state. Include provenance, unmodelled coverage, source hashes, provider/model/settings, and prompt-template version.
 
 Do not include author-only comments, future-period profiles, withheld revelations, or another character's private knowledge as available viewpoint knowledge. Make truncation explicit and preserve hard knowledge/revelation constraints. Preview the assembled context and what will leave the machine.
 
-Rust retrieves the stored key and owns the HTTP request. Stream into a separate candidate and checkpoint partial output; UI streams are a view of that durable job. Mark a result outdated when its direction, context, or scene order has changed. Keep provider retry distinct from an idempotent local command retry so a lost response cannot cause invisible duplicate billable requests.
+Rust retrieves the connection's credential and owns direct HTTP requests or a qualified helper transport. Subscription OAuth and API keys are distinct connection modes with explicit usage labels; never silently change billing routes. Stream into a separate candidate and checkpoint partial output; UI streams are a view of that durable job. Mark a result outdated when its direction, context, or scene order has changed. Keep provider retry distinct from an idempotent local command retry so a lost response cannot cause invisible duplicate billable requests.
 
 Candidate actions: label, inspect, compare, edit, revise, recoverable remove, and deliberate acceptance. Acceptance validates current source revision, stores the prior manuscript revision, updates the current prose transactionally, and marks evidence review pending. It never accepts suggested character diffs, refreshes reviewed fingerprints, clears continuity concerns, or establishes canon automatically.
 
@@ -270,6 +270,8 @@ Logs use operation/job IDs, timings, and error codes. Manuscript text, request b
 7. Build macOS/Linux separately later, including native credentials, file watchers, paths, fonts, installer/update behavior, and engine sidecars for each target. Do not describe a Windows-tested build as cross-platform verified.
 
 No deployment, publishing account, signing key, installer certificate, or release host is assumed to exist in this repository.
+
+The [installation script plan](install-and-ai-plan.md#1-installation-scripts) adds a per-user installer launcher and a separate developer setup script, including local-artifact installation before release hosting exists. Its clean-machine, authenticity, offline-runtime, upgrade, and project-preservation checks extend this release section. End users do not install developer toolchains; optional AI helper packaging is qualified independently.
 
 ## 13. Implementation milestones and tickets
 
@@ -326,7 +328,7 @@ Proposed CI gates after scaffold: frontend typecheck/lint/behavior tests/build; 
 | Python sidecar vs Rust engine | Decide after external source inspection, parity, and packaging evidence | Later M4 compatibility gate |
 | Exact beat document format | Versioned database document; freeform text first, scoped inline nodes incrementally | M1/M4 schema/codec evidence |
 | Native credentials | OS-backed Windows store, no plaintext fallback | Before M5 |
-| Provider and authentication | One tested direct API adapter; no subscription/API assumption | Before M5 |
+| Provider and authentication | Qualify direct ChatGPT plan OAuth first; explicit API mode and staged Gemini/OpenCode routes as specified in the connected AI plan | Before enabling each M5 adapter; no blanket subscription entitlement claim |
 | Passage-level prose revision | Whole-scene loop first; selected-passage revision follows context-safe editing | M5 scope review |
 | PDF export backend | Reuse a verified existing pipeline if possible; otherwise specify a packaged exporter | M6; do not claim PDF until implemented |
 | Optional physical placement | Separate increment with no core-loop dependency | M7 |

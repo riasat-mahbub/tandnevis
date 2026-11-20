@@ -16,7 +16,7 @@ Build a local desktop writing application around the existing scene-shorthand fr
 
 **Next interface iteration:** add a playful touch through selective skew and asymmetry, plus discoverable create/edit/duplicate/delete controls. Keep writing surfaces comfortable and make removal recoverable. The concrete scope, control inventory, state rules, and acceptance checks are in [the playful interface and editing plan](interface-plan.md). These additions are planned; the current prototype remains the functional baseline.
 
-**Approved storage and first tranche:** Windows first, one writer, one open native project, with SQLite as the canonical store and Rust-only domain/database access. Build the scaffold, durable authoring backend, connected Story/Scene timelines/editor/library/Trash, and verification/build in commit-sized steps. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Integrated AI, legacy engine compatibility, and production signing follow as separate milestones. Local authoring works offline; cloud generation later requires a connection. Provider choice remains open.
+**Approved storage and first tranche:** Windows first, one writer, one open native project, with SQLite as the canonical store and Rust-only domain/database access. Build the scaffold, durable authoring backend, connected Story/Scene timelines/editor/library/Trash, and verification/build in commit-sized steps. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Integrated AI, legacy engine compatibility, and production signing follow as separate milestones. Local authoring works offline; cloud generation requires a connection. The next-tranche plan proposes direct ChatGPT plan access first after eligibility verification, with Gemini/OpenCode qualified separately.
 
 The primary workflow is:
 
@@ -159,7 +159,7 @@ When an upstream packet is stale or invalid, keep the editor usable and label do
 
 ## 5. AI prose generation is a core feature
 
-The eventual authoring/generation release includes one integrated generation path. This follows the first native authoring tranche. Provider selection and credentials are settings, not story content. Keep the provider interface small enough to add another backend later.
+The eventual authoring/generation release includes one integrated generation path. This follows the first native authoring tranche. Provider selection and credentials are settings, not story content. Keep the provider interface small enough to add another backend later. The [installation and connected AI plan](install-and-ai-plan.md) now defines the proposed next tranche: Windows install/setup scripts, a Scene Generate button, supported subscription sign-in, model/account selection, and recoverable streamed candidates. Direct ChatGPT plan access is the proposed first connection after eligibility testing; Gemini and OpenCode are staged and individually qualified. API access remains a separately selected route.
 
 ### Context assembly
 

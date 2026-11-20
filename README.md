@@ -23,6 +23,8 @@ Use `npm run desktop:build` to build the Windows executable and installer. `npm 
 
 [Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
 
+[Read the installation and connected AI plan](docs/install-and-ai-plan.md): Windows install/setup scripts, subscription-aware sign-in, the Scene Generate workflow, and commit-sized implementation steps.
+
 ## Agreed direction
 
 - A separate software repository from the story vault.
