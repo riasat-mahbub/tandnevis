@@ -14,9 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "desktop:dev": "node tools/desktop.mjs dev",
+    "desktop:build": "node tools/desktop.mjs build",
+    "test:rust": "node tools/desktop.mjs test",
+    "native:smoke": "node tools/native-smoke.cjs"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.5.3",

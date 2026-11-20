@@ -1,12 +1,23 @@
 # Shorthand Writer
 
-A proposed local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with optional reusable character, emotion, tone, and voice blocks, and can contain zero, one, or many characters. An optional stage provides physical placement. AI composes prose from that direction and the story's established context.
+A local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with optional character references and local emotion/delivery, and can contain zero, one, or many characters. The full plan adds reusable direction blocks, optional physical stages, and AI prose generation.
 
-**Status:** implementation is starting in small, reviewable commits. [Implementation progress](docs/implementation-progress.md) records completed work, pending work, and verification limits.
+**Status:** the first desktop authoring tranche is implemented: native SQLite projects, Story/Scene timelines, freeform beat editing, character references, recoverable editing controls, and Markdown interchange. [Implementation progress](docs/implementation-progress.md) records verification and remaining features, including AI generation and physical stages.
 
 **Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
 
 [Read the development plan](docs/development-plan.md).
+
+## Run the desktop app
+
+With Node 22.12+, Rust 1.90+, and the [Windows desktop prerequisites](docs/development-setup.md) installed:
+
+```powershell
+npm ci
+npm run desktop:dev
+```
+
+Use `npm run desktop:build` to build the Windows executable and installer. `npm run dev` opens only the renderer; native project access requires Tauri. See [development setup](docs/development-setup.md) for the local toolchain, checks, native smoke runner, and Markdown interchange limits.
 
 [Read the detailed Tauri implementation plan](docs/tauri-implementation-plan.md): architecture, entities and storage, native command contracts, editor/drag-and-drop implementation, AI jobs, recovery, packaging, and milestone acceptance gates.
 

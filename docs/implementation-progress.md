@@ -31,21 +31,26 @@ Updated 19 November 2026. This ledger separates approved direction from implemen
    - [x] Add visible drag handles/Duplicate/Delete, insertion/movement equivalents, useful focus/empty states, and actual persistence feedback.
    - [x] Connect reusable character profile editing/duplication, explicit local reference emotion/delivery, usage/archive behavior, and project Trash/Restore. Separate reusable direction presets remain later work.
    - [x] Add optional scene narration, playful backings, Calm appearance, and dark/reduced-motion treatments. Story narration inheritance and physical stage controls remain later work; the editor requires neither.
-   - [x] Pass 16 frontend behavior regressions, typecheck/production build, and native authoring interaction smoke before committing this step. Final theme confirmation belongs to step 5.
+   - [x] Pass frontend behavior regressions, typecheck/production build, and native authoring interaction smoke before committing this step. Native pointer/selection defects were corrected in a separate follow-up commit with regression coverage.
 5. **Verify and document the tranche** — `test: verify native authoring and document build status`.
-   - [ ] Run appropriate frontend typecheck/build/behavior checks and Rust format/lint/domain tests.
-   - [ ] Run native build and available interaction/runtime checks. Record exact commands and outcomes below; renderer checks alone do not prove native persistence or installed-app startup.
-   - [ ] Document setup, supported interchange, durability/undo limits, and remaining gaps. Update this ledger to match delivered evidence.
+   - [x] Run appropriate frontend typecheck/build/behavior checks and Rust format/lint/domain tests.
+   - [x] Run native build and available interaction/runtime checks. Record exact commands and outcomes below; renderer checks alone do not prove native persistence or installed-app startup.
+   - [x] Document setup, supported interchange, durability/undo limits, and remaining gaps. Update this ledger to match delivered evidence.
 
 ## Verification record
 
 - Documentation architecture committed as `90fc58e`; runnable scaffold committed as `7358773`; transactional backend committed as `5c34a4d`.
+- Connected writing interface committed as `65dfca6`; native drag-persistence and reference-selection corrections committed as `02f4d55`.
 - Scaffold agent: frontend typecheck and production build passed; dependency audit reported zero findings.
 - Backend agent: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --lib backend::tests` passed with the repository-local Rust toolchain; 14 tests passed.
 - Connected frontend production build and `npm run desktop:build -- --debug --no-bundle` pass. The debug executable embeds the renderer and does not require a development server.
-- Frontend: `npm test` passes 16 tests covering rapid saves, queued structural edits, failure/retry/conflict recovery, project switching, title/summary editing, navigation, reordering, Trash, local reference scope, and rename-safe text history.
-- Native behavioral smoke passes real IPC authoring, revision/session rejection, Markdown files, UI summary and keyboard beat edits, Duplicate/Move/Delete/Restore, and UI reopen persistence. Visual review found and fixed mixed light/dark root colors; final theme confirmation remains in step 5.
-- Installer generation, clean-machine installation, native operating-system dialog interaction, and pointer drag verification remain unverified.
+- Frontend: `npm test` passes 19 tests covering rapid saves, queued structural edits, failure/retry/conflict recovery, project switching, title/summary editing, navigation, reordering, Trash, local reference scope, rename-safe text history, transient drag targets, and selection-preserving save acknowledgements.
+- `npm run test:rust` passes all 14 Rust tests through the new toolchain launcher. `node tools/desktop.mjs check` detects the repository-local Rust toolchain without persistent environment changes.
+- `node tools/native-smoke.cjs --exe src-tauri/target/debug/shorthand-writer.exe` passes against the bundled native executable (also exposed as `npm run native:smoke -- --exe ...`). Evidence: `.tools/native-smoke/run-HYlJZd/report.json` and eight screenshots in that directory (local ignored build evidence).
+- Native checks exercise real IPC authoring, revision/session rejection, Markdown files, UI summary and keyboard beat edits, Duplicate/Move/Delete/Restore, UI reopen persistence, actual scene and beat pointer drags with changed SQLite order, character insertion/selection, local emotion, and profile rename without extra editor saves.
+- Visual confirmation covers Story/Scene in light/dark at 1440px and 800px with no horizontal page overflow. The mixed-theme bug, lost drag commits, and reference-selection resets found during native inspection are fixed and covered by regressions. Exact before/after drop-marker semantics remain later interaction hardening.
+- Installer generation, clean-machine installation, and native operating-system dialog interaction remain unverified. The smoke runner replaces only the chooser response; project IPC remains native.
+- Vite reports a nonblocking renderer chunk-size warning (about 822 kB before compression); editor loading/performance work remains a later milestone.
 - Current backend history retains full before/after snapshots per operation; history compaction/performance hardening, separate reusable presets, and explicit user-owned backup tooling remain later work.
 
 ## Later milestones
