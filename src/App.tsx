@@ -16,7 +16,7 @@ import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import './styles.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway }
-const PLATINUM_DEFAULT_VERSION = 'platinum-light-v1';
+const PLATINUM_DEFAULT_VERSION = 'platinum-light-v2';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
   if (state.status === 'disconnected') return 'not-configured';
@@ -38,8 +38,9 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const [panel, setPanel] = useState<Panel>(null);
   const [appearance, setAppearance] = useState<ThemePreference>(() => {
     try {
-      // Make the new Harvest Orange / Platinum design the one-time default for
-      // existing installs too. Explicit choices made after this release stick.
+      // Make Platinum the one-time default for existing installs too. Bump the
+      // marker so installs that saw the earlier default also switch to light.
+      // Explicit choices made after this migration continue to stick.
       if (localStorage.getItem('shorthand.appearance-default') !== PLATINUM_DEFAULT_VERSION) {
         localStorage.setItem('shorthand.appearance', 'light');
         localStorage.setItem('shorthand.appearance-default', PLATINUM_DEFAULT_VERSION);

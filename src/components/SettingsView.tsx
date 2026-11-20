@@ -32,7 +32,7 @@ interface Props {
 }
 
 const appearanceOptions: { value: ThemePreference; label: string; description: string; Icon: typeof Sun }[] = [
-  { value: 'light', label: 'Light', description: 'Bright writing desk', Icon: Sun },
+  { value: 'light', label: 'Platinum', description: 'Bright writing desk', Icon: Sun },
   { value: 'system', label: 'System', description: 'Follow your device', Icon: Laptop },
   { value: 'dark', label: 'Dark', description: 'Low-light writing', Icon: Moon },
 ];
