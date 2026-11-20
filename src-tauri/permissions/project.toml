@@ -5,6 +5,8 @@ commands.allow = [
   "create_project",
   "open_project",
   "read_project",
+  "save_project",
+  "project_has_unsaved_changes",
   "apply_operation",
   "export_markdown",
   "import_markdown",

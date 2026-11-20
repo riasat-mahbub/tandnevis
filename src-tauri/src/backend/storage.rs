@@ -9,7 +9,31 @@ const SCHEMA_VERSION: i32 = 2;
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
 pub struct Database {
     connection: Connection,
+    persisted: Option<PersistedProject>,
 }
+
+struct PersistedProject {
+    connection: Connection,
+    project_id: String,
+    revision: u64,
+    data_version: i64,
+    saved_changes: u64,
+}
+
+// Parent tables precede their children. This list includes every persisted
+// feature, including undo history and generated drafts, for a full project save.
+const SAVE_TABLES: &[&str] = &[
+    "project",
+    "chapters",
+    "scenes",
+    "beats",
+    "characters",
+    "trash",
+    "import_sources",
+    "history",
+    "generation_jobs",
+    "accepted_prose_revisions",
+];
 
 fn sql(error: rusqlite::Error) -> String {
     format!("Project database: {error}")
@@ -109,7 +133,10 @@ impl Database {
             )
             .map_err(sql)?;
             tx.commit().map_err(sql)?;
-            Ok(Self { connection })
+            Ok(Self {
+                connection,
+                persisted: None,
+            })
         })();
         // Only this call's exclusively-created file is removed when initialization fails.
         if result.is_err() {
@@ -161,9 +188,119 @@ impl Database {
                     .into(),
             );
         }
-        let mut database = Self { connection };
+        let mut database = Self {
+            connection,
+            persisted: None,
+        };
         database.read()?.validate()?;
         Ok(database)
+    }
+    /// Edit in a private SQLite database. A normal authoring operation never
+    /// changes the chosen project file until an explicit save is requested.
+    pub fn working_copy(self) -> Result<Self> {
+        if self.persisted.is_some() {
+            return Ok(self);
+        }
+        let data_version = self
+            .connection
+            .query_row("PRAGMA data_version", [], |r| r.get(0))
+            .map_err(sql)?;
+        let mut connection = Connection::open_in_memory().map_err(sql)?;
+        {
+            let backup =
+                rusqlite::backup::Backup::new(&self.connection, &mut connection).map_err(sql)?;
+            backup
+                .run_to_completion(128, Duration::from_millis(5), None)
+                .map_err(sql)?;
+        }
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON; PRAGMA trusted_schema = OFF;")
+            .map_err(sql)?;
+        let (project_id, revision) = connection
+            .query_row(
+                "SELECT project_id,revision FROM project WHERE singleton=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(sql)?;
+        let saved_changes = connection.total_changes();
+        Ok(Self {
+            connection,
+            persisted: Some(PersistedProject {
+                connection: self.connection,
+                project_id,
+                revision,
+                data_version,
+                saved_changes,
+            }),
+        })
+    }
+
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.persisted
+            .as_ref()
+            .is_some_and(|persisted| self.connection.total_changes() != persisted.saved_changes)
+    }
+
+    /// Save all tables in one SQLite transaction. Validate the saved file while
+    /// holding the write lock so another app window cannot be overwritten.
+    pub fn save(&mut self) -> Result<ProjectSnapshot> {
+        if !self.has_unsaved_changes() {
+            return self.read();
+        }
+        let snapshot = self.read()?;
+        let persisted = self
+            .persisted
+            .as_mut()
+            .ok_or("This project has no save destination.")?;
+        let tx = persisted
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sql)?;
+        let version: i64 = tx
+            .query_row("PRAGMA data_version", [], |r| r.get(0))
+            .map_err(sql)?;
+        let identity: (String, u64) = tx
+            .query_row(
+                "SELECT project_id,revision FROM project WHERE singleton=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(sql)?;
+        if identity != (persisted.project_id.clone(), persisted.revision)
+            || version != persisted.data_version
+        {
+            return Err("The project file changed in another window. Your edits remain in this window; save a recovery copy before reopening the changed file.".into());
+        }
+        for table in SAVE_TABLES.iter().rev() {
+            tx.execute(&format!("DELETE FROM {table}"), [])
+                .map_err(sql)?;
+        }
+        for table in SAVE_TABLES {
+            let mut source = self
+                .connection
+                .prepare(&format!("SELECT * FROM {table}"))
+                .map_err(sql)?;
+            let columns = source.column_count();
+            let placeholders = vec!["?"; columns].join(",");
+            let mut insert = tx
+                .prepare(&format!("INSERT INTO {table} VALUES ({placeholders})"))
+                .map_err(sql)?;
+            let mut rows = source.query([]).map_err(sql)?;
+            while let Some(row) = rows.next().map_err(sql)? {
+                let values = (0..columns)
+                    .map(|column| row.get::<_, rusqlite::types::Value>(column))
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(sql)?;
+                insert
+                    .execute(rusqlite::params_from_iter(values))
+                    .map_err(sql)?;
+            }
+        }
+        tx.commit().map_err(sql)?;
+        persisted.revision = snapshot.revision;
+        persisted.saved_changes = self.connection.total_changes();
+        Ok(snapshot)
     }
     pub fn read(&mut self) -> Result<ProjectSnapshot> {
         let tx = self.connection.transaction().map_err(sql)?;

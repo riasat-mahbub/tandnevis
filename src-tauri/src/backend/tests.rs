@@ -577,6 +577,7 @@ fn opening_another_project_invalidates_old_session_without_losing_persistence() 
             )
         })
         .unwrap();
+    state.with_project(&a.session_id, Database::save).unwrap();
     let b = state.install(second.create()).unwrap();
     assert_ne!(a.project.project_id, b.project.project_id);
     assert!(state.with_project(&a.session_id, Database::read).is_err());
@@ -585,6 +586,94 @@ fn opening_another_project_invalidates_old_session_without_losing_persistence() 
         .unwrap();
     assert_eq!(reopened.project.chapters[0].title, "Persisted chapter");
     assert_ne!(reopened.session_id, a.session_id);
+}
+
+#[test]
+fn manual_save_keeps_structural_and_text_edits_out_of_the_file_until_saved() {
+    let file = ProjectFile::new();
+    let mut working = file.create().working_copy().unwrap();
+    assert!(!working.has_unsaved_changes());
+    let p = scene(&mut working);
+    let scene_id = p.scenes[0].id.clone();
+    beat(&mut working, &scene_id, "A private working beat.");
+    let current = apply(
+        &mut working,
+        UpdateScene {
+            scene_id: scene_id.clone(),
+            title: None,
+            summary: Some("Working summary".into()),
+            tone: None,
+            prose: Some("Working prose.".into()),
+            narration: None,
+        },
+    );
+    assert!(working.has_unsaved_changes());
+    let mut on_disk = Database::open(file.path()).unwrap();
+    assert_eq!(on_disk.read().unwrap().revision, 0);
+    assert!(on_disk.read().unwrap().chapters.is_empty());
+    assert_eq!(working.save().unwrap(), current);
+    assert!(!working.has_unsaved_changes());
+    assert_eq!(on_disk.read().unwrap(), current);
+    let undone = apply(&mut working, Undo);
+    assert_eq!(undone.scenes[0].prose, "");
+    assert!(working.has_unsaved_changes());
+    working.save().unwrap();
+    drop(working);
+    let mut reopened = Database::open(file.path()).unwrap();
+    assert_eq!(reopened.read().unwrap(), undone);
+    let redone = apply(&mut reopened, Redo);
+    assert_eq!(redone.scenes[0].prose, "Working prose.");
+}
+
+#[test]
+fn dropping_an_unsaved_working_copy_preserves_the_saved_project() {
+    let file = ProjectFile::new();
+    let mut working = file.create().working_copy().unwrap();
+    scene(&mut working);
+    assert!(working.has_unsaved_changes());
+    drop(working);
+    let mut reopened = Database::open(file.path()).unwrap();
+    assert_eq!(reopened.read().unwrap().revision, 0);
+    assert!(reopened.read().unwrap().scenes.is_empty());
+}
+
+#[test]
+fn full_save_rejects_external_changes_and_retains_working_edits() {
+    let file = ProjectFile::new();
+    let mut working = file.create().working_copy().unwrap();
+    let current = scene(&mut working);
+    let mut other = Database::open(file.path()).unwrap();
+    let theirs = apply(
+        &mut other,
+        RenameProject {
+            title: "Other window".into(),
+        },
+    );
+    assert!(working
+        .save()
+        .unwrap_err()
+        .contains("changed in another window"));
+    assert!(working.has_unsaved_changes());
+    assert_eq!(working.read().unwrap(), current);
+    assert_eq!(other.read().unwrap(), theirs);
+}
+
+#[test]
+fn full_save_detects_external_writes_even_without_a_revision_change() {
+    let file = ProjectFile::new();
+    let mut working = file.create().working_copy().unwrap();
+    scene(&mut working);
+    let other = rusqlite::Connection::open(file.path()).unwrap();
+    other
+        .execute("UPDATE project SET title='External edit'", [])
+        .unwrap();
+    assert!(working
+        .save()
+        .unwrap_err()
+        .contains("changed in another window"));
+    assert!(working.has_unsaved_changes());
+    let mut reopened = Database::open(file.path()).unwrap();
+    assert_eq!(reopened.read().unwrap().title, "External edit");
 }
 
 #[test]
@@ -660,6 +749,52 @@ fn generation_job(
         created_at_ms,
         updated_at_ms: created_at_ms,
     }
+}
+
+#[test]
+fn manual_save_tracks_and_persists_generation_checkpoints_without_story_revision_changes() {
+    let file = ProjectFile::new();
+    let mut working = file.create().working_copy().unwrap();
+    let p = scene(&mut working);
+    working.save().unwrap();
+    let scene_id = p.scenes[0].id.clone();
+    let job = generation_job(&scene_id, p.revision, 10);
+    working.create_generation_job(&job).unwrap();
+    assert!(working.has_unsaved_changes());
+    let checkpoint = working
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Streaming,
+            "A saved partial draft.".into(),
+            None,
+            11,
+        )
+        .unwrap();
+    let disk = Database::open(file.path()).unwrap();
+    assert!(disk
+        .generation_jobs_for_scene(&scene_id)
+        .unwrap()
+        .is_empty());
+    working.save().unwrap();
+    assert!(!working.has_unsaved_changes());
+    let disk = Database::open(file.path()).unwrap();
+    assert_eq!(disk.generation_job(&job.id).unwrap(), Some(checkpoint));
+    working
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Completed,
+            "A saved complete draft.".into(),
+            None,
+            12,
+        )
+        .unwrap();
+    assert!(working.has_unsaved_changes());
+    working.save().unwrap();
+    let disk = Database::open(file.path()).unwrap();
+    assert_eq!(
+        disk.generation_job(&job.id).unwrap().unwrap().status,
+        domain::GenerationJobStatus::Completed
+    );
 }
 
 #[test]

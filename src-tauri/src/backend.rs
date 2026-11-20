@@ -30,7 +30,8 @@ pub struct OpenProject {
 }
 
 impl BackendState {
-    fn install(&self, mut database: Database) -> Result<OpenProject> {
+    fn install(&self, database: Database) -> Result<OpenProject> {
+        let mut database = database.working_copy()?;
         database.interrupt_unfinished_generation_jobs(generation::timestamp_ms())?;
         let project = database.read()?;
         let id = new_id();
@@ -104,6 +105,25 @@ pub async fn read_project(
 ) -> Result<ProjectSnapshot> {
     let state = state.inner().clone();
     blocking(move || state.with_project(&session_id, Database::read)).await
+}
+
+#[tauri::command]
+pub async fn save_project(
+    session_id: String,
+    state: tauri::State<'_, BackendState>,
+) -> Result<ProjectSnapshot> {
+    let state = state.inner().clone();
+    blocking(move || state.with_project(&session_id, Database::save)).await
+}
+
+#[tauri::command]
+pub async fn project_has_unsaved_changes(
+    session_id: String,
+    state: tauri::State<'_, BackendState>,
+) -> Result<bool> {
+    let state = state.inner().clone();
+    blocking(move || state.with_project(&session_id, |database| Ok(database.has_unsaved_changes())))
+        .await
 }
 #[tauri::command]
 pub async fn apply_operation(

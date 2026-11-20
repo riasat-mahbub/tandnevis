@@ -26,6 +26,8 @@ pub fn run() {
             backend::create_project,
             backend::open_project,
             backend::read_project,
+            backend::save_project,
+            backend::project_has_unsaved_changes,
             backend::apply_operation,
             backend::export_markdown,
             backend::import_markdown,
