@@ -33,7 +33,7 @@ export class GenerationSession {
   private loading = new Set<string>();
   private stopRequested = new Set<string>();
 
-  constructor(readonly gateway: GenerationGateway) {}
+  constructor(readonly gateway: GenerationGateway, private onNativeChange: () => void = () => {}) {}
 
   getState(sessionId: string, sceneId: string): GenerationViewState {
     return this.states.get(keyFor(sessionId, sceneId)) ?? idleState;
@@ -131,6 +131,7 @@ export class GenerationSession {
     const { sessionId, sceneId } = event.binding;
     const current = this.getState(sessionId, sceneId);
     if (current.binding && current.binding.jobId !== event.binding.jobId) return;
+    this.onNativeChange();
     if (event.type === 'textDelta') {
       const job = current.job ? { ...current.job, status: 'streaming' as const, draftText: event.draftText } : null;
       this.publish(sessionId, sceneId, { ...current, status: current.status === 'stopping' ? 'stopping' : 'streaming', job, binding: event.binding, draftText: event.draftText });
@@ -202,6 +203,7 @@ export class GenerationSession {
     const current = this.getState(sessionId, sceneId);
     if (!current.job) return;
     const job = await this.gateway.discard(sessionId, sceneId, current.job.id, current.job.model, current.job.connectionId);
+    this.onNativeChange();
     this.publish(sessionId, sceneId, { status: panelStatus(job.status), job, binding: bindingFor(sessionId, job), draftText: job.draftText, errorMessage: job.errorMessage ?? undefined });
   }
 

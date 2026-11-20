@@ -17,6 +17,8 @@ export interface ChatGPTSettingsState {
 }
 
 interface Props {
+  autosave: boolean;
+  onAutosaveChange: (enabled: boolean) => void;
   appearance: ThemePreference;
   onAppearanceChange: (preference: ThemePreference) => void;
   calm: boolean;
@@ -54,7 +56,7 @@ function statusCopy(status: ChatGPTConnectionStatus) {
   return ['Not connected', 'Connect a ChatGPT account before generating a scene.'];
 }
 
-export default function SettingsView({ appearance, onAppearanceChange, calm, onCalmChange, chatGPT, runtimeInfo, runtimeError, runtimeLoading, desktopRuntime, onRetryRuntime, onConnect, onReconnect, onTestConnection, onAcknowledgeUsage, onDisconnect, onModelChange, onGuidanceChange, onBack }: Props) {
+export default function SettingsView({ autosave, onAutosaveChange, appearance, onAppearanceChange, calm, onCalmChange, chatGPT, runtimeInfo, runtimeError, runtimeLoading, desktopRuntime, onRetryRuntime, onConnect, onReconnect, onTestConnection, onAcknowledgeUsage, onDisconnect, onModelChange, onGuidanceChange, onBack }: Props) {
   const [statusLabel, statusDescription] = statusCopy(chatGPT.status);
   const canConfigure = chatGPT.status !== 'checking' && chatGPT.status !== 'unavailable';
   const needsExistingRegistration = chatGPT.status === 'reconnect-required' || chatGPT.status === 'needs-plan-permission';
@@ -94,6 +96,7 @@ export default function SettingsView({ appearance, onAppearanceChange, calm, onC
           <input type="radio" name="appearance" value={value} checked={appearance === value} onChange={() => onAppearanceChange(value)}/><span className="appearance-option-icon"><Icon size={17}/></span><span className="appearance-option-copy"><strong>{label}</strong><small>{description}</small></span>{appearance === value && <Check className="appearance-check" size={15}/>}
         </label>)}</fieldset>
         <label className="calm-setting"><span><strong>Calm appearance</strong><small>Keep the layout; remove the playful angles.</small></span><input type="checkbox" checked={calm} onChange={e => onCalmChange(e.target.checked)}/></label>
+        <label className="calm-setting"><span><strong>Autosave</strong><small>{autosave ? 'Save project changes automatically.' : 'Manual save: use Save or Ctrl+S. Unsaved changes stay in this session.'}</small></span><input type="checkbox" checked={autosave} onChange={e => onAutosaveChange(e.target.checked)}/></label>
       </section>
 
       <aside className="settings-aside"><span className="settings-aside-mark" aria-hidden="true">✦</span><h2>Your story, your pace.</h2><p>Connect only when you want a draft. Scene generation will use the beats and character references in the scene you choose.</p><div className="palette-swatches" aria-label="Harvest Orange, Platinum, and Iron Grey palette"><span title="Harvest Orange"/><span title="Platinum"/><span title="Iron Grey"/></div></aside>

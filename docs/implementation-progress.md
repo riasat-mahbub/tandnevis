@@ -2,6 +2,16 @@
 
 Updated 20 November 2026. This ledger separates approved direction from implemented features. Check a box only after the change exists and its relevant verification is recorded. Commit-sized steps are ordered below; dependent steps can be prepared concurrently, while review and commits remain sequential.
 
+## Current saving behavior
+
+Manual save is the default. Edits, structural operations, history, and generation jobs update a private in-memory SQLite working copy. Save / Ctrl+S writes the complete working database into the chosen project file in one transaction with external-change detection. Autosave is optional in Settings and runs after editing settles. Manual changes require Save for crash durability; older verification below describes the earlier immediate-save implementation where stated.
+
+Autosave flicker came from a global lock tied to every pending edit. Pending authoring updates no longer disable prose fields, timeline controls, or generation setup controls. Save status reserves its layout width. Undo/Redo still wait for queued authoring updates. Closing or switching projects prompts Save / Discard / Cancel. The close handler now has the native `core:window:allow-destroy` permission required by Tauri, and waits for pending authoring updates before making a close decision.
+
+Verification: 56 frontend tests and 63 Rust tests pass, with the anonymous network test intentionally ignored in the routine Rust suite. Tests cover no project-file writes before Save, structural/text/history persistence after Save, generation-only dirty state, conflict retention, manual and optional autosave, Ctrl+S, stable editable prose during queued updates, and save/cancel close behavior. Native storage committed as `8684156`.
+
+The optimized portable ZIP was rebuilt under `out/portable-manual-save/`, its checksum verified, and the extracted app passed native smoke outside the checkout. Evidence: `.tools/native-smoke/run-acMMqx/report.json`. The check verifies byte-for-byte unchanged project data until Save, complete reopen persistence after Save, manual-default Settings, and actual exact-child Windows `WM_CLOSE` handling: unsaved prompt, Cancel preserving edits, then Save and successful close with exit code 0. Both explicit themes still fit 1440px and 800px without horizontal overflow.
+
 ## Approved decisions
 
 - [x] Tauri 2 desktop, React/TypeScript frontend, Rust backend.

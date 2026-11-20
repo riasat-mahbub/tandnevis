@@ -4,6 +4,30 @@ import type { ProjectSession, ProjectSnapshot } from './project';
 import { deferred, gateway, project, session } from '../test/fixtures';
 
 describe('revisioned authoring queue', () => {
+  it('keeps complete working edits out of the save gateway until explicitly saved', async () => {
+    const g = gateway(), saved = project(); saved.revision = 1; saved.title = 'Manual project';
+    vi.mocked(g.apply).mockResolvedValue(saved); vi.mocked(g.save).mockResolvedValue(saved);
+    const w = new Workspace(g); w.attach(session());
+    await w.dispatch({ type: 'renameProject', title: 'Manual project' });
+    await w.flush();
+    expect(w.getSnapshot().dirty).toBe(true); expect(g.save).not.toHaveBeenCalled();
+    await w.save();
+    expect(g.save).toHaveBeenCalledWith('session-1'); expect(w.getSnapshot().dirty).toBe(false);
+  });
+  it('autosaves after editing settles when enabled, and keeps failed saves dirty', async () => {
+    vi.useFakeTimers();
+    try {
+      const g = gateway(), saved = project(); saved.revision = 1;
+      vi.mocked(g.apply).mockResolvedValue(saved); vi.mocked(g.save).mockRejectedValueOnce(new Error('Disk full')).mockResolvedValueOnce(saved);
+      const w = new Workspace(g); w.attach(session()); w.setAutosave(true);
+      await w.dispatch({ type: 'renameProject', title: 'Changed' });
+      expect(g.save).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(800);
+      expect(w.getSnapshot()).toMatchObject({ dirty: true, error: 'Disk full' });
+      await w.retry();
+      expect(w.getSnapshot()).toMatchObject({ dirty: false, error: null });
+    } finally { vi.useRealTimers(); }
+  });
   it('keeps newer typing visible across slow acknowledgements and coalesces waiting edits', async () => {
     const g = gateway(), first = deferred<ProjectSnapshot>(), second = deferred<ProjectSnapshot>();
     vi.mocked(g.apply).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);

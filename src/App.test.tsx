@@ -8,6 +8,41 @@ import { deferred, gateway, project, session } from './test/fixtures';
 
 afterEach(cleanup);
 describe('connected writing views', () => {
+  it('keeps prose and scene actions enabled across pending edits and saves with Ctrl+S', async () => {
+    window.localStorage.clear();
+    const g = gateway(), edit = deferred<ProjectSnapshot>();
+    vi.mocked(g.apply).mockReturnValueOnce(edit.promise);
+    render(<App gateway={g} initialSession={session()}/>);
+    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    fireEvent.click(screen.getByText('Scene prose', { selector: 'summary' }));
+    const prose = screen.getByRole('textbox', { name: 'Scene prose' });
+    prose.focus();
+    fireEvent.change(prose, { target: { value: 'A thought worth keeping.' } });
+    expect(prose).toBeEnabled(); expect(prose).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Add beat' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Duplicate beat 1' })).toBeEnabled();
+    expect(g.save).not.toHaveBeenCalled();
+    const saved = project(); saved.revision = 1; saved.scenes[0].prose = 'A thought worth keeping.';
+    vi.mocked(g.save).mockResolvedValueOnce(saved);
+    await act(async () => { edit.resolve(saved); await edit.promise; });
+    expect(screen.getByRole('textbox', { name: 'Scene prose' })).toBe(prose);
+    fireEvent.keyDown(prose, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(screen.getByText('Saved locally')).toBeVisible());
+    expect(g.save).toHaveBeenCalledWith('session-1');
+  });
+  it('defaults to manual save and remembers the optional autosave setting', () => {
+    window.localStorage.clear();
+    const first = render(<App gateway={gateway()}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(screen.getByRole('checkbox', { name: /Autosave/ })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Autosave/ }));
+    expect(localStorage.getItem('shorthand.autosave')).toBe('true');
+    first.unmount();
+    render(<App gateway={gateway()}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(screen.getByRole('checkbox', { name: /Autosave/ })).toBeChecked();
+    localStorage.removeItem('shorthand.autosave');
+  });
   it('opens Settings without losing the selected scene or writing view', async () => {
     window.localStorage.clear();
     Object.defineProperty(window, 'scrollY', { configurable: true, value: 246 });
@@ -122,7 +157,7 @@ describe('connected writing views', () => {
     fireEvent.change(summary, { target: { value: 'The beginning of a difficult conversation.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
     expect(screen.getByText('The beginning of a difficult conversation.')).toBeVisible();
-    expect(screen.getByText('Saving…')).toBeVisible();
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
     const saved = project(); saved.revision = 1; saved.scenes[0].summary = 'The beginning';
     await act(async () => { first.resolve(saved); await first.promise; });
     expect(screen.getByText('The beginning of a difficult conversation.')).toBeVisible();
@@ -132,11 +167,15 @@ describe('connected writing views', () => {
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveValue(latest.scenes[0].summary);
     expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, { type: 'updateScene', sceneId: 'scene-1', summary: latest.scenes[0].summary });
   });
-  it('autosaves a valid title while it still has focus', async () => {
+  it('stages a valid title while focused and writes the project only on Save', async () => {
     const g = gateway(); const saved = project(); saved.revision = 1; saved.title = 'A changed title'; vi.mocked(g.apply).mockResolvedValueOnce(saved);
     render(<App gateway={g} initialSession={session()}/>);
     const title = screen.getByRole('textbox', { name: 'Project title' }); fireEvent.focus(title); fireEvent.change(title, { target: { value: 'A changed title' } });
     expect(g.apply).toHaveBeenCalledWith('session-1', 0, { type: 'renameProject', title: 'A changed title' });
+    await waitFor(() => expect(screen.getByText('Unsaved changes')).toBeVisible());
+    expect(g.save).not.toHaveBeenCalled();
+    vi.mocked(g.save).mockResolvedValueOnce(saved);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText('Saved locally')).toBeVisible());
   });
   it('keeps failed edits visible and makes recovery available', async () => {
@@ -154,6 +193,10 @@ describe('connected writing views', () => {
     const g = gateway(); const saved = project(); saved.revision = 1; saved.chapters[0].sceneIds = ['scene-2','scene-1']; vi.mocked(g.apply).mockResolvedValueOnce(saved);
     render(<App gateway={g} initialSession={session()}/>);
     fireEvent.click(screen.getByRole('button', { name: 'Move Arrival down' }));
+    await waitFor(() => expect(screen.getByText('Unsaved changes')).toBeVisible());
+    expect(g.save).not.toHaveBeenCalled();
+    vi.mocked(g.save).mockResolvedValueOnce(saved);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText('Saved locally')).toBeVisible());
     expect([...document.querySelectorAll('.scene-open h3')].map(n => n.textContent)).toEqual(['The letter','Arrival']);
     expect(g.apply).toHaveBeenCalledOnce(); expect(g.apply).toHaveBeenCalledWith('session-1', 0, { type: 'reorderScenes', chapterId: 'chapter-1', ids: ['scene-2','scene-1'] });

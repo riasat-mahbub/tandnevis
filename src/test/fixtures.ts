@@ -17,6 +17,7 @@ export function gateway(p = project()): ProjectGateway {
   return { desktop: false,
     chooseCreate: vi.fn(async () => '/story.shorthand'), chooseOpen: vi.fn(async () => '/story.shorthand'),
     create: vi.fn(async () => session(p)), open: vi.fn(async () => session(p)), read: vi.fn(async () => p),
+    save: vi.fn(async () => p), hasUnsavedChanges: vi.fn(async () => false),
     apply: vi.fn(async () => { throw new Error('Unexpected test write'); }),
     importMarkdown: vi.fn(async () => { throw new Error('Unexpected import'); }), exportMarkdown: vi.fn(async () => '# Story'),
     chooseMarkdown: vi.fn(async () => '/story.md'), importMarkdownFile: vi.fn(async () => p), exportMarkdownFile: vi.fn(async () => {}),

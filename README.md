@@ -6,6 +6,8 @@ A local desktop writing application: each scene sits on a timeline and contains 
 
 **Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
 
+Saving is manual by default: use **Save** or **Ctrl+S** (Cmd+S on macOS keyboards). Text, timeline changes, characters, history, and generated drafts remain in the current session until saved. Settings → Appearance → **Autosave** enables saving after editing settles. Closing or switching projects offers Save / Discard / Cancel for unsaved work. Unsaved manual changes are lost if the app crashes or is forcibly terminated.
+
 [Read the development plan](docs/development-plan.md).
 
 ## Run the desktop app

@@ -45,6 +45,27 @@ async function freePort() {
   await new Promise(resolve => server.close(resolve));
   return port;
 }
+async function requestWindowClose(processId) {
+  assert.ok(Number.isSafeInteger(processId) && processId > 0, 'Close target must be the exact launched child process.');
+  // WM_CLOSE follows the same native path as the title-bar cross. Resolve only
+  // our own child HWND; never enumerate or signal unrelated application windows.
+  const script = `
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class SmokeClose { [DllImport("user32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool PostMessage(IntPtr hWnd, uint message, UIntPtr wParam, IntPtr lParam); }'
+$target = [System.Diagnostics.Process]::GetProcessById(${processId})
+$target.Refresh()
+if ($target.MainWindowHandle -eq [IntPtr]::Zero) { throw 'The smoke child does not have a main window.' }
+if (-not [SmokeClose]::PostMessage($target.MainWindowHandle, 0x0010, [UIntPtr]::Zero, [IntPtr]::Zero)) { throw 'Could not post WM_CLOSE to the smoke child window.' }
+`;
+  const command = Buffer.from(script, 'utf16le').toString('base64');
+  const helper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', command], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+  let errorText = '';
+  helper.stderr.on('data', chunk => { errorText += chunk.toString(); });
+  await new Promise((resolve, reject) => {
+    helper.once('error', reject);
+    helper.once('exit', code => code === 0 ? resolve() : reject(new Error(`Native close helper failed (${code}): ${errorText.trim()}`)));
+  });
+}
 async function connect(url) {
   const socket = new WebSocket(url);
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
@@ -182,7 +203,12 @@ async function main() {
     await waitFor("document.querySelector('.app')?.dataset.theme === 'light'", 'Platinum default');
     assert.equal(await evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), 'rgb(229, 235, 234)');
     report.checks.push('Fresh startup uses the Platinum background');
+    await clickLabel('Open Settings');
+    assert.equal(await evaluate("(() => { const checkbox = Array.from(document.querySelectorAll('label')).find(label => label.querySelector('strong')?.textContent === 'Autosave')?.querySelector('input[type=checkbox]'); if (!checkbox) throw new Error('Autosave setting is missing.'); return checkbox.checked; })()"), false, 'Manual save must be the first-run default.');
+    await clickLabel('Back to writing');
     let session = await invoke('create_project', { path: projectPath, title: 'Native smoke story' });
+    assert.equal(await invoke('project_has_unsaved_changes', { sessionId: session.sessionId }), false);
+    const initialProjectFile = await fs.readFile(projectPath);
     let project = session.project;
     const apply = async operation => { project = await invoke('apply_operation', { sessionId: session.sessionId, expectedRevision: project.revision, operation }); return project; };
     await apply({ type: 'createChapter', title: 'Chapter One' });
@@ -228,6 +254,12 @@ async function main() {
     await invoke('export_markdown_file', { sessionId: session.sessionId, path: exportPath });
     assert.equal(await fs.readFile(exportPath, 'utf8'), markdown);
     report.checks.push('Native Markdown export file matches command result');
+    assert.equal(await invoke('project_has_unsaved_changes', { sessionId: session.sessionId }), true, 'Working edits must remain unsaved until an explicit Save.');
+    assert.deepEqual(await fs.readFile(projectPath), initialProjectFile, 'Manual-mode operations must leave the project file bytes unchanged before Save.');
+    assert.deepEqual(await invoke('save_project', { sessionId: session.sessionId }), project);
+    assert.notDeepEqual(await fs.readFile(projectPath), initialProjectFile, 'Save must write the completed working project to disk.');
+    assert.equal(await invoke('project_has_unsaved_changes', { sessionId: session.sessionId }), false);
+    report.checks.push('Explicit Save persists the complete working project and clears native unsaved state');
     await invoke('close_project', { sessionId: session.sessionId });
     await assert.rejects(() => invoke('read_project', { sessionId: session.sessionId }));
     session = await invoke('open_project', { path: projectPath });
@@ -285,6 +317,10 @@ async function main() {
     await clickLabel('Close panel');
     report.checks.push('Visible beat Duplicate, Move down, Delete, and Trash Restore controls persist native operations');
     uiProject = await readUi();
+    assert.equal(await evaluate("window.__TAURI_INTERNALS__.invoke('project_has_unsaved_changes', { sessionId: window.__nativeSmokeSessionId })"), true);
+    await clickLabel('Save');
+    await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'manual Save acknowledgement');
+    assert.equal(await evaluate("window.__TAURI_INTERNALS__.invoke('project_has_unsaved_changes', { sessionId: window.__nativeSmokeSessionId })"), false);
     const previousUiSession = await evaluate('window.__nativeSmokeSessionId');
     await clickLabel('Open project');
     await waitFor(`window.__nativeSmokeSessionId !== ${JSON.stringify(previousUiSession)}`, 'reopened native UI project session');
@@ -322,6 +358,20 @@ async function main() {
     report.checks.push('Actual native Story and Scene UI render the reopened SQLite content');
     report.checks.push('Native Story and Scene inspected in light/dark at 1440px and 800px without horizontal page overflow');
     assert.equal(report.gestureErrors?.length ?? 0, 0, report.gestureErrors?.join('; '));
+    assert.equal(await evaluate("window.__TAURI_INTERNALS__.invoke('project_has_unsaved_changes', { sessionId: window.__nativeSmokeSessionId })"), true, 'Profile and beat order changes remain unsaved in manual mode.');
+    await requestWindowClose(child.pid);
+    await waitFor("Boolean(document.querySelector('.unsaved-dialog[open]'))", 'unsaved changes prompt after native title-bar close request');
+    await clickLabel('Cancel');
+    await waitFor("!document.querySelector('.unsaved-dialog')", 'cancelled native close prompt');
+    assert.equal(child.exitCode, null, 'Cancel keeps the child app open.');
+    assert.equal(await evaluate("window.__TAURI_INTERNALS__.invoke('project_has_unsaved_changes', { sessionId: window.__nativeSmokeSessionId })"), true, 'Cancel preserves unsaved working changes.');
+    report.checks.push('Native title-bar close request opens the unsaved prompt; Cancel keeps the project and edits open');
+    await clickLabel('Save');
+    await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'final manual Save acknowledgement');
+    await requestWindowClose(child.pid);
+    if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
+    assert.equal(child.exitCode, 0, 'A saved project must close normally through its native title-bar close handler.');
+    report.checks.push('A saved project closes normally after a native title-bar close request');
     report.passed = true;
   } catch (error) {
     report.error = error.stack ?? String(error);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowLeft, BookOpen, Check, ChevronRight, Feather, FolderOpen, Leaf, Plus, Redo2, Settings as SettingsIcon, Trash2, Undo2, Users, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronRight, Feather, FolderOpen, Leaf, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, Users, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { desktopGateway } from './services/project';
 import type { ProjectGateway, ProjectSession } from './services/project';
@@ -10,6 +10,7 @@ import type { Panel } from './components/ProjectPanel';
 import StoryView from './components/StoryView';
 import SceneView from './components/SceneView';
 import SettingsView from './components/SettingsView';
+import UnsavedDialog from './components/UnsavedDialog';
 import type { ChatGPTSettingsState, ThemePreference } from './components/SettingsView';
 import { desktopChatGPTGateway } from './services/chatgpt';
 import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
@@ -36,10 +37,28 @@ function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['stat
 
 export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService, runtimeService }: Props) {
   const [chatGPTGateway] = useState(() => chatGPTService ?? desktopChatGPTGateway);
-  const [generationSession] = useState(() => new GenerationSession(generationService ?? desktopGenerationGateway));
   const [runtimeGateway] = useState(() => runtimeService ?? desktopRuntimeGateway);
-  const [workspace] = useState(() => { const w = new Workspace(gateway); if (initialSession) w.attach(initialSession); return w; });
-  const { session, project, pending, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const [autosave, setAutosave] = useState(() => { try { return localStorage.getItem('shorthand.autosave') === 'true'; } catch { return false; } });
+  const [workspace] = useState(() => { const w = new Workspace(gateway); w.setAutosave(autosave); if (initialSession) w.attach(initialSession); return w; });
+  const [generationSession] = useState(() => new GenerationSession(generationService ?? desktopGenerationGateway, () => workspace.markDirty()));
+  const { session, project, pending, dirty, saving, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const [unsavedPrompt, setUnsavedPrompt] = useState(false);
+  const [promptBusy, setPromptBusy] = useState(false);
+  const [promptError, setPromptError] = useState('');
+  const leaveDecision = useRef<((proceed: boolean) => void) | null>(null);
+  async function confirmLeaving() {
+    if (!workspace.getSnapshot().error && !await workspace.hasUnsavedChanges()) return true;
+    setPromptError(''); setUnsavedPrompt(true);
+    return new Promise<boolean>(resolve => { leaveDecision.current = resolve; });
+  }
+  function finishLeaving(proceed: boolean) { leaveDecision.current?.(proceed); leaveDecision.current = null; setUnsavedPrompt(false); }
+  async function saveBeforeLeaving() {
+    setPromptBusy(true); setPromptError('');
+    try { if (workspace.getSnapshot().error) await workspace.retry(); await workspace.save(); finishLeaving(true); }
+    catch (error) { setPromptError(error instanceof Error ? error.message : String(error)); }
+    finally { setPromptBusy(false); }
+  }
+  function changeAutosave(value: boolean) { setAutosave(value); workspace.setAutosave(value); try { localStorage.setItem('shorthand.autosave', String(value)); } catch { /* Session choice remains active. */ } }
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [lastSceneId, setLastSceneId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
@@ -97,7 +116,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const storyScroll = useRef(0);
   const scene = project?.scenes.find(s => s.id === sceneId);
   const chapter = project?.chapters.find(c => c.id === scene?.chapterId);
-  const locked = pending > 0 || !!error || !ready;
+  const locked = !!error || !ready;
   const run = (action: () => Promise<unknown>) => { void action().catch(e => setNotice(e instanceof Error ? e.message : String(e))); };
   const runChatGPT = (action: () => Promise<NativeChatGPTState>) => {
     setChatGPTError('');
@@ -128,16 +147,34 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   };
   useEffect(() => { if (sceneId && project && !project.scenes.some(s => s.id === sceneId)) backToStory(); }, [project, sceneId]);
   useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => { const s = workspace.getSnapshot(); if (s.pending || s.error) event.preventDefault(); };
+    const beforeUnload = (event: BeforeUnloadEvent) => { const s = workspace.getSnapshot(); if (s.pending || s.dirty || s.saving || s.error) event.preventDefault(); };
     window.addEventListener('beforeunload', beforeUnload);
     let disposed = false;
     let stop: (() => void) | undefined;
-    if (gateway.desktop) void getCurrentWindow().onCloseRequested(event => {
-      const s = workspace.getSnapshot();
-      if (s.pending || s.error) { event.preventDefault(); setNotice('Your project is still saving. Resolve any save error before closing this window.'); }
+    let closing = false;
+    if (gateway.desktop) void getCurrentWindow().onCloseRequested(async event => {
+      event.preventDefault();
+      if (closing) return;
+      closing = true;
+      try {
+        const s = workspace.getSnapshot();
+        if (!s.ready) { setNotice('Wait for the current project operation to finish, then close the app.'); return; }
+        if (s.session && generationSession.hasActiveSession(s.session.sessionId)) await generationSession.stopSession(s.session.sessionId);
+        if (await confirmLeaving()) await getCurrentWindow().destroy();
+      } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
+      finally { closing = false; }
     }).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(() => {});
     return () => { disposed = true; stop?.(); window.removeEventListener('beforeunload', beforeUnload); };
-  }, [gateway.desktop, workspace]);
+  }, [gateway.desktop, workspace, generationSession]);
+  useEffect(() => {
+    const saveKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      if (workspace.getSnapshot().session && workspace.getSnapshot().ready) void workspace.save().catch(() => {});
+    };
+    window.addEventListener('keydown', saveKey);
+    return () => window.removeEventListener('keydown', saveKey);
+  }, [workspace]);
   useEffect(() => {
     if (!chatGPTGateway.desktop) return;
     let disposed = false;
@@ -179,7 +216,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
         catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return false; }
         setNotice('Scene generation stopped.');
       }
-      return true;
+      return confirmLeaving();
     });
     if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setPanel(null); setNotice(''); }
   }
@@ -189,7 +226,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       <div className="header-actions">{!settingsOpen && <button aria-pressed={calm} className="quiet" onClick={() => setCalm(!calm)} title="Remove decorative angles"><Leaf size={15}/>Calm</button>}{project && !settingsOpen && <><button className="quiet" disabled={locked} onClick={() => run(() => load('create'))}><Plus size={15}/>New project</button><button className="quiet" aria-label="Open project" disabled={locked} onClick={() => run(() => load('open'))}><FolderOpen size={15}/>Open</button></>}<button ref={settingsButton} className="settings-nav" aria-pressed={settingsOpen} aria-label={settingsOpen ? 'Return to writing' : 'Open Settings'} onClick={() => settingsOpen ? closeSettings() : openSettings()}><SettingsIcon size={15}/>{settingsOpen ? 'Back to writing' : 'Settings'}</button></div>
     </header>
     <div className="app-workspace" hidden={settingsOpen}>
-    {project && <div className="project-toolbar"><div className="project-identity"><TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/><span className="save-state" role="status">{error ? 'Save needs attention' : pending ? 'Saving…' : <><Check size={13}/>Saved locally</>}</span></div><div className="toolbar-actions"><button className="icon-button" aria-label="Undo project change" title="Undo project change (Ctrl/⌘ Z outside a text field)" disabled={locked || !project.canUndo} onClick={() => run(() => workspace.dispatch({ type: 'undo' }))}><Undo2 size={17}/></button><button className="icon-button" aria-label="Redo project change" title="Redo project change" disabled={locked || !project.canRedo} onClick={() => run(() => workspace.dispatch({ type: 'redo' }))}><Redo2 size={17}/></button><span className="separator"/><button aria-expanded={panel === 'characters'} onClick={() => setPanel(panel === 'characters' ? null : 'characters')}><Users size={15}/>Characters</button><button aria-expanded={panel === 'trash'} onClick={() => setPanel(panel === 'trash' ? null : 'trash')}><Trash2 size={15}/>Trash{project.trash.length > 0 && ` (${project.trash.length})`}</button><button aria-expanded={panel === 'interchange'} onClick={() => setPanel(panel === 'interchange' ? null : 'interchange')}>Markdown</button></div></div>}
+    {project && <div className="project-toolbar"><div className="project-identity"><TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/><span className="save-state" role="status">{error ? 'Save needs attention' : saving ? 'Saving…' : dirty || pending ? 'Unsaved changes' : <><Check size={13}/>Saved locally</>}</span><button disabled={!ready || saving} onClick={() => run(() => workspace.save())} title="Save project (Ctrl/⌘ S)"><Save size={15}/>Save</button></div><div className="toolbar-actions"><button className="icon-button" aria-label="Undo project change" title="Undo project change (Ctrl/⌘ Z outside a text field)" disabled={locked || pending > 0 || !project.canUndo} onClick={() => run(() => workspace.dispatch({ type: 'undo' }))}><Undo2 size={17}/></button><button className="icon-button" aria-label="Redo project change" title="Redo project change" disabled={locked || pending > 0 || !project.canRedo} onClick={() => run(() => workspace.dispatch({ type: 'redo' }))}><Redo2 size={17}/></button><span className="separator"/><button aria-expanded={panel === 'characters'} onClick={() => setPanel(panel === 'characters' ? null : 'characters')}><Users size={15}/>Characters</button><button aria-expanded={panel === 'trash'} onClick={() => setPanel(panel === 'trash' ? null : 'trash')}><Trash2 size={15}/>Trash{project.trash.length > 0 && ` (${project.trash.length})`}</button><button aria-expanded={panel === 'interchange'} onClick={() => setPanel(panel === 'interchange' ? null : 'interchange')}>Markdown</button></div></div>}
     {error && <div className="error-banner" role="alert"><div><strong>{pending ? 'Your latest edits are waiting to save.' : 'The project could not be opened.'}</strong><p>{error}</p>{pending > 0 && <p>Edits stay in this window. Retry checks the current database revision before replaying anything.</p>}</div><button onClick={() => run(() => workspace.retry())}>Retry save</button></div>}
     {conflict && <section className="conflict-review"><button onClick={() => setReviewRecovery(!reviewRecovery)}>Review saved version and recovery copy</button>{reviewRecovery && <><p>The database is at revision {conflict.revision}. Your waiting version is shown below. Save or copy it before choosing the saved version; choosing it discards the waiting changes in this window.</p><div className="recovery-columns"><label>Waiting version — select all to copy<textarea readOnly rows={12} value={JSON.stringify(project, null, 2)} onFocus={e => e.target.select()}/></label><label>Saved database version<textarea readOnly rows={12} value={JSON.stringify(conflict, null, 2)} onFocus={e => e.target.select()}/></label></div><button onClick={() => { workspace.acceptSavedVersion(); setReviewRecovery(false); setNotice('Using the saved database version.'); }}>Use saved version and discard waiting changes</button></>}</section>}
     {notice && <div className="notice" role="status"><span>{notice}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={15}/></button></div>}
@@ -199,7 +236,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
         {scene ? <><div className="breadcrumb"><button className="quiet" onClick={backToStory}><ArrowLeft size={15}/>Back to story</button><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => { if (id) setCharacterId(id); setPanel('characters'); }}/></> : <StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/>}</fieldset>
     </>}
     </div>
-    {settingsOpen && <SettingsView appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT}
+    {unsavedPrompt && <UnsavedDialog busy={promptBusy} error={promptError} onSave={() => { void saveBeforeLeaving(); }} onDiscard={() => finishLeaving(true)} onCancel={() => finishLeaving(false)}/>}
+    {settingsOpen && <SettingsView autosave={autosave} onAutosaveChange={changeAutosave} appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT}
       runtimeInfo={runtimeInfo} runtimeError={runtimeError} runtimeLoading={runtimeLoading} desktopRuntime={runtimeGateway.desktop}
       onRetryRuntime={() => { setRuntimeInfo(null); setRuntimeError(''); setRuntimeRetry(value => value + 1); }}
       onConnect={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.connect()) : undefined}

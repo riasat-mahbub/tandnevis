@@ -1,7 +1,7 @@
 import type { Operation, ProjectGateway, ProjectSession, ProjectSnapshot } from './project';
 
 type Write = { operation?: Operation; markdown?: string; path?: string; resolve: (project: ProjectSnapshot) => void; reject: (reason: Error) => void };
-export interface WorkspaceState { session: ProjectSession | null; project: ProjectSnapshot | null; pending: number; error: string | null; ready: boolean; conflict: ProjectSnapshot | null }
+export interface WorkspaceState { session: ProjectSession | null; project: ProjectSnapshot | null; pending: number; dirty: boolean; saving: boolean; error: string | null; ready: boolean; conflict: ProjectSnapshot | null }
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 /** Pending edits are layered over each acknowledged snapshot, so a slow save can never replace newer typing. */
@@ -26,12 +26,50 @@ function editKey(op?: Operation) {
   return null;
 }
 export class Workspace {
-  private state: WorkspaceState = { session: null, project: null, pending: 0, error: null, ready: true, conflict: null };
+  private state: WorkspaceState = { session: null, project: null, pending: 0, dirty: false, saving: false, error: null, ready: true, conflict: null };
+  private autosave = false;
+  private saveFailure = false;
+  private persisting: Promise<void> | null = null;
+  private autosaveTimer: ReturnType<typeof setTimeout> | undefined;
   private listeners = new Set<() => void>();
   private writes: Write[] = [];
   private running = false;
   private recoveryGeneration = 0;
   constructor(readonly gateway: ProjectGateway) {}
+  setAutosave(enabled: boolean) {
+    this.autosave = enabled;
+    clearTimeout(this.autosaveTimer);
+    if (enabled && this.state.dirty) this.scheduleAutosave();
+  }
+  markDirty() { this.publish({ dirty: true }); this.scheduleAutosave(); }
+  private scheduleAutosave() {
+    clearTimeout(this.autosaveTimer);
+    if (!this.autosave) return;
+    this.autosaveTimer = setTimeout(() => { void this.save().catch(() => {}); }, 800);
+  }
+  private persist(): Promise<void> {
+    if (this.persisting) return this.persisting;
+    const session = this.state.session;
+    if (!session) return Promise.resolve();
+    this.publish({ saving: true });
+    this.persisting = this.gateway.save(session.sessionId).then(async saved => {
+      if (this.state.session?.sessionId !== session.sessionId) return;
+      const dirty = this.writes.length > 0 || this.state.session.project.revision !== saved.revision || await this.gateway.hasUnsavedChanges(session.sessionId);
+      this.saveFailure = false;
+      this.publish({ dirty });
+    }).catch(error => {
+      this.saveFailure = true;
+      this.publish({ error: errorText(error), dirty: true });
+      throw error;
+    }).finally(() => { this.persisting = null; this.publish({ saving: false }); });
+    return this.persisting;
+  }
+  async save() { await this.flush(); await this.persist(); }
+  async hasUnsavedChanges() {
+    await this.flush();
+    const session = this.state.session;
+    return this.state.dirty || !!session && await this.gateway.hasUnsavedChanges(session.sessionId);
+  }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.state;
   private publish(patch: Partial<WorkspaceState> = {}) {
@@ -50,7 +88,7 @@ export class Workspace {
     if (!path) return;
     // Native dialogs are asynchronous. Reject new edits for the entire switch, including the dialog.
     await this.flush();
-    this.publish({ session: await (kind === 'create' ? this.gateway.create(path, title) : this.gateway.open(path)), error: null, conflict: null });
+    this.publish({ session: await (kind === 'create' ? this.gateway.create(path, title) : this.gateway.open(path)), dirty: false, error: null, conflict: null });
     } catch (error) { this.publish({ error: errorText(error) }); throw error; }
     finally { this.publish({ ready: true }); }
   }
@@ -73,7 +111,7 @@ export class Workspace {
         last.reject = e => { previousReject(e); reject(e); };
       } else this.writes.push({ ...content, resolve, reject });
     });
-    this.publish();
+    this.publish({ dirty: true });
     void this.pump();
     return promise;
   }
@@ -97,6 +135,7 @@ export class Workspace {
     }
     this.running = false;
     this.publish();
+    if (this.state.dirty && !this.state.error) this.scheduleAutosave();
   }
   async flush() {
     while (this.running || this.writes.length) {
@@ -105,9 +144,11 @@ export class Workspace {
         const stop = this.subscribe(() => { stop(); resolve(); });
       });
     }
+    if (this.persisting) await this.persisting;
     if (this.state.error) throw new Error(this.state.error);
   }
   async retry() {
+    if (this.saveFailure) { this.publish({ error: null }); await this.save(); return; }
     if (!this.state.session) { this.publish({ error: null }); return; }
     const session: ProjectSession = this.state.session;
     const generation = ++this.recoveryGeneration;
@@ -133,7 +174,8 @@ export class Workspace {
       const project = await mutation(session);
       if (this.state.session?.sessionId !== sessionId) throw new Error('The project session changed while the native operation was running.');
       if (this.writes.length) throw new Error('The project received edits while a native operation was running.');
-      this.publish({ session: { ...session, project }, error: null, conflict: null });
+      this.publish({ session: { ...session, project }, dirty: true, error: null, conflict: null });
+      this.scheduleAutosave();
       return project;
     } finally {
       if (this.state.session?.sessionId === sessionId) this.publish({ ready: true });

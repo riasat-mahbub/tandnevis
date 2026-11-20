@@ -37,6 +37,8 @@ export interface ProjectGateway {
   create(path: string, title: string): Promise<ProjectSession>;
   open(path: string): Promise<ProjectSession>;
   read(sessionId: string): Promise<ProjectSnapshot>;
+  save(sessionId: string): Promise<ProjectSnapshot>;
+  hasUnsavedChanges(sessionId: string): Promise<boolean>;
   apply(sessionId: string, expectedRevision: number, operation: Operation): Promise<ProjectSnapshot>;
   importMarkdown(sessionId: string, expectedRevision: number, markdown: string): Promise<ProjectSnapshot>;
   exportMarkdown(sessionId: string): Promise<string>;
@@ -52,6 +54,8 @@ export const desktopGateway: ProjectGateway = {
   create: (path, title) => invoke('create_project', { path, title }),
   open: path => invoke('open_project', { path }),
   read: sessionId => invoke('read_project', { sessionId }),
+  save: sessionId => invoke('save_project', { sessionId }),
+  hasUnsavedChanges: sessionId => invoke('project_has_unsaved_changes', { sessionId }),
   apply: (sessionId, expectedRevision, operation) => invoke('apply_operation', { sessionId, expectedRevision, operation }),
   importMarkdown: (sessionId, expectedRevision, markdown) => invoke('import_markdown', { sessionId, expectedRevision, markdown }),
   exportMarkdown: sessionId => invoke('export_markdown', { sessionId }),
