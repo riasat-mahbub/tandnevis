@@ -138,6 +138,8 @@ Navigation, definition selection, insertion, targeting, duplication, archive/res
 
 ## 8. Native and generation contract
 
+The concrete screen compositions, visual hierarchy, control treatments, and first-use sequence are described in [the UI design brief](global-blocks-ui-design.md). That brief translates this behavior contract into screen layouts; it introduces no additional app features.
+
 - Add SQLite tone and emotion definition entities, character default-reference fields, a scene-tone reference, and separate emotion rich-text nodes targeting stable character occurrence IDs. Domain operations own create/update/duplicate/archive/trash/restore and reference validation. Frontend does not run SQL.
 - Migrate existing character references by assigning distinct occurrence IDs. Preserve existing emotion/delivery strings exactly as local guidance. Keep old scene-tone strings as custom tone guidance until the writer explicitly chooses a preset. Do not synthesize duplicate global definitions from repeated strings.
 - Extend full manual save, optional autosave, history snapshots, Trash restoration, project validation, and rich-text clipboard handling for all new entities/nodes. Existing projects with no presets open unchanged. Existing manual/close behavior stays in force.

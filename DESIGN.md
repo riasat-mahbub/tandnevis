@@ -6,6 +6,8 @@ The accepted scene-writer workflow remains: two views at two conceptual zoom lev
 
 ## Composition
 
+The next screens are described concretely in [Global blocks: UI design brief](docs/global-blocks-ui-design.md): persistent project/navigation/save groups, a Scene block shelf and local inspector, full master/detail library editors, explicit drop feedback, and responsive behavior. It extends this visual system without changing the accepted writing workflow.
+
 **Story view (zoomed out)** is a vertical scene timeline, grouped by chapter. Scene blocks show their title and summary excerpt. Opening a block switches into that individual scene's editor. Drag scenes vertically, with explicit before/after insertion feedback; visible move controls offer the same action without dragging. The timeline stays vertical at every size.
 
 **Scene view (zoomed in)** retains the accepted scene writer: editable title, scene tone, a distinct scene idea/summary field, and ordered freeform beat cards. A beat can contain any text and zero or more character references. Back to story returns to the overview; Story/Scene controls switch zoom levels. A chapter/scene breadcrumb preserves orientation.
