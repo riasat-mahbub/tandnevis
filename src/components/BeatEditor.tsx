@@ -7,6 +7,18 @@ import StarterKit from '@tiptap/starter-kit';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { Beat, Character } from '../services/project';
 
+export function updateCharacterReference(editor: Editor, attributes: { emotion?: string; delivery?: string }) {
+  const selection = editor.state.selection;
+  if (!(selection instanceof NodeSelection) || selection.node.type.name !== 'characterReference') return false;
+  return editor.chain().command(({ tr }) => {
+    tr.setNodeMarkup(selection.from, undefined, { ...selection.node.attrs, ...attributes });
+    // Replacing an atom's markup otherwise maps its NodeSelection to text.
+    // Retain the explicit local target while the inspector input keeps focus.
+    tr.setSelection(NodeSelection.create(tr.doc, selection.from));
+    return true;
+  }).run();
+}
+
 const CharacterNames = createContext<Character[]>([]);
 function CharacterChip({ node }: NodeViewProps) {
   const characters = useContext(CharacterNames);
@@ -54,7 +66,12 @@ export default function BeatEditor({ beat, index, characters, onChange, onFocus,
   });
   useEffect(() => { if (editor) register(beat.id, editor); return () => register(beat.id, null); }, [editor, beat.id, register]);
   useEffect(() => {
-    if (editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(beat.document)) editor.commands.setContent(beat.document, { emitUpdate: false });
+    if (!editor) return;
+    // Rust's JSON object key order differs from Tiptap's. Compare document
+    // structure so a save acknowledgement never replaces equivalent content
+    // and resets the writer's caret or selected character reference.
+    const incoming = editor.schema.nodeFromJSON(beat.document);
+    if (!editor.state.doc.eq(incoming)) editor.commands.setContent(beat.document, { emitUpdate: false });
   }, [beat.document, editor]);
   useEffect(() => {
     editor?.setEditable(editable, false);

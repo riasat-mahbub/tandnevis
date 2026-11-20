@@ -1,13 +1,20 @@
 import type { ReactNode } from 'react';
 import { DragDropProvider } from '@dnd-kit/react';
-import { useSortable } from '@dnd-kit/react/sortable';
-import { move } from '@dnd-kit/helpers';
+import { isSortable, useSortable } from '@dnd-kit/react/sortable';
+import { arrayMove } from '@dnd-kit/helpers';
 import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react';
 
 export function Timeline({ ids, group, onReorder, children }: { ids: string[]; group: string; onReorder: (ids: string[]) => void; children: ReactNode }) {
   return <DragDropProvider onDragEnd={event => {
-    if (event.canceled || !event.operation.target) return;
-    const reordered = move(ids, event);
+    const { source } = event.operation;
+    if (event.canceled || !isSortable(source)) return;
+    // OptimisticSortingPlugin has already projected source.index and may have
+    // cleared the collision target after moving the cards. The sortable index,
+    // rather than the last hovered card, is the committed reading position.
+    if (source.initialGroup !== group || source.group !== group) return;
+    const from = ids.indexOf(String(source.id)), to = source.index;
+    if (from < 0 || !Number.isInteger(to) || to < 0 || to >= ids.length || from === to) return;
+    const reordered = arrayMove(ids, from, to);
     if (reordered.join() !== ids.join()) onReorder(reordered);
   }}><ol className="timeline" aria-label={group}>{children}</ol></DragDropProvider>;
 }
