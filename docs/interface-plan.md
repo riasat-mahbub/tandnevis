@@ -19,7 +19,7 @@ Beat cards can contain zero, one, or many characters. Stages and narration overr
 
 ## 2. Visual direction
 
-The interface should feel like arranging story notes on a writing desk. The next implementation replaces moss/rose/ochre with Harvest Orange `#FF7700`, Platinum `#E5EBEA`, Iron Grey `#435058`, and contrasting ink/neutrals. Use orange for enabled primary actions and accents, platinum for light surfaces, and grey/ink for readable writing and controls. Block labels communicate character/emotion/delivery scope independently of color. The [palette contract](install-and-ai-plan.md#5-harvest-orange-theme) specifies contrast and light/dark behavior; existing previews remain historical references.
+The interface should feel like arranging story notes on a writing desk. It now uses Harvest Orange `#FF7700` and Platinum `#E5EBEA` as the primary brand colors, supported by Iron Grey `#435058` and contrasting neutrals. Fresh installs use the light Platinum theme regardless of system preference; System and Dark remain explicit choices. Use orange for enabled primary actions and accents, Platinum for the page and writing surfaces, and grey/ink for readable text and supporting controls rather than as a black-looking brand color. Block labels communicate character/emotion/delivery scope independently of color. The [palette contract](install-and-ai-plan.md#5-harvest-orange-theme) specifies contrast and light/dark behavior; existing previews remain historical references.
 
 ### Story view
 

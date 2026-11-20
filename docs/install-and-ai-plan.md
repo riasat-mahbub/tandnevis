@@ -1,6 +1,6 @@
 # Portable app and ChatGPT scene generation
 
-Status: narrowed next tranche, 19 November 2026. Planning only; none of the features below are claimed implemented. This replaces the earlier installer-first, multiple-provider proposal. The existing SQLite authoring app and two writing views remain the foundation.
+Status: narrowed implementation tranche, 19 November 2026. S1 (Settings navigation, persisted appearance, and the Harvest Orange/Platinum theme) is implemented; S2-S5 remain planned. This replaces the earlier installer-first, multiple-provider proposal. The existing SQLite authoring app and two writing views remain the foundation.
 
 ## Agreed scope
 
@@ -36,7 +36,7 @@ Keep the page small:
 |---|---|
 | ChatGPT | Connection status, recognizable account/workspace, **Continue with ChatGPT**, **Test connection**, **Reconnect**, **Disconnect**, and a Manage usage link |
 | Generation | Model picker populated for the connected account; optional default writing guidance. Model capabilities determine available controls; do not expose unsupported temperature/token parameters |
-| Appearance | Harvest Orange palette, existing Calm option, and System/Light/Dark preference with a legible version of the same palette |
+| Appearance | Harvest Orange and Platinum palette, existing Calm option, and Light/Platinum by default; System and Dark remain explicit choices |
 | Portable data | Current data folder, project-storage explanation, app version, and the WebView2 prerequisite/status where available |
 
 Use one active ChatGPT connection/model in this release. No provider picker, other-service placeholders, API-key fallback, or general-purpose agent configuration. Changing model requires access verification for the new selection. Disconnect cancels/stops new requests, clears the app's credentials, and immediately disables Generate while preserving writing and drafts.
@@ -103,17 +103,17 @@ The direct ChatGPT route uses its documented streaming request format and suppor
 
 ## 5. Harvest Orange theme
 
-Replace the moss/rose/ochre base theme with these anchors across the app, Settings, and draft states:
+Replace the moss/rose/ochre base theme with these anchors across the app, Settings, and draft states. Fresh installations open in Light/Platinum regardless of the operating system preference; System and Dark are available only as explicit choices:
 
 | Token | Value | Intended role |
 |---|---|---|
-| Harvest Orange | `#FF7700` | Enabled primary actions, selected accents, timeline emphasis, restrained decorative backings |
-| Platinum | `#E5EBEA` | Main light background and pale supporting surfaces |
+| Harvest Orange | `#FF7700` | Primary brand color for enabled actions, selected accents, timeline emphasis, restrained decorative backings |
+| Platinum | `#E5EBEA` | Default light theme foundation: main background, writing surfaces, and pale supporting surfaces |
 | Iron Grey | `#435058` | Text, controls, outlines, timeline structure, secondary surfaces |
-| Deep ink | `#20282D` | High-contrast writing text/on-orange labels and dark surfaces |
+| Deep ink | `#20282D` | Supporting text contrast and optional dark-mode surfaces; not a primary brand color |
 | Neutral derivatives | Derived light/dark shades | Raised writing surfaces, borders, hover states, muted/disabled controls, and semantic feedback |
 
-Use Iron Grey on Platinum for readable text. Harvest Orange on Platinum is approximately 2.21:1, so it cannot carry normal body text or the sole focus indicator. Iron Grey on orange is approximately 3.12:1; primary orange buttons need the darker ink label, not white/platinum or Iron Grey small text. Verify every final combination, including dark mode, against normal text/focus requirements.
+Harvest Orange and Platinum should be the visible brand colors; reserve Iron Grey and deep ink for readable text, control outlines, and supporting structure rather than large black-looking areas in the default theme. Use Iron Grey on Platinum for body text. Harvest Orange on Platinum is approximately 2.21:1, so it cannot carry normal body text or the sole focus indicator. Iron Grey on orange is approximately 3.12:1; primary orange buttons need the darker ink label, not white/platinum or Iron Grey small text. Verify every final combination, including dark mode, against normal text/focus requirements.
 
 Disabled Generate uses an intentionally grey neutral surface, readable grey label, disabled cursor/semantics, and its adjacent reason. It must not retain the orange enabled appearance. Focus/error/success states use labels/icons as well as color. Character, emotion, and delivery remain distinguishable by explicit labels and scope, not three conflicting theme palettes.
 
@@ -123,7 +123,7 @@ Retain the two timelines, useful asymmetry, flat writing surfaces, Georgia writi
 
 | Step | Proposed commit | Completion evidence |
 |---|---|---|
-| S1 | `feat: add settings navigation and harvest orange theme` | Real global Settings page, appearance persistence, return-to-scene behavior, consistent palette in both writing views and settings; disabled Generate has a setup reason/link |
+| S1 | `feat: add settings navigation and harvest orange theme` | Real global Settings page, persisted appearance with Light/Platinum first-run default, return-to-scene behavior, consistent orange-and-platinum palette in both writing views and settings; disabled Generate has a setup reason/link |
 | S2 | `feat: connect ChatGPT from native settings` | Eligible test-account browser sign-in, protected credentials, refresh/disconnect, model selection and test; readiness state gates UI and Rust; no API fallback |
 | S3 | `feat: encode scene beats and character references for generation` | Drag/click character insertion, local direction scope, stable profile resolution and context preview; infirmary fixture encodes exact beat order with zero/one/multiple-character cases |
 | S4 | `feat: generate and accept individual scene drafts` | SQLite migration, immutable request/job, streaming/stop/checkpoints, Accept/Undo, one active job, outdated/interrupted handling; native end-to-end generation from the selected scene |
@@ -131,7 +131,7 @@ Retain the two timelines, useful asymmetry, flat writing surfaces, Georgia writi
 
 Commit after each step's relevant checks pass. Do not require the legacy engine or other providers before S4. Deterministic tests use mock OAuth/stream servers and synthetic writing; real sign-in/generation tests use an explicitly connected test account and remain separate from routine CI.
 
-Acceptance includes fresh startup with Generate disabled; Settings setup/test enabling it; disconnect/expiry disabling it again; keyboard-accessible Settings links; Maya/Damian profile and local-direction encoding; empty and character-free beats; stop/restart recovery; input edits and project/account switches during a job; Accept/Undo; and both themes at desktop/minimum widths. No source change or implementation test is performed merely by updating this plan.
+Acceptance includes fresh startup in Light/Platinum with Generate disabled; Settings setup/test enabling it; disconnect/expiry disabling it again; keyboard-accessible Settings links; Maya/Damian profile and local-direction encoding; empty and character-free beats; stop/restart recovery; input edits and project/account switches during a job; Accept/Undo; and all explicit themes at desktop/minimum widths. No source change or implementation test is performed merely by updating this plan.
 
 ## 7. Deferred scope
 

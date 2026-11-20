@@ -7,6 +7,37 @@ import { deferred, gateway, project, session } from './test/fixtures';
 
 afterEach(cleanup);
 describe('connected writing views', () => {
+  it('opens Settings without losing the selected scene or writing view', async () => {
+    window.localStorage.clear();
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 246 });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    render(<App gateway={gateway()} initialSession={session()}/>);
+    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    expect(screen.getByRole('button', { name: 'Generate scene' })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open Settings' })[1]);
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    expect(document.querySelector('.app-workspace')).toHaveAttribute('hidden');
+    expect(screen.getByRole('button', { name: 'Continue with ChatGPT' })).toBeDisabled();
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to writing' }));
+    expect(screen.getByRole('textbox', { name: 'Scene title' })).toHaveValue('Arrival');
+    expect(document.querySelector('.app-workspace')).not.toHaveAttribute('hidden');
+    await waitFor(() => expect(scrollTo).toHaveBeenLastCalledWith(0, 246));
+    scrollTo.mockRestore();
+  });
+  it('persists the selected appearance and Calm preference from global Settings', () => {
+    window.localStorage.clear();
+    render(<App gateway={gateway()}/>);
+    expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'light');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Dark/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Calm appearance/ }));
+    expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'dark');
+    expect(window.localStorage.getItem('shorthand.appearance')).toBe('dark');
+    expect(window.localStorage.getItem('shorthand.calm')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to writing' }));
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeVisible();
+  });
   it('clearly requires the desktop app without inserting a sample manuscript', () => {
     render(<App gateway={gateway()}/>);
     expect(screen.getByText(/Desktop app required/)).toBeVisible();

@@ -14,9 +14,9 @@ Preserve the accepted scene layout: reusable blocks on the left, writing in the 
 
 ## Visual system
 
-- Next implementation palette: Harvest Orange `#FF7700`, Platinum `#E5EBEA`, and Iron Grey `#435058`, with deep ink `#20282D` and derived neutrals for contrast. This supersedes the moss/rose/ochre colors in the existing implementation and historical previews; recoloring is planned work.
+- Current palette: Harvest Orange `#FF7700` and Platinum `#E5EBEA` are the primary brand colors, supported by Iron Grey `#435058`, deep ink `#20282D`, and derived neutrals for contrast. Fresh installs default to the light Platinum theme regardless of system preference. This supersedes the moss/rose/ochre colors in the existing implementation and historical previews.
 - Preserve Georgia for writing content and the platform sans for controls/navigation.
-- Use orange for primary actions and restrained emphasis, platinum for light surfaces, and grey/ink for readable content and controls. Character, emotion, and delivery labels preserve meaning independently of color. Orange on platinum is unsuitable for normal small text; orange buttons use darker ink labels. Update light/dark tokens together.
+- Keep Harvest Orange and Platinum visibly primary: orange for enabled actions and selected accents, Platinum for the default page and writing surfaces. Use Iron Grey/deep ink for readable text and supporting structure, not as a black-looking brand color. Character, emotion, and delivery labels preserve meaning independently of color. Orange on Platinum is unsuitable for normal small text; orange buttons use darker ink labels. Update light/dark tokens together.
 - One-pixel boundaries, small consistent radii, compact control groups, and generous space between writing sections. No decorative shadows or dashboard statistics.
 - Clear selected, hover, focus, disabled, empty, and drop states in light and dark appearances. Motion only communicates state and respects reduced-motion preferences.
 
