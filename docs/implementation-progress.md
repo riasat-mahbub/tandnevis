@@ -6,6 +6,8 @@ Updated 20 November 2026. This ledger separates approved direction from implemen
 
 Planned next tranche: [Global blocks and usable navigation](global-blocks-and-navigation-plan.md). G1–G6 cover full Characters/Tones/Emotions screens, a usable Scene block shelf, distinct emotion blocks with explicit occurrence targets, scene-tone blocks, project-command cleanup, native migration, and generation integration. This is a documentation/design update only; no G-step is marked implemented and no app build changes for this plan.
 
+Latest design requirements: distinct sage/lilac/apricot backgrounds for Character/Emotion/Tone blocks; editable starter emotions and tones; and inline Tone blocks for freeform beats. A beat tone overrides the scene tone for that entire beat only, with explicit scope and scene-tone inheritance on removal. These extend the planned G2/G4/G5/G6 scope and are not yet implemented.
+
 Release consolidation: `out/latest/` is the only current portable release folder. Launch `out/latest/Shorthand Writer.exe`. Packaging replaces the stable `Shorthand-Writer-latest-win-x64.zip` and checksum in that folder while retaining app data and connection metadata. Older output paths mentioned in dated verification records below are superseded.
 
 Manual save is the default. Edits, structural operations, history, and generation jobs update a private in-memory SQLite working copy. Save / Ctrl+S writes the complete working database into the chosen project file in one transaction with external-change detection. Autosave is optional in Settings and runs after editing settles. Manual changes require Save for crash durability; older verification below describes the earlier immediate-save implementation where stated.

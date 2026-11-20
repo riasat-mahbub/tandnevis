@@ -15,7 +15,7 @@ Use `outputs/review/desktop-scene.png` and `mobile-scene.png`, plus the interact
 - A Story library contains separate Characters, Emotions, and Scene tones groups.
 - Character blocks are inserted among ordinary beat text.
 - Emotion blocks remain separate visible chips, attached to an explicit character target.
-- A tone block applies to the scene through a scene-tone target.
+- A tone block applies to a scene or a freeform beat through its explicit target. Beat tones extend the earlier review reference.
 - Beats can have no characters, one character, or many characters.
 - Scene and beat changes stay local; shared character definitions are reusable.
 
@@ -53,10 +53,26 @@ For this tranche, global means **project-wide**, available in every scene of the
 | Global definition | Minimum creation fields | Optional useful fields | Where used |
 |---|---|---|---|
 | Character | Name | Background, personality, default tone/attitude, baseline voice, default emotion | Character blocks in any beat |
-| Tone | Name | Meaning, writing guidance, short example | Scene-tone block; character default tone where explicitly selected |
+| Tone | Name | Meaning, writing guidance, short example | Scene-tone block, tone block in a freeform beat, or explicitly selected character default |
 | Emotion | Name | Meaning, expression guidance, short example | Emotion block targeting a character occurrence; optional character default emotion |
 
 An emotion describes what a character feels; a tone describes the attitude or treatment of the writing. Voice describes how the character habitually sounds. Examples: Awe is an emotion, Tender is a scene tone, and clipped sarcastic sentences describe a voice. Keep freeform guidance available; none of these definitions requires a prescribed vocabulary.
+
+### Editable starter blocks
+
+New projects include a small set of real, editable global definitions. They are ordinary blocks with stable IDs and guidance, not hardcoded choices or example-only chips:
+
+| Type | Name | Initial guidance |
+|---|---|---|
+| Emotion | Serious | Focused and restrained; keep attention on the immediate task. |
+| Emotion | Awe | Let wonder or admiration interrupt the character's usual reactions. |
+| Emotion | Angry | Show irritation or frustration through responses and actions, without requiring shouting. |
+| Emotion | Embarrassed | Show self-consciousness through hesitation, deflection, or awkward reactions. |
+| Tone | Tender | Emphasize small gestures of care, warmth, and vulnerability. |
+| Tone | Tense | Emphasize uncertainty and restrained pressure without inventing extra danger. |
+| Tone | Playful | Allow light teasing and gentle humor while preserving character voice. |
+
+Writers can edit, duplicate, archive, or remove these with the same rules as their own definitions. No starter characters or sample manuscript are created. Existing projects can choose Add starter blocks from their library empty state; do not silently populate established libraries. Track initialization per project/type with stable seed keys so reopening, upgrading, or deleting/archiving a starter never recreates it. Skip same-type name collisions when adding starters and report the actual number added. Starter additions are undoable and use the existing manual Save policy.
 
 Each definition has a stable ID, revision, and archived flag. References resolve by ID; renaming never searches/replaces prose. Definitions are live variables: changing shared guidance affects future context in every scene that uses it. Show "Shared across this project" and actual usages in the editor. Local overrides do not edit the global definition.
 
@@ -103,8 +119,11 @@ Every block has a readable name, type label/icon, drag affordance, tooltip summa
 ### Tone blocks
 
 - Provide a labeled **Scene tone** drop target above the summary, with an empty-state hint and a small choose-block control.
-- Drag a tone there or activate a tone on the shelf to apply it to the current scene. Replace the previous scene-tone reference in one undoable operation; show the applied name and Remove action. The inspector says "This scene."
-- The first implementation follows the reference's scene-wide tone behavior. Dropping a tone into beat text is not a supported local-tone operation; show the scene-tone target instead of silently changing another scope. Beat-level tone ranges can be designed later.
+- Drag a tone into the scene-tone target to apply it to the current scene. Replace the previous scene-tone reference in one undoable operation; show the applied name and Remove action. The inspector says "This scene."
+- Tone blocks can also be inserted at the caret among the freeform text of a beat, including a character-free beat. Render a distinct inline "Beat tone: Tense" chip; its scope is the entire owning beat, independent of its position in the text. Selecting it says "Beat 3 only." Moving the chip within that beat does not create an implicit text range or affect later beats.
+- A beat has at most one tone block. Applying another replaces the existing tone in one undoable operation. The beat tone overrides the scene tone for that beat; removing it restores scene-tone inheritance. Other beats retain their own override or inherit the scene tone. Character voice and local emotion remain independent.
+- Activating a tone on the shelf opens a small target chooser: This scene or the selected beat by name/number. A selected beat's caret bookmark is retained. A beat's own Insert tone action already fixes its target and needs no second scope choice. Dragging directly into a scene slot or beat uses that explicit destination without a chooser.
+- Scene tone and beat tone are references to the same global Tone definition, not separate libraries. Used in includes both scene references and exact beat references. Partial-sentence tone ranges are outside this tranche; the full-beat scope is always visible.
 - Selecting a tone as a character default is a separate, explicit action on the Characters screen. A scene tone influences narrative treatment; it does not erase character voice or automatically rewrite every character's attitude.
 
 ### Inspect, detach, move, and remove
@@ -128,7 +147,15 @@ Moving/copying the character-and-emotion group preserves or rewrites the occurre
 
 ## 7. Visual and accessibility direction
 
-Preserve Platinum `#E5EBEA` as the default page, pale editing surfaces, Iron Grey `#435058` text, and Harvest Orange `#FF7700` for the active destination, focus-adjacent accents, and primary actions. Block type is identified by text/icon, not an unrelated three-color palette. Keep Georgia for prose and the platform sans for navigation/forms.
+Preserve Platinum `#E5EBEA` as the default page, pale editing surfaces, Iron Grey `#435058` text, and Harvest Orange `#FF7700` for the active destination and primary actions. Give each block type its own background consistently in the shelf, inline text, previews, and pickers:
+
+| Block type | Light background / text | Dark background / text |
+|---|---|---|
+| Character | Sage `#DCEBDD` / `#274B35` | `#294538` / `#DAEDDF` |
+| Emotion | Lilac `#EADFF4` / `#543769` | `#43334F` / `#EBDFF7` |
+| Tone | Apricot `#FFE0B8` / `#6A3A12` | `#503B25` / `#FFE4C5` |
+
+These semantic colors identify types; they do not recolor the full library screen or assign a different hue to every individual preset. Keep type labels/icons and accessible names, so color is never the only identifier. Use contrasting focus/selection outlines that preserve the type background; disabled and archived states retain readable labels. Calm retains these type colors. Verify actual text/focus contrast in implementation. Keep Georgia for prose and the platform sans for navigation/forms.
 
 The library list is narrower than its editor; the Scene shelf is narrower than the writing column. This useful asymmetry is the composition. Restrained skew belongs on an optional heading backing or block preview, never the navigation, text caret, inputs, or drop target. Calm removes those transforms.
 
@@ -140,11 +167,12 @@ Navigation, definition selection, insertion, targeting, duplication, archive/res
 
 The concrete screen compositions, visual hierarchy, control treatments, and first-use sequence are described in [the UI design brief](global-blocks-ui-design.md). That brief translates this behavior contract into screen layouts; it introduces no additional app features.
 
-- Add SQLite tone and emotion definition entities, character default-reference fields, a scene-tone reference, and separate emotion rich-text nodes targeting stable character occurrence IDs. Domain operations own create/update/duplicate/archive/trash/restore and reference validation. Frontend does not run SQL.
+- Add SQLite tone and emotion definition entities, one-time starter initialization metadata, character default-reference fields, a scene-tone reference, inline beat-tone reference nodes, and separate emotion rich-text nodes targeting stable character occurrence IDs. A beat's rich-text document is the single authority for its optional beat-tone block; do not maintain an independent competing tone field. Domain operations enforce at most one tone node per beat and own create/update/duplicate/archive/trash/restore and reference validation. Frontend does not run SQL.
 - Migrate existing character references by assigning distinct occurrence IDs. Preserve existing emotion/delivery strings exactly as local guidance. Keep old scene-tone strings as custom tone guidance until the writer explicitly chooses a preset. Do not synthesize duplicate global definitions from repeated strings.
 - Extend full manual save, optional autosave, history snapshots, Trash restoration, project validation, and rich-text clipboard handling for all new entities/nodes. Existing projects with no presets open unchanged. Existing manual/close behavior stays in force.
 - Resolve presets and profiles in Rust from the current working database; build the same human-readable preview in TypeScript. Include only referenced definitions and distinguish scene tone, character defaults, and local overrides in the request.
 - Defaults apply when the occurrence has no override for that dimension; an emotion override does not erase voice or tone. Existing narration instructions remain separate guidance. Do not claim an emotion is inferred canon or persistent state.
+- Include each beat's effective tone in the readable preview and native request, labeled as explicit beat override or inherited scene tone. A tone used only by a beat must still resolve and enter the referenced-definition set. Updating a global Tone used by a beat invalidates affected draft context just as updating a scene tone does. Duplication retains shared Tone IDs; clipboard validation rejects multiple tone nodes instead of applying an arbitrary last one.
 - Generation snapshots include the resolved definition values/revisions. The fingerprint changes when relevant guidance, targets, or order changes. Archived references still resolve; a missing target/definition is visibly unresolved and blocks sending incomplete context until repaired, without losing editable text.
 - History migration must tolerate old undo entries without the new fields. Duplicating a preset creates a fresh global identity; duplicating scene/beat content creates fresh local identities. Schema/version limits and rollback remain enforced.
 
@@ -153,9 +181,9 @@ The concrete screen compositions, visual hierarchy, control treatments, and firs
 | Step | Commit intent | Reviewable result |
 |---|---|---|
 | G1 | `refactor: separate project navigation from commands` | Full destination routing, stable header/Save, labeled Project menu, Settings return, Trash recovery route; remove mixed toolbar and duplicate character-panel entrances |
-| G2 | `feat: add shared tone and emotion definitions` | SQLite/domain migration, typed operations, defaults, history/Trash/full-save support, and backward-compatible references |
+| G2 | `feat: add shared tone and emotion definitions` | SQLite/domain migration, typed operations, editable one-time starter blocks, defaults, history/Trash/full-save support, and backward-compatible references |
 | G3 | `feat: add full character tone and emotion screens` | Real list/detail screens with search, creation, editing, previews, usages, duplication and archive/restore; selected definition and return navigation persist |
-| G4 | `feat: insert reusable blocks with explicit scene targets` | All three shelf groups, scene-tone drop target, separate linked emotion blocks, caret insertion, keyboard/picker alternatives, local inspector and safe removal/duplication |
+| G4 | `feat: insert reusable blocks with explicit scene targets` | Three distinct block background colors, all shelf groups, scene and inline beat-tone targets, separate linked emotion blocks, caret insertion, keyboard/picker alternatives, local inspector and safe removal/duplication |
 | G5 | `feat: resolve shared blocks in scene generation context` | Matching Rust/TypeScript context, default/override resolution, relevant fingerprints, immutable previous drafts, clear unresolved-state handling |
 | G6 | `test: verify global block authoring and navigation` | Native complete workflow, keyboard/narrow/theme review, migration/reopen/Save checks, and updated docs; update only the single `out/latest` release |
 
@@ -173,3 +201,6 @@ G1 keeps the existing usable Characters implementation as a full screen while na
 - Generate from one scene: include referenced globals once with correct local targets, omit unrelated definitions/other scenes, and mark only affected drafts outdated after global edits.
 - Run each visible project command with realistic content, cancellation and error cases. Every action navigates, edits, opens a chooser, or reports a result; explain disabled states instead of leaving unexplained no-ops.
 - Verify active navigation, long names, empty/filter/archived states, focus return, 800px minimum window and high zoom, both themes, Calm, and reduced motion. Preserve both alternating timelines.
+- New projects contain the editable starter emotions/tones. Reopen/upgrade never duplicates them, and deleted or archived starters do not reappear. Adding starters to an existing project preserves same-name custom definitions.
+- Apply Tender to a scene, Tense to one freeform beat, and leave the next beat inheriting Tender. Verify preview/generation scope, replace/remove/Undo behavior, and persistence after Save. Repeat with a character-free beat and through click/keyboard insertion.
+- Character, emotion, and tone backgrounds are distinct in the shelf, rich text, previews, and both themes. Screen-reader labels and focus state distinguish them without color.

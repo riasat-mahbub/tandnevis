@@ -36,13 +36,13 @@ At 1440px, use three unequal regions: an approximately 210–230px block shelf, 
 
 The heading is **Story blocks**, followed by one search field. Below it are Characters, Emotions, and Tones, each with a small Manage link. Real blocks appear as compact, wrapping chips. All three group labels remain visible; changing library category must not require leaving the writer.
 
-Chips use a consistent shape, a small type icon, and a readable name. Type is announced as Character, Emotion, or Tone. A quiet grip indicates dragging; pressing the chip performs its documented click-insertion action. Manage is a distinct text link, so clicking Maya never unexpectedly opens her global profile instead of inserting her.
+Chips use a consistent shape, a small type icon, and a readable name. Backgrounds distinguish their types: sage for Characters, lilac for Emotions, and apricot for Tones. Type is also announced as Character, Emotion, or Tone. A quiet grip indicates dragging; pressing the chip performs its documented click-insertion action. Manage is a distinct text link, so clicking Maya never unexpectedly opens her global profile instead of inserting her.
 
 An empty group offers New character…, New emotion…, or New tone…. This opens the corresponding full library screen in create mode. A Return to Stitches action takes the writer back to the saved caret/target. The newly created block is available immediately in the working session; project Save remains separate.
 
 ### Center: the manuscript direction
 
-The center starts with Back to story and the chapter path, then the scene title. Directly below is the **Scene tone** slot. Empty: “Choose or drop a tone.” Applied: a Tone: Tender chip with Change and Remove. This is the visible destination for tone blocks.
+The center starts with Back to story and the chapter path, then the scene title. Directly below is the **Scene tone** slot. Empty: “Choose or drop a tone.” Applied: an apricot Tone: Tender chip with Change and Remove. This supplies the default tone for beats that have no local tone block.
 
 The scene summary follows in a roomy pale surface. Its label stays present while typing. Next is The beats and the existing alternating beat timeline. Each card remains a freeform paragraph editor with visible editing/reordering actions; no required cast fields or line-by-line form.
 
@@ -51,6 +51,8 @@ Blocks remain inline with ordinary words. The infirmary example reads naturally:
 **[Character: Maya] [Emotion: Serious]** stitches **[Character: Damian]**’s wounds while he complains.
 
 The bracketed labels here describe the block anatomy; the interface uses compact chips, not literal pipe syntax. Emotion is visibly its own chip. When its linked character is selected or hovered, a subtle shared outline makes the relationship apparent without permanent connector lines through the prose.
+
+Freeform beats also accept tone blocks. Insert an apricot **Beat tone: Tense** chip at the caret among the text, or drag it into the beat. Its explicit label means it applies to that entire beat, even when the beat contains no characters. The inspector reads “Beat 3 only · Overrides scene tone: Tender.” The next beat still inherits Tender. Removing the chip restores inheritance; replacing it is one Undo action. The chip's position is not an implicit start/end boundary for part of a sentence.
 
 Below the beats, Scene draft contains Generate, connection/setup feedback, streaming text, and review actions. Scene prose remains a separate editable section. Generation does not become another global navigation destination.
 
@@ -62,7 +64,7 @@ Selecting Maya shows her resolved defaults and “Character reference · Beat 2.
 
 An emotion drag highlights only eligible character occurrences. Hovering Damian previews “Awe for Damian in Beat 3”; dropping creates the adjacent linked chip. For click insertion without a selected occurrence, a target picker lists the actual character occurrences and a short text excerpt to distinguish repeated names. No target means no silent change. With no characters, writing still works and the hint explains how to select/add a target.
 
-Tone dragging highlights the scene-tone slot. It does not make arbitrary paragraphs look like valid targets. Unsupported drops leave the text unchanged and name the valid destination.
+Tone dragging highlights both the scene-tone slot and eligible beat editors. A scene drop previews “Tender for this scene”; a beat drop previews “Tense for Beat 3 only” and shows the insertion caret. Clicking a shelf tone opens a compact Apply to chooser with This scene and the selected beat; the beat's own Insert tone control already specifies its target. Unsupported drops leave the text unchanged and name the valid destinations. One beat tone replaces another; tone blocks do not accumulate conflicting directions in one beat.
 
 ## Characters: build the cast
 
@@ -87,7 +89,7 @@ The Tones screen uses the same list/detail layout, with **New tone**, Search ton
 
 For **Tender**, the detail editor shows a Tone: Tender block preview, **Meaning** (“warm, attentive, restrained”), **Writing guidance** (“Let care show through small actions; keep the banter dry”), and an optional **Example**. The example is author-entered guidance, not an automatically generated result or a promise of the model’s behavior.
 
-Below the preview, a small instruction says “Use this block in a scene’s Scene tone slot.” Used in links to the scenes that reference it and any explicit character defaults. The whole definition is editable; its name alone must not be the only information sent to generation.
+Below the preview, a small instruction says “Use this block for a whole scene or an individual beat.” Used in links to scene references, exact beat overrides, and any explicit character defaults. The whole definition is editable; its name alone must not be the only information sent to generation.
 
 When this screen was opened from a scene, Return to Stitches is visible near the heading. It does not apply the tone automatically. Application happens through the scene’s shelf or tone chooser, where the destination is clear.
 
@@ -95,13 +97,21 @@ When this screen was opened from a scene, Return to Stitches is visible near the
 
 The Emotions screen again uses the shared list/detail layout. For **Awe**, show an Emotion: Awe block preview, **Meaning**, **Expression guidance**, and optional **Example**. Guidance might describe attention catching, complaints trailing off, or a softened response. It should help the writer encode intent without prescribing the prose sentence.
 
-The explanatory line is concrete: “Drop this block onto a character in a beat.” Used in links include the character and occurrence: “Stitches · Beat 3 · Damian.” That immediately distinguishes emotion usage from a scene-wide tone.
+The explanatory line is concrete: “Drop this block onto a character in a beat.” Used in links include the character and occurrence: “Stitches · Beat 3 · Damian.” Emotion targets a character occurrence; a tone targets a scene or a whole beat.
 
 Duplicate makes a separate definition. Archive hides it from new insertion while preserving existing uses. Delete is available only for an unused definition and moves it to recoverable Trash. These labels and consequences remain consistent across all three libraries.
+
+## Ready-to-use starter blocks
+
+New projects begin with **Serious, Awe, Angry, and Embarrassed** in Emotions and **Tender, Tense, and Playful** in Tones. Each is a real global definition with editable guidance, not a decorative example. The initial lists are useful immediately without requiring setup or imposing characters on the writer.
+
+Existing projects can explicitly Add starter blocks. Existing custom definitions are preserved, and reopening or upgrading never respawns removed starter entries. These additions use manual Save like any library edit. The exact guidance and initialization rules are recorded in the behavior plan.
 
 ## Visual rhythm and comfort
 
 Platinum is the dominant ground. Editing surfaces are slightly lighter, and Iron Grey carries readable text. Orange identifies the active destination, a primary creation action, a changed Save action, and meaningful selection/drop feedback. It does not flood the whole header or make every chip a competing orange button.
+
+Block backgrounds have their own consistent semantic palette: Character sage `#DCEBDD` with `#274B35` text, Emotion lilac `#EADFF4` with `#543769` text, and Tone apricot `#FFE0B8` with `#6A3A12` text. Apply the same type colors to shelf chips, inline blocks, pickers, and definition previews. Dark mode uses darker matching fills and light text, as specified in the behavior plan. Selection/focus uses an additional contrasting outline; it preserves the block's type color. Type names/icons remain available for accessibility, and Calm retains these colors.
 
 Use a 4px-based spacing scale: tight 8–12px groups for related controls, 16px between neighboring fields, and 24–32px between distinct tasks. Writing text uses Georgia; navigation, labels, chips, and forms use the existing platform sans. Headings are descriptive—Characters, Tones, Emotions—not promotional slogans.
 
