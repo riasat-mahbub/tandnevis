@@ -21,10 +21,11 @@ Updated 19 November 2026. This ledger separates approved direction from implemen
    - [x] Add developer commands and separate the desktop app from historical HTML mockups. Isolated-toolchain convenience wrappers follow in step 5.
    - [x] Scaffold agent verified frontend typecheck/build and zero dependency-audit findings. Native backend compilation/tests follow in step 3.
 3. **Implement durable SQLite authoring** — `feat: add transactional SQLite project backend`.
-   - [ ] Add versioned schema/migrations, connection/session lifecycle, stories/chapters/scenes/beats, shared profiles/presets, local scope, revisions, and Trash.
-   - [ ] Implement typed Rust domain operations for create/read/edit/duplicate/reorder/archive/trash/restore with reference validation and transaction rollback.
-   - [ ] Implement supported explicit Markdown import/export with documented representation and limits; leave originals unchanged.
-   - [ ] Test synthetic project persistence after reopen, fresh duplicate IDs, order, scope, used-entry protection, restore, rollback/error paths, and supported interchange round-trips.
+   - [x] Add versioned SQLite schema, async connection/session commands, chapters/scenes/beats, shared character profiles, local reference attributes, revisions, and Trash. Separate reusable preset entities remain later work.
+   - [x] Implement typed Rust operations for create/read/edit/duplicate/reorder/archive/trash/restore with reference validation and transaction rollback.
+   - [x] Implement explicit plain Markdown file/text import/export, retain exact imported sources, and leave original imports unchanged. Rich metadata interchange remains outside this codec.
+   - [x] Verify reopen persistence, fresh duplicate IDs, ordering, scoped references, archive, Trash/restore, persistent undo/redo, stale revisions, foreign/newer database rejection, and injected SQLite failure rollback: 14 Rust tests pass.
+   - [x] Review backend and pass Rust formatting plus Clippy with warnings denied before committing this step.
 4. **Connect the writing interface** — `feat: connect story and scene authoring workflows`.
    - [ ] Connect separate Story/Scene views, independent title/summary/freeform beat edits, matching responsive alternating timelines, and project controls to Rust.
    - [ ] Add visible drag handles/Duplicate/Delete, insertion/movement equivalents, useful focus/empty states, and actual persistence feedback.
@@ -37,7 +38,11 @@ Updated 19 November 2026. This ledger separates approved direction from implemen
 
 ## Verification record
 
-At creation of this ledger, no application build or runtime verification has been recorded here. Architecture documentation is complete; scaffold, backend, connected UI, and verification remain pending until the corresponding changes and checks are reviewed. Add actual command/results as each step lands; do not infer native runtime success from a web build.
+- Documentation architecture committed as `90fc58e`; runnable scaffold committed as `7358773`.
+- Scaffold agent: frontend typecheck and production build passed; dependency audit reported zero findings.
+- Backend agent: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --lib backend::tests` passed with the repository-local Rust toolchain; 14 tests passed.
+- Connected frontend, native runtime, and installer verification remain pending. Backend unit tests alone do not prove a usable desktop interface or clean-machine installation.
+- Current backend history retains full before/after snapshots per operation; history compaction/performance hardening, separate reusable presets, and explicit user-owned backup tooling remain later work.
 
 ## Later milestones
 

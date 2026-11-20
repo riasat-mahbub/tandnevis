@@ -8,4 +8,7 @@ commands.allow = [
   "apply_operation",
   "export_markdown",
   "import_markdown",
+  "close_project",
+  "import_markdown_file",
+  "export_markdown_file",
 ]
