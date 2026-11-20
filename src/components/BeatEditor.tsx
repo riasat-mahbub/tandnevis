@@ -5,7 +5,57 @@ import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from
 import type { NodeViewProps } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { NodeSelection } from '@tiptap/pm/state';
+import { TextSelection } from '@tiptap/pm/state';
+import { Fragment } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
 import type { Beat, Character } from '../services/project';
+
+export const CHARACTER_REFERENCE_MIME = 'application/x-shorthand-character-id';
+
+/** Insert a dragged global character at the editor position under the pointer. */
+export function handleCharacterReferenceDrop(view: EditorView, event: DragEvent, characters: Character[]): boolean {
+  let characterId = '';
+  try { characterId = event.dataTransfer?.getData(CHARACTER_REFERENCE_MIME) ?? ''; } catch { return false; }
+  if (!characterId) return false;
+
+  // A recognized Shorthand payload belongs to the inline editor. Consume it even
+  // if its profile was removed or the pointer is outside an editable text block.
+  event.preventDefault();
+  event.stopPropagation();
+  const character = characters.find(candidate => candidate.id === characterId);
+  if (!character) return true;
+  const point = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!point) return true;
+
+  const selection = TextSelection.near(view.state.doc.resolve(point.pos));
+  const position = selection.from;
+  const $position = view.state.doc.resolve(position);
+  if (!$position.parent.inlineContent) return true;
+
+  const before = $position.nodeBefore;
+  const after = $position.nodeAfter;
+  const previousCharacter = before?.isText ? before.text?.slice(-1) : undefined;
+  const nextCharacter = after?.isText ? after.text?.slice(0, 1) : undefined;
+  const needsLeadingSpace = !!before && !(previousCharacter && /\s/.test(previousCharacter));
+  const needsTrailingSpace = !nextCharacter || !/\s/.test(nextCharacter);
+
+  const reference = view.state.schema.nodes.characterReference.create({
+    characterId: character.id,
+    label: character.name,
+    emotion: '',
+    delivery: '',
+  });
+  const content = [
+    ...(needsLeadingSpace ? [view.state.schema.text(' ')] : []),
+    reference,
+    ...(needsTrailingSpace ? [view.state.schema.text(' ')] : []),
+  ];
+  const fragment = Fragment.fromArray(content);
+  const transaction = view.state.tr.insert(position, fragment);
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(position + fragment.size), 1));
+  view.dispatch(transaction.scrollIntoView());
+  return true;
+}
 
 export function updateCharacterReference(editor: Editor, attributes: { emotion?: string; delivery?: string }) {
   const selection = editor.state.selection;
@@ -54,6 +104,17 @@ export default function BeatEditor({ beat, index, characters, onChange, onFocus,
     editable,
     editorProps: {
       attributes: { role: 'textbox', 'aria-label': `Freeform text for beat ${index + 1}`, 'aria-multiline': 'true', 'data-placeholder': 'Write anything that happens here…', spellcheck: 'true' },
+      handleDOMEvents: {
+        dragover(_view, event) {
+          const drag = event as DragEvent;
+          if (!drag.dataTransfer?.types.includes(CHARACTER_REFERENCE_MIME)) return false;
+          event.preventDefault();
+          return true;
+        },
+      },
+      handleDrop(view, event) {
+        return handleCharacterReferenceDrop(view, event, characters);
+      },
       handleClickOn(view, pos, node) {
         if (node.type.name !== 'characterReference') return false;
         view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));

@@ -2,7 +2,7 @@ import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { Editor, JSONContent } from '@tiptap/core';
-import BeatEditor, { updateCharacterReference } from './BeatEditor';
+import BeatEditor, { CHARACTER_REFERENCE_MIME, handleCharacterReferenceDrop, updateCharacterReference } from './BeatEditor';
 import { project } from '../test/fixtures';
 
 afterEach(cleanup);
@@ -64,4 +64,50 @@ it('preserves the selected character reference when a save acknowledgement chang
   expect(onChange).not.toHaveBeenCalled();
   act(() => { expect(updateCharacterReference(editor!, { delivery: 'Quietly' })).toBe(true); });
   expect((editor!.getJSON() as JSONContent).content![0].content![0].attrs).toMatchObject({ emotion: 'Relieved', delivery: 'Quietly' });
+});
+
+it('drops a character profile at the pointer position and keeps direction local to the new reference', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello world' }] }] };
+  let editor: Editor | null = null;
+  const register = (_id: string, value: Editor | null) => { editor = value; };
+  const props = { beat, index: 0, characters: p.characters, onChange: vi.fn(), onFocus: vi.fn(), onSelection: vi.fn(), register };
+  render(<BeatEditor {...props}/>);
+  await waitFor(() => expect(editor).not.toBeNull());
+
+  vi.spyOn(editor!.view, 'posAtCoords').mockReturnValue({ pos: 7, inside: 1 });
+  const dataTransfer = { getData: (format: string) => format === CHARACTER_REFERENCE_MIME ? 'character-1' : '' } as DataTransfer;
+  const event = { dataTransfer, clientX: 50, clientY: 40, preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as DragEvent;
+  act(() => { expect(handleCharacterReferenceDrop(editor!.view, event, p.characters)).toBe(true); });
+
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(event.stopPropagation).toHaveBeenCalledOnce();
+  expect(editor!.getText()).toBe('Hello Maya world');
+  const inserted = (editor!.getJSON() as JSONContent).content![0].content!.find(node => node.type === 'characterReference');
+  expect(inserted?.attrs).toMatchObject({ characterId: 'character-1', label: 'Maya', emotion: '', delivery: '' });
+});
+
+it('drops a profile into an empty beat and consumes stale Shorthand drags without inserting text', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = { type: 'doc', content: [{ type: 'paragraph' }] };
+  let editor: Editor | null = null;
+  const register = (_id: string, value: Editor | null) => { editor = value; };
+  const props = { beat, index: 0, characters: p.characters, onChange: vi.fn(), onFocus: vi.fn(), onSelection: vi.fn(), register };
+  render(<BeatEditor {...props}/>);
+  await waitFor(() => expect(editor).not.toBeNull());
+  vi.spyOn(editor!.view, 'posAtCoords').mockReturnValue({ pos: 1, inside: 1 });
+
+  const eventFor = (id: string) => ({
+    dataTransfer: { getData: (format: string) => format === CHARACTER_REFERENCE_MIME ? id : '' } as DataTransfer,
+    clientX: 20, clientY: 20, preventDefault: vi.fn(), stopPropagation: vi.fn(),
+  } as unknown as DragEvent);
+  const firstDrop = eventFor('character-1');
+  act(() => { expect(handleCharacterReferenceDrop(editor!.view, firstDrop, p.characters)).toBe(true); });
+  expect((editor!.getJSON() as JSONContent).content![0].content![0].attrs).toMatchObject({ characterId: 'character-1', emotion: '', delivery: '' });
+
+  const staleDrop = eventFor('deleted-character');
+  const before = editor!.getJSON();
+  act(() => { expect(handleCharacterReferenceDrop(editor!.view, staleDrop, p.characters)).toBe(true); });
+  expect(staleDrop.preventDefault).toHaveBeenCalledOnce();
+  expect(editor!.getJSON()).toEqual(before);
 });
