@@ -87,7 +87,7 @@ async function main() {
   const appLog = await fs.open(path.join(run, 'app.log'), 'w');
   const child = spawn(exe, [], {
     cwd: root, windowsHide: true,
-    env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`, WEBVIEW2_USER_DATA_FOLDER: path.join(temporary, 'webview') },
+    env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`, ...(!existsSync(path.join(path.dirname(exe), 'portable.mode')) ? { WEBVIEW2_USER_DATA_FOLDER: path.join(temporary, 'webview') } : {}) },
     stdio: ['ignore', appLog.fd, appLog.fd],
   });
   let childError, cdp;
@@ -147,6 +147,9 @@ async function main() {
     };
     const captureView = async view => {
       for (const theme of ['light', 'dark']) {
+        await clickLabel('Open Settings');
+        await evaluate(`document.querySelector('input[name="appearance"][value="${theme}"]').click()`);
+        await clickLabel('Back to writing');
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
         for (const width of [1440, 800]) {
           await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 960, deviceScaleFactor: 1, mobile: false });
@@ -162,9 +165,23 @@ async function main() {
       }
       await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
       await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+      await clickLabel('Open Settings');
+      await evaluate("document.querySelector('input[name=\"appearance\"][value=\"light\"]').click()");
+      await clickLabel('Back to writing');
     };
     await waitFor("typeof window.__TAURI_INTERNALS__?.invoke === 'function'", 'real Tauri bridge');
     const invoke = (command, args = {}) => evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`);
+    const runtime = await invoke('app_runtime_info');
+    const expectedDataDirectory = path.join(path.dirname(exe), 'data');
+    const portablePackage = existsSync(path.join(path.dirname(exe), 'portable.mode'));
+    assert.equal(runtime.portable, portablePackage, 'The executable must detect its explicit portable marker.');
+    if (portablePackage) {
+      assert.equal(path.resolve(runtime.dataDirectory).toLowerCase(), path.resolve(expectedDataDirectory).toLowerCase(), 'Portable data must live beside the selected executable.');
+      report.checks.push('Portable runtime resolves writable app data beside the executable, independently of the development working directory');
+    }
+    await waitFor("document.querySelector('.app')?.dataset.theme === 'light'", 'Platinum default');
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), 'rgb(229, 235, 234)');
+    report.checks.push('Fresh startup uses the Platinum background');
     let session = await invoke('create_project', { path: projectPath, title: 'Native smoke story' });
     let project = session.project;
     const apply = async operation => { project = await invoke('apply_operation', { sessionId: session.sessionId, expectedRevision: project.revision, operation }); return project; };
@@ -228,11 +245,25 @@ async function main() {
     await captureView('story');
     assert.ok(await evaluate("(() => { const button = Array.from(document.querySelectorAll('button.scene-open')).find(button => button.querySelector('h3')?.textContent === 'Smoke arrival'); if (!button || button.disabled) return false; button.click(); return true; })()"), 'Persisted scene Open control must be clickable');
     await waitFor("document.body.innerText.includes('The train arrives beneath a violet sky.')", 'persisted scene beats');
+    await waitFor("Boolean(document.querySelector('.generation-settings-link'))", 'scene generation setup link');
+    const generateButton = await evaluate("(() => { const button = Array.from(document.querySelectorAll('.generation-panel button')).find(button => button.textContent.includes('Generate scene')); return button ? { disabled: button.disabled, hasSettingsLink: !!document.querySelector('.generation-settings-link') } : null; })()");
+    assert.deepEqual(generateButton, { disabled: true, hasSettingsLink: true }, 'Scene generation must stay disabled until ChatGPT is verified.');
+    await evaluate("document.querySelector('.generation-settings-link').click()");
+    await waitFor(`document.querySelector('#settings-page')?.innerText.includes(${JSON.stringify(runtime.portable ? 'Portable folder' : 'Standard app data')})`, 'storage mode in Settings');
+    await waitFor(`document.querySelector('#settings-page')?.innerText.includes(${JSON.stringify(runtime.dataDirectory)})`, 'portable data path in Settings');
+    assert.ok(await evaluate("document.querySelector('#settings-page')?.innerText.includes('Active')"), 'Settings must report the active WebView2 runtime.');
+    report.checks.push('Unconfigured scene generation stays disabled; Settings reports portable path and the active local WebView2 runtime');
+    await clickLabel('Back to writing');
+    await waitFor("document.body.innerText.includes('The train arrives beneath a violet sky.')", 'return to selected scene');
     const uiSummary = 'The visitor steps from the train. Saved through the native scene editor.';
     await evaluate(`(() => { const textarea = document.querySelector('textarea[aria-label="Scene summary"]'); if (!textarea) throw new Error('Scene summary control is missing.'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, ${JSON.stringify(uiSummary)}); textarea.dispatchEvent(new Event('input', { bubbles: true })); textarea.blur(); })()`);
     await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.scenes.find(scene => scene.id === ${JSON.stringify(sceneId)})?.summary === ${JSON.stringify(uiSummary)})`, 'scene summary saved to SQLite through UI');
     report.checks.push('Native Scene summary UI edit reaches the Rust SQLite repository');
     const readUi = () => evaluate("window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId })");
+    const uiProse = 'A synthetic prose draft saved from the packaged desktop editor.';
+    await evaluate(`(() => { const textarea = document.querySelector('.scene-prose-editor textarea'); if (!textarea) throw new Error('Scene prose editor is missing.'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, ${JSON.stringify(uiProse)}); textarea.dispatchEvent(new Event('input', { bubbles: true })); textarea.blur(); })()`);
+    await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.scenes.find(scene => scene.id === ${JSON.stringify(sceneId)})?.prose === ${JSON.stringify(uiProse)})`, 'editable scene prose persisted to SQLite');
+    report.checks.push('Scene prose editor saves through native SQLite independently of beat directions');
     let uiProject = await readUi();
     const uiBeatId = uiProject.scenes.find(scene => scene.id === sceneId).beats[0].id;
     const uiBeatText = 'A native keyboard edit survives reopening.';

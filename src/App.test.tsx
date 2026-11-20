@@ -39,6 +39,25 @@ describe('connected writing views', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to writing' }));
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeVisible();
   });
+  it('shows the effective portable data folder and WebView2 status in Settings', async () => {
+    const runtimeService = {
+      desktop: true,
+      info: vi.fn().mockResolvedValue({
+        portable: true,
+        dataDirectory: 'D:\\Apps\\Shorthand\\data',
+        applicationVersion: '0.1.0',
+        webview2Required: true,
+        webview2RuntimeActive: true,
+      }),
+    };
+    render(<App gateway={gateway()} runtimeService={runtimeService}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+
+    expect(await screen.findByText('D:\\Apps\\Shorthand\\data')).toBeVisible();
+    expect(screen.getByText('Portable folder')).toBeVisible();
+    expect(screen.getByText('Active')).toBeVisible();
+    expect(runtimeService.info).toHaveBeenCalledOnce();
+  });
   it('migrates an existing dark preference to Platinum once, then remembers a new explicit choice', () => {
     window.localStorage.clear();
     window.localStorage.setItem('shorthand.appearance', 'dark');

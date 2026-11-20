@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-runtime-info-command"
+description = "Allow the local app window to read non-secret runtime and portable data-folder information."
+commands.allow = ["app_runtime_info"]

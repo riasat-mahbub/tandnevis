@@ -1,6 +1,6 @@
 # Portable app and ChatGPT scene generation
 
-Status: narrowed implementation tranche, 19 November 2026. S1 (Settings navigation, persisted appearance, and the Harvest Orange/Platinum theme), the S2 native ChatGPT implementation, and S3 scene-context/character-reference editing are in the app. Live eligible-account sign-in/inference verification remains open; S4 generation and S5 portable packaging are in progress/planned. This replaces the earlier installer-first, multiple-provider proposal. The existing SQLite authoring app and two writing views remain the foundation.
+Status: implementation updated 20 November 2026. S1–S5 code is implemented: Platinum Settings, native ChatGPT connection, scene context, durable individual scene drafts, and portable Windows packaging. Automated checks and local packaged-app evidence are recorded in [implementation progress](implementation-progress.md). Live eligible-account sign-in/inference and clean-machine checks remain open. The following sections preserve the scope and acceptance criteria.
 
 ## Agreed scope
 

@@ -10,6 +10,7 @@
     "dialog:allow-save",
     "allow-project-commands",
     "allow-chatgpt-commands",
-    "allow-scene-generation-commands"
+    "allow-scene-generation-commands",
+    "allow-runtime-info-command"
   ]
 }

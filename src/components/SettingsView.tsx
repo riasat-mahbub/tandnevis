@@ -1,4 +1,5 @@
-import { ArrowLeft, Check, ExternalLink, KeyRound, Moon, Sun, Laptop, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, ExternalLink, HardDrive, KeyRound, Moon, Sun, Laptop, Sparkles } from 'lucide-react';
+import type { ApplicationRuntimeInfo } from '../services/runtime';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type ChatGPTConnectionStatus = 'not-configured' | 'checking' | 'connected' | 'ready' | 'needs-plan-permission' | 'reconnect-required' | 'unavailable' | 'error';
@@ -21,6 +22,11 @@ interface Props {
   calm: boolean;
   onCalmChange: (calm: boolean) => void;
   chatGPT: ChatGPTSettingsState;
+  runtimeInfo: ApplicationRuntimeInfo | null;
+  runtimeError: string;
+  runtimeLoading: boolean;
+  desktopRuntime: boolean;
+  onRetryRuntime: () => void;
   onConnect?: () => void;
   onReconnect?: () => void;
   onTestConnection?: () => void;
@@ -48,7 +54,7 @@ function statusCopy(status: ChatGPTConnectionStatus) {
   return ['Not connected', 'Connect a ChatGPT account before generating a scene.'];
 }
 
-export default function SettingsView({ appearance, onAppearanceChange, calm, onCalmChange, chatGPT, onConnect, onReconnect, onTestConnection, onAcknowledgeUsage, onDisconnect, onModelChange, onGuidanceChange, onBack }: Props) {
+export default function SettingsView({ appearance, onAppearanceChange, calm, onCalmChange, chatGPT, runtimeInfo, runtimeError, runtimeLoading, desktopRuntime, onRetryRuntime, onConnect, onReconnect, onTestConnection, onAcknowledgeUsage, onDisconnect, onModelChange, onGuidanceChange, onBack }: Props) {
   const [statusLabel, statusDescription] = statusCopy(chatGPT.status);
   const canConfigure = chatGPT.status !== 'checking' && chatGPT.status !== 'unavailable';
   const needsExistingRegistration = chatGPT.status === 'reconnect-required' || chatGPT.status === 'needs-plan-permission';
@@ -91,6 +97,17 @@ export default function SettingsView({ appearance, onAppearanceChange, calm, onC
       </section>
 
       <aside className="settings-aside"><span className="settings-aside-mark" aria-hidden="true">✦</span><h2>Your story, your pace.</h2><p>Connect only when you want a draft. Scene generation will use the beats and character references in the scene you choose.</p><div className="palette-swatches" aria-label="Harvest Orange, Platinum, and Iron Grey palette"><span title="Harvest Orange"/><span title="Platinum"/><span title="Iron Grey"/></div></aside>
+      <section className="settings-card runtime-card" aria-labelledby="runtime-heading">
+        <span className="settings-kicker"><HardDrive size={14}/>Local app data</span><h2 id="runtime-heading">Portable storage</h2>
+        <p>Stories stay in the separate <code>.shorthand</code> project files you choose. This folder holds app settings, recovery data, and the WebView profile.</p>
+        {!desktopRuntime && <p className="settings-note">Open Shorthand Writer on desktop to see its data folder and runtime details.</p>}
+        {desktopRuntime && runtimeLoading && <p className="settings-note" role="status">Reading local app details...</p>}
+        {desktopRuntime && runtimeError && <p className="settings-feedback" role="alert">{runtimeError} <button type="button" onClick={onRetryRuntime}>Retry</button></p>}
+        {runtimeInfo && <>
+          <dl className="runtime-facts"><div><dt>Mode</dt><dd>{runtimeInfo.portable ? 'Portable folder' : 'Standard app data'}</dd></div><div><dt>App version</dt><dd>{runtimeInfo.applicationVersion}</dd></div><div><dt>WebView2</dt><dd>{runtimeInfo.webview2Required ? runtimeInfo.webview2RuntimeActive ? 'Active' : 'Not detected' : 'Not required'}</dd></div></dl>
+          <div className="runtime-folder"><span>App data folder</span><code className="runtime-path">{runtimeInfo.dataDirectory}</code></div>
+        </>}
+      </section>
     </div>
     {chatGPT.firstUsePending && <div className="usage-confirmation-backdrop"><section className="usage-confirmation" role="dialog" aria-modal="true" aria-labelledby="usage-confirmation-title"><span className="settings-kicker"><KeyRound size={14}/>ChatGPT plan usage</span><h2 id="usage-confirmation-title">You’re using your ChatGPT plan</h2><p>Scene generation uses the plan access you just enabled. Usage limits and availability are managed by your ChatGPT account.</p><button className="primary" type="button" autoFocus disabled={!onAcknowledgeUsage} onClick={onAcknowledgeUsage}>Got it</button></section></div>}
   </main>;

@@ -2,7 +2,7 @@
 
 A local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with optional character references and local emotion/delivery, and can contain zero, one, or many characters. The full plan adds reusable direction blocks, optional physical stages, and AI prose generation.
 
-**Status:** the first desktop authoring tranche is implemented: native SQLite projects, Story/Scene timelines, freeform beat editing, character references, recoverable editing controls, and Markdown interchange. [Implementation progress](docs/implementation-progress.md) records verification and remaining features, including AI generation and physical stages.
+**Status:** native SQLite authoring, Story/Scene timelines, character references, ChatGPT Settings, and individual scene drafting are implemented. Drafts support streaming, Stop, recovery, Copy/Discard, and undoable acceptance into editable scene prose. Platinum is the default appearance. Live ChatGPT account eligibility and inference still require an eligible test account. [Implementation progress](docs/implementation-progress.md) records verification and remaining features.
 
 **Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
 
@@ -19,11 +19,19 @@ npm run desktop:dev
 
 Use `npm run desktop:build` to build the Windows executable and installer. `npm run dev` opens only the renderer; native project access requires Tauri. See [development setup](docs/development-setup.md) for the local toolchain, checks, native smoke runner, and Markdown interchange limits.
 
+## Portable Windows ZIP
+
+Build a portable Windows x64 ZIP using the command below. Extract it into a writable folder and launch `Shorthand Writer.exe`. The app requires Microsoft's WebView2 Runtime. If startup reports that it is missing, install the Evergreen Runtime from Microsoft's [official WebView2 download page](https://developer.microsoft.com/en-us/microsoft-edge/webview2).
+
+The portable build is designed to keep application settings and recovery data in a `data` folder beside the executable. `.shorthand` project files remain wherever you choose to save them and should be backed up separately from the application folder. ChatGPT credentials use the current Windows account's protected credential storage: copying the portable folder to another computer or Windows user does not carry a working sign-in, so reconnect from Settings there.
+
+To prepare a local package as a developer, run `powershell -ExecutionPolicy Bypass -File .\scripts\package-portable.ps1` after installing the development prerequisites. The script builds the release executable and creates a versioned ZIP and SHA-256 checksum under `out/portable/`. Choose `-OutputDirectory out/another-build` for subsequent builds; existing archives are never overwritten. Close the app before updating, replace the application files, and preserve the `data` folder and separately saved projects. Clean-machine launch and live account generation remain release verification gates.
+
 [Read the detailed Tauri implementation plan](docs/tauri-implementation-plan.md): architecture, entities and storage, native command contracts, editor/drag-and-drop implementation, AI jobs, recovery, packaging, and milestone acceptance gates.
 
 [Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
 
-[Read the scoped portable and AI plan](docs/install-and-ai-plan.md): portable Windows ZIP, ChatGPT setup in Settings, scene-by-scene generation from beats, the Harvest Orange theme, and five commit-sized steps. These are planned next features.
+[Read the scoped portable and AI plan](docs/install-and-ai-plan.md): portable Windows ZIP, ChatGPT setup in Settings, scene-by-scene generation from beats, the Harvest Orange theme, and verification gates.
 
 ## Agreed direction
 

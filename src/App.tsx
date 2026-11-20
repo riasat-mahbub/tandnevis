@@ -16,9 +16,11 @@ import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import { desktopGenerationGateway } from './services/generation';
 import type { GenerationGateway } from './services/generation';
 import { GenerationSession } from './services/generation-session';
+import { desktopRuntimeGateway } from './services/runtime';
+import type { ApplicationRuntimeInfo, RuntimeGateway } from './services/runtime';
 import './styles.css';
 
-interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway }
+interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway }
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
@@ -32,9 +34,10 @@ function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['stat
   return 'error';
 }
 
-export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService }: Props) {
+export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService, runtimeService }: Props) {
   const [chatGPTGateway] = useState(() => chatGPTService ?? desktopChatGPTGateway);
   const [generationSession] = useState(() => new GenerationSession(generationService ?? desktopGenerationGateway));
+  const [runtimeGateway] = useState(() => runtimeService ?? desktopRuntimeGateway);
   const [workspace] = useState(() => { const w = new Workspace(gateway); if (initialSession) w.attach(initialSession); return w; });
   const { session, project, pending, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const [sceneId, setSceneId] = useState<string | null>(null);
@@ -66,6 +69,10 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const settingsButton = useRef<HTMLButtonElement>(null);
   const [nativeChatGPTState, setNativeChatGPTState] = useState<NativeChatGPTState | null>(null);
   const [chatGPTError, setChatGPTError] = useState('');
+  const [runtimeInfo, setRuntimeInfo] = useState<ApplicationRuntimeInfo | null>(null);
+  const [runtimeError, setRuntimeError] = useState('');
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [runtimeRetry, setRuntimeRetry] = useState(0);
   const [defaultGuidance, setDefaultGuidance] = useState(() => {
     try { return localStorage.getItem('shorthand.chatgpt-guidance') ?? ''; } catch { return ''; }
   });
@@ -140,6 +147,16 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     return () => { disposed = true; };
   }, [chatGPTGateway]);
   useEffect(() => {
+    if (!settingsOpen || !runtimeGateway.desktop) return;
+    let disposed = false;
+    setRuntimeLoading(true);
+    setRuntimeError('');
+    void runtimeGateway.info().then(info => { if (!disposed) setRuntimeInfo(info); }).catch(error => {
+      if (!disposed) setRuntimeError(error instanceof Error ? error.message : String(error));
+    }).finally(() => { if (!disposed) setRuntimeLoading(false); });
+    return () => { disposed = true; };
+  }, [runtimeGateway, runtimeRetry, settingsOpen]);
+  useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
       // Tiptap and native text fields keep their own text undo history.
@@ -183,6 +200,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     </>}
     </div>
     {settingsOpen && <SettingsView appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT}
+      runtimeInfo={runtimeInfo} runtimeError={runtimeError} runtimeLoading={runtimeLoading} desktopRuntime={runtimeGateway.desktop}
+      onRetryRuntime={() => { setRuntimeInfo(null); setRuntimeError(''); setRuntimeRetry(value => value + 1); }}
       onConnect={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.connect()) : undefined}
       onReconnect={chatGPTGateway.desktop ? () => runChatGPT(() => chatGPTGateway.connect()) : undefined}
       onTestConnection={chatGPTGateway.desktop ? () => { if (nativeChatGPTState?.selectedModel) runChatGPT(() => chatGPTGateway.testConnection(nativeChatGPTState.selectedModel!)); } : undefined}
