@@ -38,6 +38,20 @@ describe('connected writing views', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to writing' }));
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeVisible();
   });
+  it('migrates an existing dark preference to Platinum once, then remembers a new explicit choice', () => {
+    window.localStorage.clear();
+    window.localStorage.setItem('shorthand.appearance', 'dark');
+    const firstLaunch = render(<App gateway={gateway()}/>);
+    expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'light');
+    expect(window.localStorage.getItem('shorthand.appearance')).toBe('light');
+    expect(window.localStorage.getItem('shorthand.appearance-default')).toBe('platinum-light-v1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Dark/ }));
+    firstLaunch.unmount();
+    render(<App gateway={gateway()}/>);
+    expect(document.querySelector('.app')).toHaveAttribute('data-theme', 'dark');
+  });
   it('clearly requires the desktop app without inserting a sample manuscript', () => {
     render(<App gateway={gateway()}/>);
     expect(screen.getByText(/Desktop app required/)).toBeVisible();
