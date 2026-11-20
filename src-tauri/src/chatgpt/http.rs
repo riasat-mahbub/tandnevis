@@ -186,8 +186,10 @@ mod platform {
             .iter()
             .map(|(name, value)| format!("{name}: {value}\r\n"))
             .collect::<String>();
-        let mut headers_w: Vec<u16> = header_text.encode_utf16().collect();
-        headers_w.push(0);
+        // windows-rs passes the slice length as dwHeadersLength. A trailing NUL
+        // would be counted as header content and WinHTTP rejects it with
+        // ERROR_INVALID_PARAMETER before attempting the connection.
+        let headers_w: Vec<u16> = header_text.encode_utf16().collect();
         let session = unsafe {
             Handle::new(WinHttpOpen(
                 PCWSTR::from_raw(user_agent_w.as_ptr()),
@@ -239,7 +241,12 @@ mod platform {
                 body.len() as u32,
                 0,
             )
-            .map_err(|_| "Could not send the secure ChatGPT request.")?;
+            .map_err(|error| {
+                format!(
+                    "Could not send the secure ChatGPT request (Windows error 0x{:08X}).",
+                    error.code().0 as u32
+                )
+            })?;
         }
         receive_response_cancellable(request.0, &stop_reason)?;
         let mut status = 0u32;
@@ -455,6 +462,23 @@ pub fn stream_bytes_cancellable(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "Makes an anonymous HTTPS request; run explicitly to check the native transport"]
+    fn native_transport_reaches_models_without_credentials() {
+        let (status, _) = request_bytes(
+            "GET",
+            "https://api.openai.com/v1/models",
+            &[("Accept", "application/json")],
+            &[],
+            64_000,
+        )
+        .expect("native HTTPS transport should return an HTTP response");
+        assert_eq!(
+            status, 401,
+            "anonymous models request must require authentication"
+        );
+    }
     use super::*;
 
     #[test]
