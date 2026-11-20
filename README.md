@@ -1,8 +1,8 @@
 # Shorthand Writer
 
-A local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with optional character references and local emotion/delivery, and can contain zero, one, or many characters. The full plan adds reusable direction blocks, optional physical stages, and AI prose generation.
+A local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with reusable character, emotion, and tone blocks, and can contain zero, one, or many characters. Separate Characters, Tones, and Emotions screens manage project-wide definitions. Optional physical stages remain planned.
 
-**Status:** native SQLite authoring, Story/Scene timelines, character references, ChatGPT Settings, and individual scene drafting are implemented. Drafts support streaming, Stop, recovery, Copy/Discard, and undoable acceptance into editable scene prose. Platinum is the default appearance. Live ChatGPT account eligibility and inference still require an eligible test account. [Implementation progress](docs/implementation-progress.md) records verification and remaining features.
+**Status:** native SQLite authoring, Story/Scene timelines, full global libraries, scoped emotion/scene-tone/beat-tone blocks, ChatGPT Settings, and individual scene drafting are implemented. New projects include editable starter emotions and tones; existing projects can add them explicitly. Drafts support streaming, Stop, recovery, Copy/Discard, and undoable acceptance into editable scene prose. Platinum is the default appearance. Live ChatGPT account eligibility and inference still require an eligible test account. [Implementation progress](docs/implementation-progress.md) records verification and remaining features.
 
 **Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
 
@@ -33,7 +33,7 @@ To build or update the single latest release, run `powershell -ExecutionPolicy B
 
 [Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
 
-[Read the global blocks and navigation plan](docs/global-blocks-and-navigation-plan.md): full Characters, Tones, and Emotions screens; a Scene shelf for inserting their reusable blocks; explicit emotion targets; and clear places for Save, project commands, and Trash. This is the next planned interface tranche.
+[Read the global blocks and navigation plan](docs/global-blocks-and-navigation-plan.md): implemented Characters, Tones, and Emotions screens; a Scene shelf for inserting their reusable blocks; explicit emotion targets; and clear places for Save, project commands, and Trash.
 
 [Read the scoped portable and AI plan](docs/install-and-ai-plan.md): portable Windows ZIP, ChatGPT setup in Settings, scene-by-scene generation from beats, the Harvest Orange theme, and verification gates.
 

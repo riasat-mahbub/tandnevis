@@ -1,6 +1,6 @@
 # Global blocks and usable navigation
 
-Status: proposed implementation plan, 20 November 2026. Documentation only. This supersedes the contextual character-manager navigation and preset interaction details in older interface documents. Story and Scene remain the two writing zoom levels; Characters, Tones, and Emotions become full project screens.
+Status: implemented core workflow, 20 November 2026. See [implementation progress](implementation-progress.md) for checks and remaining verification limits. This supersedes the contextual character-manager navigation and preset interaction details in older interface documents. Story and Scene remain the two writing zoom levels; Characters, Tones, and Emotions are full project screens. The acceptance list below remains the behavior contract, not a claim that every device or input method has been manually tested.
 
 ## 1. What the current interface gets wrong
 

@@ -1,6 +1,6 @@
 # Global blocks: UI design brief
 
-Status: design proposal, 20 November 2026. Read alongside [the behavior and delivery plan](global-blocks-and-navigation-plan.md). This is a description of the next interface, not a new mockup or implemented screen.
+Status: implemented design direction, 20 November 2026. Read alongside [the behavior and delivery plan](global-blocks-and-navigation-plan.md) and [implementation progress](implementation-progress.md). This brief records the intended interface; the progress ledger records verified behavior and remaining limits.
 
 ## Design intent
 
