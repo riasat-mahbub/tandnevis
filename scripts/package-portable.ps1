@@ -1,7 +1,5 @@
 [CmdletBinding()]
-param(
-    [string] $OutputDirectory
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 
@@ -45,13 +43,10 @@ if ($tauri.bundle.resources) {
     throw 'Tauri bundle resources are configured. Review and add their verified runtime files to this portable package script before building.'
 }
 
-if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $repositoryRoot 'out\portable'
-} elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
-    $OutputDirectory = Join-Path $repositoryRoot $OutputDirectory
-}
-$outputRoot = Get-FullPath $OutputDirectory
-$archiveName = "Shorthand-Writer-v$($package.version)-win-x64.zip"
+$outputRoot = Get-FullPath (Join-Path $repositoryRoot 'out\latest')
+$applicationName = 'Shorthand Writer.exe'
+$installedExecutable = Join-Path $outputRoot $applicationName
+$archiveName = 'Shorthand-Writer-latest-win-x64.zip'
 $archivePath = Get-FullPath (Join-Path $outputRoot $archiveName)
 $checksumPath = "$archivePath.sha256"
 Assert-ChildPath $archivePath $outputRoot 'Archive output'
@@ -59,8 +54,10 @@ Assert-ChildPath $archivePath $outputRoot 'Archive output'
 if ((Test-Path -LiteralPath $outputRoot) -and -not (Test-Path -LiteralPath $outputRoot -PathType Container)) {
     throw "Output path exists and is not a directory: '$outputRoot'."
 }
-if ((Test-Path -LiteralPath $archivePath) -or (Test-Path -LiteralPath $checksumPath)) {
-    throw "Refusing to overwrite an existing package or checksum in '$outputRoot'. Choose another output directory or move the old files yourself."
+foreach ($process in @(Get-Process -Name 'Shorthand Writer' -ErrorAction SilentlyContinue)) {
+    if ($process.Path -and $process.Path.Equals($installedExecutable, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Save your project and close Shorthand Writer before updating out/latest.'
+    }
 }
 
 $releaseExecutable = Get-FullPath (Join-Path $repositoryRoot 'src-tauri\target\release\shorthand-writer.exe')
@@ -68,9 +65,14 @@ $expectedReleaseRoot = Get-FullPath (Join-Path $repositoryRoot 'src-tauri\target
 Assert-ChildPath $releaseExecutable $expectedReleaseRoot 'Release executable'
 
 Write-Host "Building Shorthand Writer v$($package.version) for Windows x64..."
-npm run desktop:build -- --no-bundle
-if ($LASTEXITCODE -ne 0) {
-    throw "The Tauri release build failed with exit code $LASTEXITCODE."
+Push-Location -LiteralPath $repositoryRoot
+try {
+    npm run desktop:build -- --no-bundle
+    if ($LASTEXITCODE -ne 0) {
+        throw "The Tauri release build failed with exit code $LASTEXITCODE."
+    }
+} finally {
+    Pop-Location
 }
 if (-not (Test-Path -LiteralPath $releaseExecutable -PathType Leaf)) {
     throw "The release executable was not produced at '$releaseExecutable'."
@@ -98,12 +100,13 @@ if ($stage.Equals($outputRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
 
 try {
     New-Item -ItemType Directory -Path $stage | Out-Null
-    $applicationName = 'Shorthand Writer.exe'
-    Copy-Item -LiteralPath $releaseExecutable -Destination (Join-Path $stage $applicationName)
+    $appStage = Join-Path $stage 'app'
+    New-Item -ItemType Directory -Path $appStage | Out-Null
+    Copy-Item -LiteralPath $releaseExecutable -Destination (Join-Path $appStage $applicationName)
 
     # Runtime storage code recognizes this marker and creates a writable data folder
     # beside the application. Story projects remain separately chosen .shorthand files.
-    Set-Content -LiteralPath (Join-Path $stage 'portable.mode') -Encoding Ascii -Value 'portable-data-v1'
+    Set-Content -LiteralPath (Join-Path $appStage 'portable.mode') -Encoding Ascii -Value 'portable-data-v1'
 
     $portableReadme = @"
 Shorthand Writer v$($package.version) - Windows x64 portable app
@@ -122,27 +125,34 @@ ChatGPT credentials are protected by the current Windows user account. Copying t
 folder to another computer or Windows user does not copy a working sign-in; reconnect
 from Settings on that account.
 
-To update, close the app after saving, then replace only the application files from
-the newer ZIP. Keep this folder's data directory and your separately saved projects.
+This is the latest build. Future packaging updates this same application folder.
+To update, close the app after saving. Keep the data directory and your separately
+saved projects. Launch the extracted executable, not the copy inside the ZIP.
 "@
-    Set-Content -LiteralPath (Join-Path $stage 'README.txt') -Encoding UTF8 -Value $portableReadme
+    Set-Content -LiteralPath (Join-Path $appStage 'README.txt') -Encoding UTF8 -Value $portableReadme
 
-    if (-not (Test-Path -LiteralPath (Join-Path $stage $applicationName) -PathType Leaf) -or
-        -not (Test-Path -LiteralPath (Join-Path $stage 'portable.mode') -PathType Leaf) -or
-        -not (Test-Path -LiteralPath (Join-Path $stage 'README.txt') -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $appStage $applicationName) -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $appStage 'portable.mode') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $appStage 'README.txt') -PathType Leaf)) {
         throw 'Package staging is incomplete; refusing to create an archive.'
     }
 
-    New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
-    Assert-ChildPath (Get-FullPath $archivePath) $outputRoot 'Archive output'
-    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archivePath -CompressionLevel Optimal
+    $stagedArchive = Join-Path $stage $archiveName
+    Compress-Archive -Path (Join-Path $appStage '*') -DestinationPath $stagedArchive -CompressionLevel Optimal
 
-    if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $stagedArchive -PathType Leaf)) {
         throw 'The archive command completed without producing the expected ZIP.'
     }
-    $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $archiveHash = (Get-FileHash -LiteralPath $stagedArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
+    # Update only release files. Never copy or delete the existing data folder.
+    foreach ($name in @($applicationName, 'portable.mode', 'README.txt')) {
+        Copy-Item -LiteralPath (Join-Path $appStage $name) -Destination (Join-Path $outputRoot $name) -Force
+    }
+    Copy-Item -LiteralPath $stagedArchive -Destination $archivePath -Force
     Set-Content -LiteralPath $checksumPath -Encoding Ascii -Value "$archiveHash  $archiveName"
 
+    Write-Host "Latest app: $installedExecutable"
     Write-Host "Portable archive: $archivePath"
     Write-Host "SHA-256: $checksumPath"
 } finally {

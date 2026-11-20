@@ -10,7 +10,7 @@ This is a smaller extension of the current app: no new provider framework, helpe
 
 ## 1. Portable Windows app
 
-Primary artifact: a versioned Windows 11 x64 ZIP containing the release executable, required native libraries/resources, a short README, and a checksum. Extract to a writable folder and double-click `Shorthand Writer.exe`. No npm, Node, Rust, Python, terminal, or admin installation is required for the shipped app.
+Primary artifact: the single latest Windows x64 release at `out/latest/Shorthand Writer.exe`, alongside `Shorthand-Writer-latest-win-x64.zip` and its checksum. Packaging replaces those release files in place while preserving `data/`; it does not create parallel release folders. Extract the ZIP to a writable folder when copying the app elsewhere and double-click `Shorthand Writer.exe`. No npm, Node, Rust, Python, terminal, or admin installation is required for the shipped app.
 
 The first package uses the machine's Microsoft WebView2 runtime. Document that prerequisite and handle a missing runtime with a readable startup diagnostic or a small checked launcher, rather than a silent failure. A ZIP around an executable does not make WebView2 disappear as a dependency. A fully self-contained archive with a fixed WebView2 runtime can follow if needed; it increases distribution size and needs its own runtime-path and update verification. [Tauri runtime distribution options](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options).
 

@@ -4,6 +4,8 @@ Updated 20 November 2026. This ledger separates approved direction from implemen
 
 ## Current saving behavior
 
+Release consolidation: `out/latest/` is the only current portable release folder. Launch `out/latest/Shorthand Writer.exe`. Packaging replaces the stable `Shorthand-Writer-latest-win-x64.zip` and checksum in that folder while retaining app data and connection metadata. Older output paths mentioned in dated verification records below are superseded.
+
 Manual save is the default. Edits, structural operations, history, and generation jobs update a private in-memory SQLite working copy. Save / Ctrl+S writes the complete working database into the chosen project file in one transaction with external-change detection. Autosave is optional in Settings and runs after editing settles. Manual changes require Save for crash durability; older verification below describes the earlier immediate-save implementation where stated.
 
 Autosave flicker came from a global lock tied to every pending edit. Pending authoring updates no longer disable prose fields, timeline controls, or generation setup controls. Save status reserves its layout width. Undo/Redo still wait for queued authoring updates. Closing or switching projects prompts Save / Discard / Cancel. The close handler now has the native `core:window:allow-destroy` permission required by Tauri, and waits for pending authoring updates before making a close decision.
