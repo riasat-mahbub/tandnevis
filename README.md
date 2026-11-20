@@ -33,6 +33,8 @@ To build or update the single latest release, run `powershell -ExecutionPolicy B
 
 [Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
 
+[Read the global blocks and navigation plan](docs/global-blocks-and-navigation-plan.md): full Characters, Tones, and Emotions screens; a Scene shelf for inserting their reusable blocks; explicit emotion targets; and clear places for Save, project commands, and Trash. This is the next planned interface tranche.
+
 [Read the scoped portable and AI plan](docs/install-and-ai-plan.md): portable Windows ZIP, ChatGPT setup in Settings, scene-by-scene generation from beats, the Harvest Orange theme, and verification gates.
 
 ## Agreed direction

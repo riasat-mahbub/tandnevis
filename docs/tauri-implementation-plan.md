@@ -4,6 +4,8 @@ Status: approved architecture; the first native authoring tranche is implemented
 
 ## 1. Deliverable and architectural decisions
 
+The next planned UI/native extension is [Global blocks and usable navigation](global-blocks-and-navigation-plan.md). It adds dedicated Characters/Tones/Emotions screens, native shared preset entities, separate targeted emotion nodes, scene-tone references, matching generation context, and command/navigation cleanup. Its delivery sequence and reference semantics supersede earlier contextual-library details in this document; preserve the current full manual save and optional Autosave implementation.
+
 Build an installed, local-first desktop application with a React/TypeScript frontend and a Tauri 2/Rust backend. “Full stack” means the UI, domain operations, persistence, background work, AI integration, and desktop packaging are implemented together. The first release does not require a hosted application server, account system, or cloud database.
 
 | Area | Implementation direction | Boundary |

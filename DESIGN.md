@@ -1,5 +1,7 @@
 # Shorthand Writer — two-view design
 
+The latest planned navigation extends the two writing zoom levels with full **Characters, Tones, and Emotions** screens. Their reusable blocks are inserted from a Scene library shelf: character into beat text, separate emotion block onto an explicit character occurrence, and tone onto the scene-tone target. Save stays in the app header; New/Open, Markdown import/export, and Trash move to a labeled Project menu. [Global blocks and usable navigation](docs/global-blocks-and-navigation-plan.md) is the current contract for this extension and supersedes the older contextual character panel. The reference in `outputs/review/` governs the block-use workflow; the current Platinum/Harvest Orange visual system and alternating timelines remain authoritative.
+
 The accepted scene-writer workflow remains: two views at two conceptual zoom levels, scene summaries, and freeform beat cards. The next visual iteration adds a playful touch with selective skew and asymmetry, together with clearer editing controls. Functional requirements remain in [the development plan](docs/development-plan.md); the detailed next-step brief is [the interface plan](docs/interface-plan.md). The [interactive design reference](outputs/scene-writer-studio.html) shows the current functional baseline. The new visual treatment and additional controls are planned, not implemented in that prototype.
 
 ## Composition

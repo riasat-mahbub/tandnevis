@@ -1,5 +1,7 @@
 # Playful interface and editing controls
 
+**Latest navigation and reusable-block revision:** [Global blocks and usable navigation](global-blocks-and-navigation-plan.md) specifies full Characters, Tones, and Emotions screens, a scene insertion shelf, separate targeted emotion blocks, the scene-tone drop target, and a clear Project menu. It supersedes the contextual library-panel navigation and any conflicting preset behavior below. See `outputs/review/` for the earlier block-usage reference; its palette and card arrangement are historical.
+
 Status: planned application work, with an [interactive playful preview](../outputs/scene-writer-playful.html). This brief extends the [development plan](development-plan.md) and [design record](../DESIGN.md). The preview demonstrates the visual treatment, core scene/beat actions, recoverable removal, Calm appearance, and basic character-profile editing. It does not implement the full control inventory, installed-app persistence, or real AI generation.
 
 The latest additions—an alternating beat timeline, direct Delete/Duplicate quick actions, and the complete drag-and-drop contract at both levels—are recorded here as requirements. Existing previews are earlier references; this update does not modify them.
@@ -15,7 +17,7 @@ Retain two writing views:
 - **Story:** the whole-story vertical timeline, with draggable scene blocks grouped by chapter. Open a scene to zoom in.
 - **Scene:** the scene writer, with a scene idea/summary and scene tone above a matching vertical timeline of freeform beat cards, reusable blocks, and optional staging. Back to story zooms out.
 
-Beat cards can contain zero, one, or many characters. Stages and narration overrides remain optional. Preserve the existing hierarchy, navigation, and writing behavior while refining the visual treatment. Library management and Trash open as contextual panels within these views; they do not add another writing zoom level.
+Beat cards can contain zero, one, or many characters. Stages and narration overrides remain optional. Preserve the writing hierarchy and both timelines. Characters, Tones, and Emotions become full project destinations, while their blocks remain available on the Scene shelf. Trash opens a secondary recovery screen through the Project menu. These destinations do not add another writing zoom level.
 
 ## 2. Visual direction
 
@@ -110,8 +112,8 @@ An inspector explicitly distinguishes **This scene/beat** from **Reusable profil
 
 ### Scope and save behavior
 
-- Keep title, summary, beats, candidates, narration overrides, and stage state independent for every scene. Normal authoring changes autosave, with visible saving/saved/failed feedback backed by actual persistence.
-- Rename references by stable identity; do not search-and-replace authored prose automatically. Changes to baseline guidance create a profile/preset revision; applying a changed reusable definition to existing scenes requires a usage-aware preview.
+- Keep title, summary, beats, candidates, narration overrides, and stage state independent for every scene. Manual Save / Ctrl+S is the default, with optional Autosave and truthful unsaved/saving/saved/failed feedback. Shared-library changes use the same full-project save.
+- Rename references by stable identity; do not search-and-replace authored prose automatically. Shared definitions resolve their latest guidance for future generation, with visible usage scope; stored generation snapshots and accepted prose stay unchanged. Relevant changes mark existing drafts outdated. This supersedes the earlier mandatory apply-preset-revision preview.
 - Replacing or removing a referenced item must resolve its usages. Never leave a silent dangling reference or substitute a different character automatically.
 - Delete/Backspace within editable text edits text. Structural deletion acts only on an explicitly selected object or its menu action. Keyboard access must not hijack normal writing shortcuts.
 
@@ -139,4 +141,4 @@ These are slices of the existing milestones, not a replacement schedule.
 - Exercise empty story, empty chapter, empty scene, long titles/summaries, long beat text, repeated character references, and archived/missing entries. Controls remain discoverable and errors preserve work.
 - Inspect both views in light/dark appearance, Calm appearance, reduced motion, high text zoom, and narrow windows. Skew/asymmetry never causes overlap, misaligned carets, clipped menus, or ambiguous reading order.
 - Complete all editing/reordering/recovery actions by keyboard, with focus following the affected object. Screen-reader labels announce object names, local/global scope, and action results.
-- Reopen the native project and verify SQLite-backed autosave, order, revisions, Trash, and the documented undo/recovery policy. Test explicit Markdown export/import and confirm that external Markdown edits do not alter the open project. The prototype's in-memory navigation checks alone do not satisfy this persistence gate.
+- Reopen the native project after full manual Save and verify definitions, references, order, revisions, Trash, and the documented undo/recovery policy. Verify optional Autosave separately. Test explicit Markdown export/import and confirm that external Markdown edits do not alter the open project. The prototype's in-memory navigation checks alone do not satisfy this persistence gate.
