@@ -1,5 +1,5 @@
 import type { JSONContent } from '@tiptap/core';
-import type { Character, ProjectSnapshot, Scene } from './project';
+import type { Character, Preset, PresetKind, ProjectSnapshot, Scene } from './project';
 
 /** A JSON value whose nested objects and arrays cannot be edited by a caller. */
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
@@ -14,6 +14,7 @@ export interface CharacterOccurrence {
   /** Indexes into successive `content` arrays in the beat's original document. */
   path: number[];
   characterId: string;
+  occurrenceId: string;
   label: string;
   emotion: string;
   delivery: string;
@@ -29,6 +30,8 @@ export interface GenerationBeat {
   /** Readable rendering of this beat; plain text stays ordinary prose. */
   readableText: string;
   references: CharacterOccurrence[];
+  tone: string;
+  toneSource: string;
 }
 
 export interface GenerationCharacter {
@@ -38,7 +41,10 @@ export interface GenerationCharacter {
   personality: string;
   voice: string;
   archived: boolean;
+  defaultToneId: string;
+  defaultEmotionId: string;
 }
+export interface GenerationPreset extends Preset { kind: PresetKind }
 
 /**
  * Immutable, scene-scoped generation input. It deliberately has no project-wide
@@ -53,11 +59,13 @@ export interface SceneGenerationContext {
     title: string;
     summary: string;
     tone: string;
+    toneId: string;
     narration: Scene['narration'];
   };
   beats: GenerationBeat[];
   /** First-reference order, with each referenced profile listed once. */
   referencedCharacters: GenerationCharacter[];
+  referencedPresets: GenerationPreset[];
   /** References whose profile has since been removed; their original nodes remain intact. */
   unresolvedReferences: Array<{
     beatId: string;
@@ -108,6 +116,7 @@ function collectReferences(
     result.push({
       path: [...path],
       characterId,
+      occurrenceId: stringAttr(node, 'occurrenceId'),
       label: profile?.name || stringAttr(node, 'label') || 'Character',
       emotion: stringAttr(node, 'emotion'),
       delivery: stringAttr(node, 'delivery'),
@@ -156,11 +165,15 @@ function cleanBlock(value: string): string {
   return value.replace(/\n+$/g, '').trim();
 }
 
-function formatCharacter(character: GenerationCharacter): string {
+function formatCharacter(character: GenerationCharacter, project: ProjectSnapshot): string {
+  const tone = project.tones.find(p => p.id === character.defaultToneId);
+  const emotion = project.emotions.find(p => p.id === character.defaultEmotionId);
   const facts = [
-    character.background && `Background: ${character.background}`,
-    character.personality && `Personality: ${character.personality}`,
-    character.voice && `Baseline voice: ${character.voice}`,
+    character.background.trim() && `Background: ${character.background.trim()}`,
+    character.personality.trim() && `Personality: ${character.personality.trim()}`,
+    character.voice.trim() && `Baseline voice: ${character.voice.trim()}`,
+    tone && `Default tone: ${tone.name}`,
+    emotion && `Default emotion: ${emotion.name}`,
     character.archived && 'This profile is archived; it remains attached to an existing beat reference.',
   ].filter(Boolean);
   return `- ${character.name}${facts.length ? `\n  ${facts.join('\n  ')}` : ''}`;
@@ -180,11 +193,40 @@ export function buildSceneGenerationContext(
 
   const characterById = new Map(project.characters.map(character => [character.id, character]));
   const referencedIds = new Set<string>();
+  const referencedPresets: GenerationPreset[] = [];
+  const addPreset = (kind: PresetKind, id: string) => {
+    if (!id) return undefined;
+    const preset = (kind === 'tone' ? project.tones : project.emotions).find(p => p.id === id);
+    if (!preset) throw new Error('A reusable block definition is missing. Repair its reference before generating.');
+    if (!referencedPresets.some(p => p.kind === kind && p.id === id)) referencedPresets.push({ kind, ...cloneJson(preset) });
+    return preset;
+  };
+  const sceneTone = addPreset('tone', scene.toneId)?.name ?? scene.tone;
   const unresolvedReferences: SceneGenerationContext['unresolvedReferences'] = [];
   const beats: GenerationBeat[] = scene.beats.map((beat, index) => {
     const document = cloneJson(beat.document);
     const references: CharacterOccurrence[] = [];
     collectReferences(document, [], characterById, references);
+    const owners = new Map(references.map(r => [r.occurrenceId, r.label]));
+    let beatTone: Preset | undefined;
+    const displayNode = (node: JSONContent): JSONContent => {
+      if (node.type === 'toneReference') {
+        if (beatTone) throw new Error('A beat can contain only one tone block.');
+        beatTone = addPreset('tone', stringAttr(node, 'toneId'));
+        if (!beatTone) throw new Error('A beat tone reference is missing its definition.');
+        return { type: 'text', text: `[Beat tone: ${beatTone.name}]` };
+      }
+      if (node.type === 'emotionReference') {
+        const preset = addPreset('emotion', stringAttr(node, 'emotionId'));
+        if (!preset) throw new Error('An emotion reference is missing its definition.');
+        const target = stringAttr(node, 'targetOccurrenceId');
+        const owner = target && owners.get(target);
+        if (!owner) throw new Error('An emotion block needs a character occurrence in the same beat.');
+        return { type: 'text', text: `[Emotion: ${preset.name} → ${owner}]` };
+      }
+      return { ...node, ...(node.content ? { content: node.content.map(displayNode) } : {}) };
+    };
+    const displayDocument = displayNode(document);
     for (const reference of references) {
       if (characterById.has(reference.characterId)) referencedIds.add(reference.characterId);
       else unresolvedReferences.push({
@@ -198,8 +240,10 @@ export function buildSceneGenerationContext(
       id: beat.id,
       order: index + 1,
       document,
-      readableText: cleanBlock(renderNode(document, characterById)),
+      readableText: cleanBlock(renderNode(displayDocument, characterById)),
       references,
+      tone: beatTone?.name ?? sceneTone,
+      toneSource: beatTone ? 'beat' : sceneTone ? 'scene' : 'none',
     };
   });
 
@@ -213,31 +257,43 @@ export function buildSceneGenerationContext(
       personality: character.personality,
       voice: character.voice,
       archived: character.archived,
+      defaultToneId: character.defaultToneId,
+      defaultEmotionId: character.defaultEmotionId,
     };
   });
+
+  for (const character of referencedCharacters) {
+    addPreset('tone', character.defaultToneId);
+    addPreset('emotion', character.defaultEmotionId);
+  }
 
   const sceneCopy = {
     id: scene.id,
     title: scene.title,
     summary: scene.summary,
-    tone: scene.tone,
+    tone: sceneTone,
+    toneId: scene.toneId,
     narration: cloneJson(scene.narration),
   };
   const contextBlocks = [
     `Scene: ${scene.title}`,
     scene.summary.trim() && `Scene summary: ${scene.summary.trim()}`,
-    scene.tone.trim() && `Scene tone: ${scene.tone.trim()}`,
+    sceneTone.trim() && `Scene tone: ${sceneTone.trim()}`,
     scene.narration.pointOfView.trim() && `Point of view: ${scene.narration.pointOfView.trim()}`,
     scene.narration.tense.trim() && `Tense: ${scene.narration.tense.trim()}`,
     scene.narration.instructions.trim() && `Narration guidance: ${scene.narration.instructions.trim()}`,
     referencedCharacters.length
-      ? `Referenced character profiles:\n${referencedCharacters.map(formatCharacter).join('\n')}`
+      ? `Referenced character profiles:\n${referencedCharacters.map(c => formatCharacter(c, project)).join('\n')}`
       : 'Referenced character profiles: none.',
+    referencedPresets.length ? `Referenced reusable blocks:\n${referencedPresets.map(p => {
+      const facts = ([['Meaning', p.meaning], ['Guidance', p.guidance], ['Example', p.example]] as const).filter(([, v]) => v.trim()).map(([label, value]) => `${label}: ${value.trim()}`);
+      return `- ${p.kind === 'tone' ? 'Tone' : 'Emotion'}: ${p.name}${facts.length ? `\n  ${facts.join('\n  ')}` : ''}`;
+    }).join('\n')}` : '',
     beats.length
-      ? `Ordered beats:\n${beats.map(beat => `Beat ${beat.order}:\n${beat.readableText || '(empty)'}`).join('\n\n')}`
+      ? `Ordered beats:\n${beats.map(beat => `Beat ${beat.order}${beat.tone ? ` (tone: ${beat.tone}; ${beat.toneSource === 'beat' ? 'beat override' : 'inherited scene'})` : ''}:\n${beat.readableText || '(empty)'}`).join('\n\n')}`
       : 'Ordered beats: none.',
     unresolvedReferences.length
-      ? `Unresolved references:\n${unresolvedReferences.map(ref => `- ${ref.label} (profile unavailable; preserve this as an existing reference)`).join('\n')}`
+      ? `Unresolved character references:\n${unresolvedReferences.map(ref => `- ${ref.label} (profile unavailable; preserve this as an existing reference)`).join('\n')}`
       : '',
   ].filter((block): block is string => typeof block === 'string' && block.length > 0);
 
@@ -248,6 +304,7 @@ export function buildSceneGenerationContext(
     scene: sceneCopy,
     beats,
     referencedCharacters,
+    referencedPresets,
     unresolvedReferences,
     readableContext: contextBlocks.join('\n\n'),
   });

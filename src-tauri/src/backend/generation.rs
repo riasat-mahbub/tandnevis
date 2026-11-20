@@ -800,6 +800,11 @@ fn validate_guidance(guidance: Option<String>) -> Result<String> {
 }
 
 fn validate_context_for_request(context: &SceneGenerationContext) -> Result<()> {
+    if !context.unresolved_references.is_empty() {
+        return Err(
+            "A character definition is missing. Repair its reference before generating.".into(),
+        );
+    }
     if !context
         .beats
         .iter()
@@ -815,7 +820,7 @@ fn validate_context_for_request(context: &SceneGenerationContext) -> Result<()> 
 
 fn make_request(model: &str, guidance: &str, context: &SceneGenerationContext) -> ResponsesRequest {
     let mut instructions = String::from(
-        "Write polished story prose for one scene using every beat in order. Treat character references as instructions for the named character at that moment; local emotion and delivery override the character's baseline profile only for that occurrence. Use the scene tone and narration guidance. Preserve the causal sequence and intent of the beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction.",
+        "Write polished story prose for one scene using every beat in order. Treat character references as instructions for the named character at that moment; local emotion and delivery override the character's baseline profile only for that occurrence. An explicit beat tone overrides the scene tone for that beat only; other beats inherit the scene tone. Character voice remains independent. Use the narration guidance. Preserve the causal sequence and intent of the beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction.",
     );
     if !guidance.is_empty() {
         instructions.push_str("\n\nAdditional author guidance:\n");
@@ -1438,6 +1443,19 @@ pub async fn discard_scene_generation(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn missing_character_reference_blocks_sending_incomplete_context() {
+        let mut project: ProjectSnapshot =
+            serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
+                .unwrap();
+        project
+            .characters
+            .retain(|character| character.id != "maya");
+        let context = build_scene_context(&project, "scene").unwrap();
+        assert!(validate_context_for_request(&context)
+            .unwrap_err()
+            .contains("character definition is missing"));
+    }
     #[test]
     fn shared_global_blocks_match_frontend_fingerprint() {
         let project: ProjectSnapshot =

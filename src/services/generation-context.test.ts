@@ -25,7 +25,7 @@ function sampleProject(): ProjectSnapshot {
     scenes: [
       {
         id: 'scene-1', chapterId: 'chapter-1', title: 'School Infirmary',
-        summary: 'Maya stitches Damian’s wounds after a fight.', tone: 'Tender with awkward humor', prose: '',
+        summary: 'Maya stitches Damian’s wounds after a fight.', tone: 'Tender with awkward humor', prose: '', toneId: '',
         narration: { pointOfView: 'Third person limited', tense: 'Past', instructions: 'Stay close to Damian’s attention.' },
         beats: [
           { id: 'beat-1', document: sceneDocument(paragraph(ref('maya-id', 'Old Maya label', 'serious'), ' is stitching ', ref('damian-id', 'Damian'), '’s wounds.')), text: 'Maya is stitching Damian’s wounds.' },
@@ -36,13 +36,14 @@ function sampleProject(): ProjectSnapshot {
           { id: 'beat-6', document: sceneDocument(paragraph(ref('damian-id', 'Damian', 'awe'), ' says there is nothing; he just likes her face. ', ref('maya-id', 'Maya', 'embarrassed'), ' calls him an idiot.')), text: 'Damian compliments Maya.' },
         ],
       },
-      { id: 'scene-2', chapterId: 'chapter-1', title: 'Elsewhere', summary: 'A different scene.', tone: '', prose: '', narration: { pointOfView: '', tense: '', instructions: '' }, beats: [{ id: 'beat-other', document: sceneDocument(paragraph('Do not send this.')), text: 'Do not send this.' }] },
+      { id: 'scene-2', chapterId: 'chapter-1', title: 'Elsewhere', summary: 'A different scene.', tone: '', prose: '', toneId: '', narration: { pointOfView: '', tense: '', instructions: '' }, beats: [{ id: 'beat-other', document: sceneDocument(paragraph('Do not send this.')), text: 'Do not send this.' }] },
     ],
     characters: [
-      { id: 'maya-id', name: 'Maya', background: 'A guarded student medic.', personality: 'Practical and sharp.', voice: 'Dry, clipped sentences.', archived: false },
-      { id: 'damian-id', name: 'Damian', background: 'A stubborn transfer student.', personality: 'Serious and hostile by default.', voice: 'Blunt, guarded speech.', archived: true },
-      { id: 'unreferenced-id', name: 'Nora', background: 'Must not leak.', personality: 'Must not leak.', voice: 'Must not leak.', archived: false },
+      { id: 'maya-id', name: 'Maya', background: 'A guarded student medic.', personality: 'Practical and sharp.', voice: 'Dry, clipped sentences.', archived: false, defaultToneId: '', defaultEmotionId: '' },
+      { id: 'damian-id', name: 'Damian', background: 'A stubborn transfer student.', personality: 'Serious and hostile by default.', voice: 'Blunt, guarded speech.', archived: true, defaultToneId: '', defaultEmotionId: '' },
+      { id: 'unreferenced-id', name: 'Nora', background: 'Must not leak.', personality: 'Must not leak.', voice: 'Must not leak.', archived: false, defaultToneId: '', defaultEmotionId: '' },
     ],
+    tones: [], emotions: [], starterTypes: [],
     trash: [{ id: 'trash-1', kind: 'scene', title: 'Deleted secret', deletedAtRevision: 9, payload: { secret: 'Do not send this.' } }],
     importSources: [{ id: 'source-1', markdown: 'private import source', importedAtRevision: 2 }],
     canUndo: true, canRedo: false,
@@ -56,7 +57,7 @@ describe('scene generation context', () => {
 
     expect(context.scene).toEqual({
       id: 'scene-1', title: 'School Infirmary', summary: 'Maya stitches Damian’s wounds after a fight.',
-      tone: 'Tender with awkward humor',
+      tone: 'Tender with awkward humor', toneId: '',
       narration: { pointOfView: 'Third person limited', tense: 'Past', instructions: 'Stay close to Damian’s attention.' },
     });
     expect(context.beats.map(beat => [beat.id, beat.order])).toEqual([

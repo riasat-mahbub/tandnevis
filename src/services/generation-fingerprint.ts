@@ -17,6 +17,7 @@ export function generationInputFingerprint(context: DeepReadonly<SceneGeneration
     scene: context.scene,
     beats: context.beats,
     referencedCharacters: context.referencedCharacters,
+    referencedPresets: context.referencedPresets,
     unresolvedReferences: context.unresolvedReferences,
     defaultGuidance,
   };

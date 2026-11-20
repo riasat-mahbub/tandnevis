@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowLeft, BookOpen, Check, ChevronRight, Feather, FolderOpen, Leaf, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, Users, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronRight, Feather, FolderOpen, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { desktopGateway } from './services/project';
 import type { ProjectGateway, ProjectSession } from './services/project';
 import { Workspace } from './services/workspace';
 import { TitleField } from './components/Fields';
-import ProjectPanel from './components/ProjectPanel';
-import type { Panel } from './components/ProjectPanel';
+import LibraryView from './components/LibraryView';
+import type { LibraryKind } from './components/LibraryView';
 import StoryView from './components/StoryView';
 import SceneView from './components/SceneView';
 import SettingsView from './components/SettingsView';
@@ -22,6 +22,7 @@ import type { ApplicationRuntimeInfo, RuntimeGateway } from './services/runtime'
 import './styles.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway }
+type Destination = 'story' | 'scene' | LibraryKind | 'trash';
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
@@ -61,7 +62,12 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   function changeAutosave(value: boolean) { setAutosave(value); workspace.setAutosave(value); try { localStorage.setItem('shorthand.autosave', String(value)); } catch { /* Session choice remains active. */ } }
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [lastSceneId, setLastSceneId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(null);
+  const [destination, setDestination] = useState<Destination>('story');
+  const [librarySelection, setLibrarySelection] = useState<Record<LibraryKind, string | null>>({ characters: null, tones: null, emotions: null });
+  const [createRequests, setCreateRequests] = useState<Record<LibraryKind, number>>({ characters: 0, tones: 0, emotions: 0 });
+  const destinationScroll = useRef<Record<string, number>>({});
+  const previousDestination = useRef<Destination>('story');
+  const projectMenu = useRef<HTMLDetailsElement>(null);
   const [appearance, setAppearance] = useState<ThemePreference>(() => {
     try {
       // Make Platinum the one-time default for existing installs too. Bump the
@@ -111,7 +117,6 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   };
   const [notice, setNotice] = useState('');
   const [newTitle, setNewTitle] = useState('');
-  const [characterId, setCharacterId] = useState<string | null>(null);
   const [reviewRecovery, setReviewRecovery] = useState(false);
   const storyScroll = useRef(0);
   const scene = project?.scenes.find(s => s.id === sceneId);
@@ -127,8 +132,28 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       try { setNativeChatGPTState(await chatGPTGateway.connectionState()); } catch { /* Keep the safe, not-ready state. */ }
     });
   };
-  const backToStory = () => { setSceneId(null); requestAnimationFrame(() => window.scrollTo(0, storyScroll.current)); };
-  const openScene = (id: string) => { if (!scene) storyScroll.current = window.scrollY; setSceneId(id); setLastSceneId(id); window.scrollTo(0, 0); };
+  const navigate = (next: Destination) => {
+    destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
+    if (destination === 'story') storyScroll.current = window.scrollY;
+    setSettingsOpen(false); setDestination(next);
+    requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[next === 'scene' ? `scene:${sceneId}` : next] ?? 0));
+  };
+  const backToStory = () => navigate('story');
+  const openScene = (id: string) => {
+    if (destination === 'story') storyScroll.current = window.scrollY;
+    destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
+    setSceneId(id); setLastSceneId(id); setDestination('scene'); setSettingsOpen(false);
+    requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[`scene:${id}`] ?? 0));
+  };
+  const openLibrary = (kind: LibraryKind, id?: string) => {
+    if (id === 'new') setCreateRequests(requests => ({ ...requests, [kind]: requests[kind] + 1 }));
+    else if (id) setLibrarySelection(selection => ({ ...selection, [kind]: id }));
+    navigate(kind);
+  };
+  const openUsage = (id: string, beatId?: string, occurrenceId?: string) => {
+    openScene(id);
+    if (beatId) requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('shorthand:focus-beat', { detail: { beatId, occurrenceId } })));
+  };
   const openSettings = () => {
     settingsScroll.current = window.scrollY;
     setSettingsOpen(true);
@@ -145,7 +170,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     setAppearance(value);
     try { localStorage.setItem('shorthand.appearance', value); } catch { /* The session preference still applies. */ }
   };
-  useEffect(() => { if (sceneId && project && !project.scenes.some(s => s.id === sceneId)) backToStory(); }, [project, sceneId]);
+  useEffect(() => { if (sceneId && project && !project.scenes.some(s => s.id === sceneId)) { setSceneId(null); setLastSceneId(null); setDestination('story'); } }, [project, sceneId]);
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { const s = workspace.getSnapshot(); if (s.pending || s.dirty || s.saving || s.error) event.preventDefault(); };
     window.addEventListener('beforeunload', beforeUnload);
@@ -218,22 +243,47 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       }
       return confirmLeaving();
     });
-    if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setPanel(null); setNotice(''); }
+    if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setLastSceneId(null); setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); destinationScroll.current = {}; setNotice(''); }
+  }
+  function closeProjectMenu() { if (projectMenu.current) projectMenu.current.open = false; }
+  async function interchange(mode: 'import' | 'export') {
+    closeProjectMenu(); await workspace.flush();
+    const path = await gateway.chooseMarkdown(mode);
+    if (!path) return;
+    if (mode === 'import') { await workspace.importMarkdownFile(path); setNotice('Markdown appended as chapters, scenes, and beats. Save the project to keep it; Undo reverses the import.'); }
+    else { await gateway.exportMarkdownFile(workspace.getSnapshot().session!.sessionId, path); setNotice(`Story outline and beat text exported to ${path}`); }
   }
   return <div className={`app ${calm ? 'calm' : ''}`} data-theme={appearance}>
-    <header className="app-header"><a href="#main" className="skip-link">Skip to writing</a><div className="brand"><Feather size={21}/><span>Shorthand</span><span className="brand-divider"/><span className="brand-caption">a place for your story</span></div>
-      {project && !settingsOpen && <nav className="zoom-switch" aria-label="Writing view"><button aria-pressed={!scene} onClick={backToStory}><BookOpen size={15}/>Story</button><button aria-pressed={!!scene} disabled={!project.scenes.length} onClick={() => { const id = lastSceneId && project.scenes.some(s => s.id === lastSceneId) ? lastSceneId : project.scenes[0]?.id; if (id) openScene(id); }}>Scene<ChevronRight size={14}/></button></nav>}
-      <div className="header-actions">{!settingsOpen && <button aria-pressed={calm} className="quiet" onClick={() => setCalm(!calm)} title="Remove decorative angles"><Leaf size={15}/>Calm</button>}{project && !settingsOpen && <><button className="quiet" disabled={locked} onClick={() => run(() => load('create'))}><Plus size={15}/>New project</button><button className="quiet" aria-label="Open project" disabled={locked} onClick={() => run(() => load('open'))}><FolderOpen size={15}/>Open</button></>}<button ref={settingsButton} className="settings-nav" aria-pressed={settingsOpen} aria-label={settingsOpen ? 'Return to writing' : 'Open Settings'} onClick={() => settingsOpen ? closeSettings() : openSettings()}><SettingsIcon size={15}/>{settingsOpen ? 'Back to writing' : 'Settings'}</button></div>
+    <header className="app-header project-app-header">
+      <a href="#workspace-main" className="skip-link">Skip to workspace</a>
+      <div className="project-header-identity">
+        <details className="project-menu" ref={projectMenu} onKeyDown={event => { if (event.key === 'Escape') { closeProjectMenu(); projectMenu.current?.querySelector('summary')?.focus(); } }} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) closeProjectMenu(); }}>
+          <summary aria-label="Project menu"><Feather size={20}/><span>Project</span><ChevronDown size={13}/></summary>
+          <div className="project-menu-items">
+            <button disabled={!gateway.desktop || locked} onClick={() => { closeProjectMenu(); run(() => load('create')); }}><Plus size={15}/>New project...</button>
+            <button aria-label="Open project" disabled={!gateway.desktop || locked} onClick={() => { closeProjectMenu(); run(() => load('open')); }}><FolderOpen size={15}/>Open project...</button>
+            {project && <><hr/><button disabled={locked} onClick={() => run(() => interchange('import'))}>Import Markdown...</button><button disabled={locked} onClick={() => run(() => interchange('export'))}>Export outline as Markdown...</button><hr/><button onClick={() => { closeProjectMenu(); previousDestination.current = destination === 'trash' ? 'story' : destination; navigate('trash'); }}><Trash2 size={15}/>Trash{project.trash.length > 0 && ` (${project.trash.length})`}</button></>}
+          </div>
+        </details>
+        {project ? <TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/> : <span className="app-brand-name">Shorthand</span>}
+      </div>
+      {project && <nav className="project-navigation" aria-label="Project navigation">{(['story', 'scene', 'characters', 'tones', 'emotions'] as const).map(route => <button key={route} aria-current={!settingsOpen && destination === route ? 'page' : undefined} disabled={route === 'scene' && !lastSceneId} title={route === 'scene' && !lastSceneId ? 'Open a scene from Story first' : undefined} onClick={() => route === 'scene' && lastSceneId ? navigate('scene') : navigate(route)}>{route === 'story' && <BookOpen size={14}/>}<span>{route[0].toUpperCase() + route.slice(1)}</span></button>)}</nav>}
+      <div className="project-header-actions">
+        {project && <><div className="project-history"><button className="icon-button quiet" aria-label="Undo project change" title="Undo project change (Ctrl/Cmd Z outside a text field)" disabled={locked || pending > 0 || !project.canUndo} onClick={() => run(() => workspace.dispatch({ type: 'undo' }))}><Undo2 size={16}/></button><button className="icon-button quiet" aria-label="Redo project change" title="Redo project change" disabled={locked || pending > 0 || !project.canRedo} onClick={() => run(() => workspace.dispatch({ type: 'redo' }))}><Redo2 size={16}/></button></div><span className="save-state" role="status">{error ? 'Save needs attention' : saving ? 'Saving...' : dirty || pending ? 'Unsaved changes' : <><Check size={13}/>Saved locally</>}</span><button className={dirty || pending ? 'primary project-save' : 'project-save'} disabled={!ready || saving || !dirty && !pending} onClick={() => run(() => workspace.save())} title={dirty || pending ? 'Save all project changes (Ctrl/Cmd S)' : 'All project changes are saved'}><Save size={15}/>Save</button></>}
+        <button ref={settingsButton} className="settings-nav quiet" aria-pressed={settingsOpen} aria-label={settingsOpen ? 'Return to writing' : 'Open Settings'} onClick={() => settingsOpen ? closeSettings() : openSettings()}><SettingsIcon size={16}/><span>{settingsOpen ? 'Back' : 'Settings'}</span></button>
+      </div>
     </header>
     <div className="app-workspace" hidden={settingsOpen}>
-    {project && <div className="project-toolbar"><div className="project-identity"><TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/><span className="save-state" role="status">{error ? 'Save needs attention' : saving ? 'Saving…' : dirty || pending ? 'Unsaved changes' : <><Check size={13}/>Saved locally</>}</span><button disabled={!ready || saving} onClick={() => run(() => workspace.save())} title="Save project (Ctrl/⌘ S)"><Save size={15}/>Save</button></div><div className="toolbar-actions"><button className="icon-button" aria-label="Undo project change" title="Undo project change (Ctrl/⌘ Z outside a text field)" disabled={locked || pending > 0 || !project.canUndo} onClick={() => run(() => workspace.dispatch({ type: 'undo' }))}><Undo2 size={17}/></button><button className="icon-button" aria-label="Redo project change" title="Redo project change" disabled={locked || pending > 0 || !project.canRedo} onClick={() => run(() => workspace.dispatch({ type: 'redo' }))}><Redo2 size={17}/></button><span className="separator"/><button aria-expanded={panel === 'characters'} onClick={() => setPanel(panel === 'characters' ? null : 'characters')}><Users size={15}/>Characters</button><button aria-expanded={panel === 'trash'} onClick={() => setPanel(panel === 'trash' ? null : 'trash')}><Trash2 size={15}/>Trash{project.trash.length > 0 && ` (${project.trash.length})`}</button><button aria-expanded={panel === 'interchange'} onClick={() => setPanel(panel === 'interchange' ? null : 'interchange')}>Markdown</button></div></div>}
     {error && <div className="error-banner" role="alert"><div><strong>{pending ? 'Your latest edits are waiting to save.' : 'The project could not be opened.'}</strong><p>{error}</p>{pending > 0 && <p>Edits stay in this window. Retry checks the current database revision before replaying anything.</p>}</div><button onClick={() => run(() => workspace.retry())}>Retry save</button></div>}
     {conflict && <section className="conflict-review"><button onClick={() => setReviewRecovery(!reviewRecovery)}>Review saved version and recovery copy</button>{reviewRecovery && <><p>The database is at revision {conflict.revision}. Your waiting version is shown below. Save or copy it before choosing the saved version; choosing it discards the waiting changes in this window.</p><div className="recovery-columns"><label>Waiting version — select all to copy<textarea readOnly rows={12} value={JSON.stringify(project, null, 2)} onFocus={e => e.target.select()}/></label><label>Saved database version<textarea readOnly rows={12} value={JSON.stringify(conflict, null, 2)} onFocus={e => e.target.select()}/></label></div><button onClick={() => { workspace.acceptSavedVersion(); setReviewRecovery(false); setNotice('Using the saved database version.'); }}>Use saved version and discard waiting changes</button></>}</section>}
     {notice && <div className="notice" role="status"><span>{notice}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={15}/></button></div>}
     {!project ? <main id="main" className="welcome"><div className="welcome-mark"><Feather size={38}/></div><h1>Every story starts<br/>with a little room.</h1><p>Arrange the shape of your story.<br/>Then step into a scene and write freely.</p><section className="start-project"><label>Story name<input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Untitled story" maxLength={250}/></label><div className="button-row"><button className="primary" disabled={!gateway.desktop || !ready} onClick={() => run(() => load('create'))}><Plus size={17}/>New project</button><button disabled={!gateway.desktop || !ready} onClick={() => run(() => load('open'))}><FolderOpen size={17}/>Open project</button></div><small>{!ready ? 'Opening your project…' : gateway.desktop ? 'Choose where your local SQLite project lives. No account needed.' : 'Desktop app required. Open Shorthand Writer through Tauri to create or open a local project. This browser preview does not store manuscripts.'}</small></section></main> : <>
-      <fieldset className="workspace-content" disabled={!ready}>
-        <ProjectPanel panel={panel} project={project} workspace={workspace} locked={locked} characterId={characterId} selectCharacter={setCharacterId} onClose={() => setPanel(null)} notify={setNotice} run={run}/>
-        {scene ? <><div className="breadcrumb"><button className="quiet" onClick={backToStory}><ArrowLeft size={15}/>Back to story</button><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => { if (id) setCharacterId(id); setPanel('characters'); }}/></> : <StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/>}</fieldset>
+      <fieldset id="workspace-main" className="workspace-content" disabled={!ready}>
+        <div className="destination-view" hidden={destination !== 'story'}><StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/></div>
+        {scene && <div className="destination-view" hidden={destination !== 'scene'}><div className="breadcrumb"><button className="quiet" onClick={backToStory}><ArrowLeft size={15}/>Back to story</button><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>}
+        {(['characters', 'tones', 'emotions'] as const).map(kind => <div key={`${project.projectId}:${kind}`} className="destination-view" hidden={destination !== kind}><LibraryView kind={kind} project={project} workspace={workspace} locked={locked} selectedId={librarySelection[kind]} onSelect={id => setLibrarySelection(selection => ({ ...selection, [kind]: id }))} createRequest={createRequests[kind]} returnScene={scene?.title} onReturnScene={() => navigate('scene')} onOpenUsage={openUsage} onOpenCharacter={id => openLibrary('characters', id)} notify={setNotice} run={run}/></div>)}
+        {destination === 'trash' && <main className="recovery-screen" aria-labelledby="trash-heading"><button className="quiet" onClick={() => navigate(previousDestination.current)}><ArrowLeft size={15}/>Back to {previousDestination.current}</button><div className="recovery-heading"><div><h1 id="trash-heading">Trash</h1><p>Restore deleted writing and unused definitions to this project.</p></div></div>{project.trash.length ? <ul className="trash-list">{project.trash.map(item => <li key={item.id}><div><strong>{item.title || 'Untitled item'}</strong><small>{item.kind} - Deleted at revision {item.deletedAtRevision}</small></div><button disabled={locked} onClick={() => run(async () => { await workspace.dispatch({ type: 'restoreTrash', trashId: item.id }); setNotice(`${item.title || item.kind} restored. Save the project to keep this change.`); })}>Restore</button></li>)}</ul> : <div className="library-empty"><h2>Trash is empty</h2><p>Deleted scenes, beats, chapters, and unused definitions can be restored here.</p></div>}</main>}
+      </fieldset>
     </>}
     </div>
     {unsavedPrompt && <UnsavedDialog busy={promptBusy} error={promptError} onSave={() => { void saveBeforeLeaving(); }} onDiscard={() => finishLeaving(true)} onCancel={() => finishLeaving(false)}/>}

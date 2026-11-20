@@ -2,8 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { buildSceneGenerationContext } from './generation-context';
 import { generationInputFingerprint } from './generation-fingerprint';
 import { project } from '../test/fixtures';
+import sharedBlocks from '../test/global-block-context.json';
 
 describe('scene generation input fingerprint', () => {
+  it('matches Rust for scene and beat tone, targeted emotion, defaults and Unicode', () => {
+    const context = buildSceneGenerationContext(sharedBlocks, 'scene');
+    expect(context.beats.map(b => [b.tone, b.toneSource])).toEqual([['Tense', 'beat'], ['Tender', 'scene']]);
+    expect(context.readableContext).toContain('[Emotion: Awe → Maya]');
+    expect(context.readableContext).not.toContain('Must not leak');
+    expect(context.referencedPresets.map(p => p.id)).toEqual(['tender', 'tense', 'awe', 'serious']);
+    expect(generationInputFingerprint(context, '')).toBe('873d7120b011db30');
+  });
   it('ignores project revision but changes with scene input or default guidance', () => {
     const original = project();
     const context = buildSceneGenerationContext(original, 'scene-1');
@@ -25,7 +34,7 @@ describe('scene generation input fingerprint', () => {
     sample.projectId = 'project-a';
     sample.revision = 12;
     sample.scenes = [{
-      id: 'scene-a', chapterId: 'chapter-a', title: 'Infirmary', summary: 'Maya treats Damian.', tone: 'Tense and tender', prose: '',
+      id: 'scene-a', chapterId: 'chapter-a', title: 'Infirmary', summary: 'Maya treats Damian.', tone: 'Tense and tender', prose: '', toneId: '',
       narration: { pointOfView: 'Third person limited', tense: 'Past', instructions: 'Stay close to Maya.' },
       beats: [{
         id: 'beat-a', text: 'editor text mirror', document: {
@@ -37,10 +46,10 @@ describe('scene generation input fingerprint', () => {
       }],
     }];
     sample.characters = [
-      { id: 'maya', name: 'Maya', background: 'A careful apprentice healer.', personality: 'Protective.', voice: 'Measured and dry.', archived: true },
-      { id: 'unreferenced', name: 'Unrelated private profile', background: 'Secret profile facts.', voice: '', personality: '', archived: false },
+      { id: 'maya', name: 'Maya', background: 'A careful apprentice healer.', personality: 'Protective.', voice: 'Measured and dry.', archived: true, defaultToneId: '', defaultEmotionId: '' },
+      { id: 'unreferenced', name: 'Unrelated private profile', background: 'Secret profile facts.', voice: '', personality: '', archived: false, defaultToneId: '', defaultEmotionId: '' },
     ];
 
-    expect(generationInputFingerprint(buildSceneGenerationContext(sample, 'scene-a'), '')).toBe('16a90f9dbbf2df6c');
+    expect(generationInputFingerprint(buildSceneGenerationContext(sample, 'scene-a'), '')).toBe('3637622f5f45db80');
   });
 });

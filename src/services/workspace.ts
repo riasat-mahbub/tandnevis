@@ -90,7 +90,8 @@ export class Workspace {
     if (!path) return;
     // Native dialogs are asynchronous. Reject new edits for the entire switch, including the dialog.
     await this.flush();
-    this.publish({ session: await (kind === 'create' ? this.gateway.create(path, title) : this.gateway.open(path)), dirty: false, error: null, conflict: null });
+    const next = await (kind === 'create' ? this.gateway.create(path, title) : this.gateway.open(path));
+    this.publish({ session: next, dirty: await this.gateway.hasUnsavedChanges(next.sessionId), error: null, conflict: null });
     } catch (error) { this.publish({ error: errorText(error) }); throw error; }
     finally { this.publish({ ready: true }); }
   }

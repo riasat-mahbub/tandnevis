@@ -8,6 +8,36 @@ import { deferred, gateway, project, session } from './test/fixtures';
 
 afterEach(cleanup);
 describe('connected writing views', () => {
+  it('opens full global library destinations and returns to the same scene with unsaved text', async () => {
+    const g = gateway(), saved = project(); saved.revision = 1; saved.scenes[0].summary = 'Keep my place.';
+    vi.mocked(g.apply).mockResolvedValue(saved);
+    render(<App gateway={g} initialSession={session()}/>);
+    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    fireEvent.change(summary, { target: { value: 'Keep my place.' } });
+    for (const name of ['Characters', 'Tones', 'Emotions']) {
+      fireEvent.click(screen.getByRole('button', { name }));
+      expect(screen.getByRole('heading', { name, level: 1 })).toBeVisible();
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+    expect(summary).toHaveValue('Keep my place.');
+    expect(g.save).not.toHaveBeenCalled();
+  });
+  it('creates a tone in its full library and keeps it unsaved until project Save', async () => {
+    const g = gateway(), created = project(); created.revision = 1;
+    created.tones.push({ id: 'tone-new', name: 'Quiet', meaning: '', guidance: '', example: '', archived: false, revision: 0 });
+    vi.mocked(g.apply).mockResolvedValue(created);
+    render(<App gateway={g} initialSession={session()}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Tones' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'New tone' })[0]);
+    fireEvent.change(screen.getByRole('textbox', { name: 'New tone name' }), { target: { value: 'Quiet' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create tone' }));
+    expect(await screen.findByRole('textbox', { name: 'Tone name' })).toHaveValue('Quiet');
+    expect(g.apply).toHaveBeenCalledWith('session-1', 0, { type: 'createPreset', kind: 'tone', name: 'Quiet' });
+    expect(g.save).not.toHaveBeenCalled();
+  });
   it('keeps prose and scene actions enabled across pending edits and saves with Ctrl+S', async () => {
     window.localStorage.clear();
     const g = gateway(), edit = deferred<ProjectSnapshot>();
@@ -54,7 +84,7 @@ describe('connected writing views', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
     expect(document.querySelector('.app-workspace')).toHaveAttribute('hidden');
     expect(screen.getByRole('button', { name: 'Continue with ChatGPT' })).toBeDisabled();
-    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+    await waitFor(() => expect(scrollTo).toHaveBeenLastCalledWith(0, 0));
     fireEvent.click(screen.getByRole('button', { name: 'Back to writing' }));
     expect(screen.getByRole('textbox', { name: 'Scene title' })).toHaveValue('Arrival');
     expect(document.querySelector('.app-workspace')).not.toHaveAttribute('hidden');
@@ -144,7 +174,7 @@ describe('connected writing views', () => {
     render(<App gateway={gateway()}/>);
     expect(screen.getByText(/Desktop app required/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Open project' })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Open project' }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
     expect(screen.queryByRole('navigation', { name: 'Writing view' })).toBeNull();
   });
   it('preserves rapid summary edits across navigation while a save is in flight', async () => {
@@ -156,11 +186,11 @@ describe('connected writing views', () => {
     fireEvent.change(summary, { target: { value: 'The beginning' } });
     fireEvent.change(summary, { target: { value: 'The beginning of a difficult conversation.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
-    expect(screen.getByText('The beginning of a difficult conversation.')).toBeVisible();
+    expect(document.querySelector('.destination-view:not([hidden]) .scene-open p')).toHaveTextContent('The beginning of a difficult conversation.');
     expect(screen.getByText('Unsaved changes')).toBeVisible();
     const saved = project(); saved.revision = 1; saved.scenes[0].summary = 'The beginning';
     await act(async () => { first.resolve(saved); await first.promise; });
-    expect(screen.getByText('The beginning of a difficult conversation.')).toBeVisible();
+    expect(document.querySelector('.destination-view:not([hidden]) .scene-open p')).toHaveTextContent('The beginning of a difficult conversation.');
     const latest = structuredClone(saved); latest.revision = 2; latest.scenes[0].summary = 'The beginning of a difficult conversation.';
     await act(async () => { second.resolve(latest); await second.promise; });
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
@@ -207,7 +237,8 @@ describe('connected writing views', () => {
     render(<App gateway={g} initialSession={session()}/>);
     fireEvent.click(screen.getByRole('button', { name: 'Delete Arrival' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /^Arrival .*Open scene/ })).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'Trash (1)' })); fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    fireEvent.click(screen.getByLabelText('Project menu')); fireEvent.click(screen.getByRole('button', { name: 'Trash (1)' })); fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /^Arrival .*Open scene/ })).toBeVisible());
     expect(document.querySelector('[data-item-id="scene-1"]')).toBeTruthy();
     expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, { type: 'restoreTrash', trashId: 'trash-1' });

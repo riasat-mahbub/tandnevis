@@ -2,10 +2,42 @@ import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { Editor, JSONContent } from '@tiptap/core';
-import BeatEditor, { CHARACTER_REFERENCE_MIME, handleCharacterReferenceDrop, updateCharacterReference } from './BeatEditor';
+import BeatEditor, { CHARACTER_REFERENCE_MIME, handleCharacterReferenceDrop, updateCharacterReference, characterTargets, insertEmotionReference, insertToneReference, removeSelectedReference } from './BeatEditor';
 import { project } from '../test/fixtures';
 
 afterEach(cleanup);
+it('targets one repeated character occurrence with a separate emotion and removes linked blocks undoably', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [
+    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'one', label: 'Maya' } },
+    { type: 'text', text: ' then ' },
+    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'two', label: 'Maya' } },
+  ] }] };
+  const emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: 'Admiration', example: '', archived: false, revision: 1 };
+  let editor!: Editor;
+  render(<BeatEditor beat={beat} index={0} characters={p.characters} emotions={[emotion]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  await waitFor(() => expect(editor).toBeDefined());
+  act(() => { expect(insertEmotionReference(editor, emotion, characterTargets(editor)[1])).toBe(true); });
+  await waitFor(() => expect(document.querySelector('.block-emotion')).toHaveTextContent('Emotion: Awe'));
+  const content = (editor.getJSON() as JSONContent).content![0].content!;
+  expect(content.filter(n => n.type === 'emotionReference')).toHaveLength(1);
+  expect(content.find(n => n.type === 'emotionReference')!.attrs!.targetOccurrenceId).toBe('two');
+  act(() => { editor.commands.setNodeSelection(characterTargets(editor)[1].pos); removeSelectedReference(editor); });
+  expect((editor.getJSON() as JSONContent).content![0].content!.some(n => n.type === 'emotionReference')).toBe(false);
+  act(() => { editor.commands.undo(); });
+  expect((editor.getJSON() as JSONContent).content![0].content!.find(n => n.type === 'emotionReference')!.attrs!.targetOccurrenceId).toBe('two');
+});
+it('adds and replaces a whole-beat tone in a character-free beat', async () => {
+  const p = project(), preset = { id: 'tense', name: 'Tense', meaning: '', guidance: 'Pressure.', example: '', archived: false, revision: 0 };
+  let editor!: Editor;
+  render(<BeatEditor beat={p.scenes[0].beats[0]} index={0} characters={[]} tones={[preset]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  await waitFor(() => expect(editor).toBeDefined());
+  act(() => { insertToneReference(editor, preset); insertToneReference(editor, { ...preset, id: 'tender', name: 'Tender' }); });
+  const nodes = (editor.getJSON() as JSONContent).content![0].content!;
+  expect(nodes.filter(n => n.type === 'toneReference')).toHaveLength(1);
+  expect(nodes.find(n => n.type === 'toneReference')!.attrs!.toneId).toBe('tender');
+  expect(editor.getText()).toContain('The door opens.');
+});
 it('renders renamed character profiles without changing documents, saving, or consuming redo', async () => {
   const p = project(); const beat = p.scenes[0].beats[0];
   beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'characterReference', attrs: { characterId: 'character-1', label: 'Old label', emotion: '', delivery: '' } }] }] };
