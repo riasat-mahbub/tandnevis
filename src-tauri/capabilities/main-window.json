@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "Local main window may invoke typed project operations, native dialogs, and validated ChatGPT connection actions.",
+  "description": "Local main window may invoke typed project operations, native dialogs, validated ChatGPT connection actions, and scene-scoped generation.",
   "windows": ["main"],
   "local": true,
   "permissions": [
@@ -9,6 +9,7 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "allow-project-commands",
-    "allow-chatgpt-commands"
+    "allow-chatgpt-commands",
+    "allow-scene-generation-commands"
   ]
 }

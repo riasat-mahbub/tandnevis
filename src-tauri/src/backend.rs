@@ -1,6 +1,7 @@
 //! Native command boundary. The renderer receives an opaque token for the currently
 //! open project and can submit typed domain operations, never SQL or filesystem reads.
 mod domain;
+pub mod generation;
 mod storage;
 
 use domain::{new_id, Operation, ProjectSnapshot, Result};
@@ -30,6 +31,7 @@ pub struct OpenProject {
 
 impl BackendState {
     fn install(&self, mut database: Database) -> Result<OpenProject> {
+        database.interrupt_unfinished_generation_jobs(generation::timestamp_ms())?;
         let project = database.read()?;
         let id = new_id();
         let mut session = self
@@ -59,6 +61,14 @@ impl BackendState {
             return Err("This project session has closed. Reload the current project.".into());
         }
         action(&mut session.database)
+    }
+
+    fn is_current_session(&self, session_id: &str) -> bool {
+        self.session
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|session| session.id == session_id))
+            .unwrap_or(false)
     }
 }
 

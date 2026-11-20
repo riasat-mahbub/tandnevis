@@ -44,8 +44,77 @@ pub struct Scene {
     pub title: String,
     pub summary: String,
     pub tone: String,
+    #[serde(default)]
+    pub prose: String,
     pub narration: Narration,
     pub beats: Vec<Beat>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationJobStatus {
+    Pending,
+    Streaming,
+    Completed,
+    Stopped,
+    Failed,
+    Interrupted,
+    Accepted,
+    Discarded,
+}
+
+impl GenerationJobStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Streaming => "streaming",
+            Self::Completed => "completed",
+            Self::Stopped => "stopped",
+            Self::Failed => "failed",
+            Self::Interrupted => "interrupted",
+            Self::Accepted => "accepted",
+            Self::Discarded => "discarded",
+        }
+    }
+
+    pub fn can_transition_to(self, next: Self) -> bool {
+        use GenerationJobStatus::*;
+        match self {
+            Pending => matches!(next, Streaming | Stopped | Failed | Interrupted),
+            Streaming => matches!(next, Streaming | Completed | Stopped | Failed | Interrupted),
+            Completed | Stopped => matches!(next, Accepted | Discarded),
+            Failed | Interrupted => next == Discarded,
+            Accepted | Discarded => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationJob {
+    pub id: String,
+    pub scene_id: String,
+    pub scene_revision: u64,
+    pub connection_id: String,
+    pub model: String,
+    pub request_snapshot: Value,
+    pub input_fingerprint: String,
+    pub status: GenerationJobStatus,
+    pub draft_text: String,
+    pub error_message: Option<String>,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AcceptedProseRevision {
+    pub id: String,
+    pub job_id: String,
+    pub scene_id: String,
+    pub previous_prose: String,
+    pub accepted_prose: String,
+    pub accepted_at_ms: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +183,7 @@ pub enum Operation {
         title: Option<String>,
         summary: Option<String>,
         tone: Option<String>,
+        prose: Option<String>,
         narration: Option<Narration>,
     },
     DuplicateScene {
@@ -420,6 +490,7 @@ impl ProjectSnapshot {
                     title: name,
                     summary: String::new(),
                     tone: String::new(),
+                    prose: String::new(),
                     narration: Narration::default(),
                     beats: vec![],
                 });
@@ -429,6 +500,7 @@ impl ProjectSnapshot {
                 title: name,
                 summary,
                 tone,
+                prose,
                 narration,
             } => {
                 if let Some(ref name) = name {
@@ -443,6 +515,9 @@ impl ProjectSnapshot {
                 }
                 if let Some(v) = tone {
                     scene.tone = v;
+                }
+                if let Some(v) = prose {
+                    scene.prose = v;
                 }
                 if let Some(v) = narration {
                     scene.narration = v;
@@ -662,6 +737,9 @@ impl ProjectSnapshot {
         for s in &self.scenes {
             add(&s.id)?;
             title(&s.title)?;
+            if s.prose.len() > 10_000_000 {
+                return Err("Scene prose exceeds the 10 MB limit.".into());
+            }
             for b in &s.beats {
                 add(&b.id)?;
                 if !b.document.is_object() {

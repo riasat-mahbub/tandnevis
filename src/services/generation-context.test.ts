@@ -25,7 +25,7 @@ function sampleProject(): ProjectSnapshot {
     scenes: [
       {
         id: 'scene-1', chapterId: 'chapter-1', title: 'School Infirmary',
-        summary: 'Maya stitches Damian’s wounds after a fight.', tone: 'Tender with awkward humor',
+        summary: 'Maya stitches Damian’s wounds after a fight.', tone: 'Tender with awkward humor', prose: '',
         narration: { pointOfView: 'Third person limited', tense: 'Past', instructions: 'Stay close to Damian’s attention.' },
         beats: [
           { id: 'beat-1', document: sceneDocument(paragraph(ref('maya-id', 'Old Maya label', 'serious'), ' is stitching ', ref('damian-id', 'Damian'), '’s wounds.')), text: 'Maya is stitching Damian’s wounds.' },
@@ -36,7 +36,7 @@ function sampleProject(): ProjectSnapshot {
           { id: 'beat-6', document: sceneDocument(paragraph(ref('damian-id', 'Damian', 'awe'), ' says there is nothing; he just likes her face. ', ref('maya-id', 'Maya', 'embarrassed'), ' calls him an idiot.')), text: 'Damian compliments Maya.' },
         ],
       },
-      { id: 'scene-2', chapterId: 'chapter-1', title: 'Elsewhere', summary: 'A different scene.', tone: '', narration: { pointOfView: '', tense: '', instructions: '' }, beats: [{ id: 'beat-other', document: sceneDocument(paragraph('Do not send this.')), text: 'Do not send this.' }] },
+      { id: 'scene-2', chapterId: 'chapter-1', title: 'Elsewhere', summary: 'A different scene.', tone: '', prose: '', narration: { pointOfView: '', tense: '', instructions: '' }, beats: [{ id: 'beat-other', document: sceneDocument(paragraph('Do not send this.')), text: 'Do not send this.' }] },
     ],
     characters: [
       { id: 'maya-id', name: 'Maya', background: 'A guarded student medic.', personality: 'Practical and sharp.', voice: 'Dry, clipped sentences.', archived: false },
@@ -71,6 +71,7 @@ describe('scene generation context', () => {
     ]);
     expect(context.readableContext).toContain('Scene tone: Tender with awkward humor');
     expect(context.readableContext).toContain('Baseline voice: Blunt, guarded speech.');
+    expect(context.readableContext).toContain('This profile is archived; it remains attached to an existing beat reference.');
     expect(context.readableContext).toContain('[Maya — emotion: serious]');
     expect(context.readableContext).toContain('[Damian — emotion: awe]');
     expect(context.readableContext).not.toContain('Elsewhere');
@@ -124,4 +125,17 @@ describe('scene generation context', () => {
     expect(context.beats[0].readableText).toContain('is stitching');
     expect(() => buildSceneGenerationContext(project, 'deleted-scene')).toThrow('selected scene');
   });
+});
+
+it('keeps a list and the paragraph after it separated in one beat', () => {
+  const snapshot = sampleProject();
+  snapshot.scenes[0].beats[0].document = {
+    type: 'doc',
+    content: [
+      { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First' }] }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Then after.' }] },
+    ],
+  };
+
+  expect(buildSceneGenerationContext(snapshot, 'scene-1').beats[0].readableText).toBe('• First\nThen after.');
 });

@@ -5,8 +5,20 @@ import { Workspace } from '../services/workspace';
 import { CHARACTER_REFERENCE_MIME } from './BeatEditor';
 import SceneView from './SceneView';
 import { gateway, project, session } from '../test/fixtures';
+import { GenerationSession } from '../services/generation-session';
 
 afterEach(cleanup);
+
+function generationSession() {
+  return new GenerationSession({
+    desktop: false,
+    start: async () => { throw new Error('Desktop only'); },
+    stop: async () => { throw new Error('Desktop only'); },
+    list: async () => [],
+    accept: async () => project(),
+    discard: async () => { throw new Error('Desktop only'); },
+  });
+}
 
 it('previews only the selected scene beats and character directions', async () => {
   const snapshot = project();
@@ -17,6 +29,10 @@ it('previews only the selected scene beats and character directions', async () =
     project={snapshot}
     scene={snapshot.scenes[0]}
     workspace={workspace}
+    sessionId={session(snapshot).sessionId}
+    generation={generationSession()}
+    generationReady={false}
+    defaultGuidance=""
     locked={false}
     openSettings={vi.fn()}
     manageCharacters={vi.fn()}
@@ -24,6 +40,9 @@ it('previews only the selected scene beats and character directions', async () =
     run={action => { void action().catch(() => {}); }}
   />);
 
+  expect(screen.getByRole('button', { name: 'Generate scene' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Open Settings' })).toBeEnabled();
+  expect(screen.getByText('Scene generation is available in the desktop app.')).toBeVisible();
   fireEvent.click(screen.getByText('Preview scene context'));
   const preview = document.querySelector('.generation-preview pre');
   expect(preview?.textContent).toContain('Scene: Arrival');
@@ -41,6 +60,10 @@ it('keeps click-to-insert available and makes character library blocks draggable
     project={snapshot}
     scene={snapshot.scenes[0]}
     workspace={workspace}
+    sessionId={session(snapshot).sessionId}
+    generation={generationSession()}
+    generationReady={false}
+    defaultGuidance=""
     locked={false}
     openSettings={vi.fn()}
     manageCharacters={vi.fn()}

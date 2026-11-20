@@ -1,0 +1,10 @@
+[[permission]]
+identifier = "allow-scene-generation-commands"
+description = "Allow scene-scoped generation jobs and acceptance of saved drafts."
+commands.allow = [
+  "start_scene_generation",
+  "stop_scene_generation",
+  "scene_generation_jobs",
+  "accept_scene_generation",
+  "discard_scene_generation",
+]

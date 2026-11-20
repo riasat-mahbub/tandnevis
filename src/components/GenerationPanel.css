@@ -1,0 +1,97 @@
+.generation-panel {
+  --generation-paper: var(--paper, #E5EBEA);
+  --generation-raised: var(--surface-raised, #F4F7F6);
+  --generation-ink: var(--ink, #20282D);
+  --generation-muted: var(--muted, #435058);
+  --generation-line: var(--line, #B3C0C2);
+  --generation-orange: var(--accent, #FF7700);
+  --generation-danger: var(--danger, #853747);
+  --generation-danger-bg: var(--danger-bg, #F6E4E6);
+  --generation-danger-ink: var(--danger-ink, #68212F);
+  --generation-disabled: var(--disabled, #D2D9D9);
+  --generation-disabled-ink: var(--disabled-ink, #435058);
+  min-width: 0;
+  margin: 32px 0 0;
+  padding: 19px 20px 20px;
+  background: var(--generation-paper);
+  border: 1px solid var(--generation-line);
+  border-left: 4px solid var(--generation-orange);
+  border-radius: 7px;
+  color: var(--generation-ink);
+}
+
+.generation-panel * { box-sizing: border-box; }
+.generation-panel button,
+.generation-panel input { font: inherit; color: inherit; }
+.generation-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--generation-line);
+  border-radius: 5px;
+  background: var(--generation-paper);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.generation-panel button:hover:not(:disabled) { background: var(--generation-raised); }
+.generation-panel button:focus-visible,
+.generation-panel input:focus-visible { outline: 2px solid var(--generation-ink); outline-offset: 3px; }
+.generation-panel button:disabled { background: var(--generation-disabled); color: var(--generation-disabled-ink); cursor: not-allowed; }
+.generation-panel .generation-primary {
+  border-color: var(--generation-orange);
+  background: var(--generation-orange);
+  color: #20282D;
+  font-weight: 650;
+}
+.generation-panel .generation-primary:hover:not(:disabled) { background: #E76800; }
+.generation-panel .generation-primary:disabled { border-color: var(--generation-line); }
+.generation-panel .generation-settings-link { padding-inline: 3px; border-color: transparent; background: transparent; color: var(--generation-ink); text-decoration: underline; text-underline-offset: 3px; }
+.generation-panel .generation-settings-link:hover { background: transparent; }
+.generation-panel .generation-stop { border-color: var(--generation-danger); color: var(--generation-danger-ink); }
+.generation-panel .generation-discard { color: var(--generation-danger-ink); }
+
+.generation-panel-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+.generation-panel-eyebrow { color: var(--generation-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.generation-panel-header h2 { margin: 3px 0 0; font: 500 19px/1.25 Georgia, serif; }
+.generation-panel-state { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--generation-line); border-radius: 99px; background: var(--generation-raised); color: var(--generation-muted); font-size: 10px; }
+.generation-state-completed,.generation-state-accepted { border-color: var(--generation-orange); color: var(--generation-ink); }
+.generation-state-failed,.generation-state-interrupted,.generation-state-stopped { border-color: var(--generation-danger); color: var(--generation-danger-ink); }
+.generation-state-starting svg,.generation-state-streaming svg,.generation-state-stopping svg { animation: generation-spin 1.2s linear infinite; }
+.generation-usage-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 12px; color: var(--generation-muted); font-size: 10px; }
+.generation-usage-note a { color: var(--generation-ink); text-underline-offset: 3px; }
+@keyframes generation-spin { to { transform: rotate(360deg); } }
+
+.generation-start-row,.generation-active-row,.generation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.generation-start-row { min-height: 36px; }
+.generation-reason { flex: 1 1 230px; max-width: 62ch; color: var(--generation-muted); font-size: 11px; line-height: 1.5; }
+.generation-active-row { justify-content: space-between; }
+.generation-live-status { margin: 0; color: var(--generation-muted); font-size: 11px; line-height: 1.5; }
+.generation-error { margin: 10px 0; padding: 9px 11px; border-left: 3px solid var(--generation-danger); background: var(--generation-danger-bg); color: var(--generation-danger-ink); font-size: 11px; line-height: 1.55; }
+
+.generation-outdated { display: grid; gap: 5px; margin: 11px 0; padding: 10px 12px; border-left: 3px solid var(--generation-orange); background: var(--generation-raised); font-size: 11px; line-height: 1.5; }
+.generation-outdated>strong { font-size: 12px; }
+.generation-outdated label { display: flex; align-items: flex-start; gap: 7px; margin-top: 3px; cursor: pointer; }
+.generation-outdated input { width: 15px; height: 15px; margin: 1px 0 0; accent-color: var(--generation-orange); }
+.generation-draft-wrap { margin: 13px 0; }
+.generation-draft-label { display: block; margin-bottom: 6px; color: var(--generation-muted); font-size: 10px; font-weight: 650; }
+.generation-draft { max-height: 440px; margin: 0; padding: 14px 15px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--generation-line); border-radius: 5px; background: var(--generation-raised); color: var(--generation-ink); font: 15px/1.8 Georgia, serif; }
+.generation-empty-draft { margin: 0; padding: 12px; border: 1px dashed var(--generation-line); color: var(--generation-muted); font-size: 11px; }
+.generation-actions { margin-top: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .generation-panel .generation-state-starting svg,
+  .generation-panel .generation-state-streaming svg,
+  .generation-panel .generation-state-stopping svg { animation: none; }
+}
+
+@media (max-width: 560px) {
+  .generation-panel { padding: 16px; }
+  .generation-panel-header { align-items: flex-start; }
+  .generation-start-row,.generation-actions { align-items: stretch; }
+  .generation-start-row > button:first-child,.generation-actions > button { flex: 1 1 auto; }
+  .generation-reason { flex-basis: 100%; }
+}

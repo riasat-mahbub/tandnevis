@@ -15,6 +15,7 @@ pub struct HttpResponse {
 #[cfg(windows)]
 mod platform {
     use super::*;
+    use std::time::{Duration, Instant};
     use std::{ffi::c_void, ptr};
     use url::Url;
     use windows::{
@@ -22,10 +23,10 @@ mod platform {
         Win32::Networking::WinHttp::{
             WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
             WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
-            WinHttpSetOption, WinHttpSetTimeouts, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_FLAG_SECURE, WINHTTP_OPTION_REDIRECT_POLICY,
-            WINHTTP_OPTION_REDIRECT_POLICY_NEVER, WINHTTP_QUERY_CUSTOM, WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_QUERY_STATUS_CODE,
+            WinHttpSetOption, WinHttpSetTimeouts, ERROR_WINHTTP_TIMEOUT,
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPTION_RECEIVE_TIMEOUT,
+            WINHTTP_OPTION_REDIRECT_POLICY, WINHTTP_OPTION_REDIRECT_POLICY_NEVER,
+            WINHTTP_QUERY_CUSTOM, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
         },
     };
 
@@ -104,11 +105,59 @@ mod platform {
         }
     }
 
+    fn receive_response_cancellable(
+        request: *mut c_void,
+        stop_reason: &impl Fn() -> Option<String>,
+    ) -> Result<(), String> {
+        const HEADER_POLL_MS: u32 = 1000;
+        const MAX_HEADER_WAIT: Duration = Duration::from_secs(300);
+        let timeout = HEADER_POLL_MS.to_le_bytes();
+        unsafe {
+            WinHttpSetOption(
+                Some(request.cast_const()),
+                WINHTTP_OPTION_RECEIVE_TIMEOUT,
+                Some(&timeout),
+            )
+            .map_err(|_| "The ChatGPT response could not be configured for cancellation.")?;
+        }
+        let started = Instant::now();
+        loop {
+            if let Some(reason) = stop_reason() {
+                return Err(reason);
+            }
+            match unsafe { WinHttpReceiveResponse(request, ptr::null_mut()) } {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if error.code()
+                        == windows::core::HRESULT::from_win32(ERROR_WINHTTP_TIMEOUT)
+                        && started.elapsed() < MAX_HEADER_WAIT =>
+                {
+                    if let Some(reason) = stop_reason() {
+                        return Err(reason);
+                    }
+                }
+                Err(error)
+                    if error.code()
+                        == windows::core::HRESULT::from_win32(ERROR_WINHTTP_TIMEOUT) =>
+                {
+                    return Err("ChatGPT did not return a response in time.".into());
+                }
+                Err(_) => {
+                    if let Some(reason) = stop_reason() {
+                        return Err(reason);
+                    }
+                    return Err("ChatGPT did not return a response.".into());
+                }
+            }
+        }
+    }
+
     pub fn request(
         method: &str,
         url: &str,
         headers: &[(&str, &str)],
         body: &[u8],
+        stop_reason: impl Fn() -> Option<String>,
         mut on_chunk: impl FnMut(&[u8]) -> Result<(), String>,
     ) -> Result<HttpResponse, String> {
         let parsed = Url::parse(url).map_err(|_| "Invalid secure ChatGPT endpoint.")?;
@@ -179,6 +228,9 @@ mod platform {
                 Some(&no_redirect),
             )
             .map_err(|_| "The secure ChatGPT request could not be configured.")?;
+            if let Some(reason) = stop_reason() {
+                return Err(reason);
+            }
             WinHttpSendRequest(
                 request.0,
                 Some(&headers_w),
@@ -188,9 +240,8 @@ mod platform {
                 0,
             )
             .map_err(|_| "Could not send the secure ChatGPT request.")?;
-            WinHttpReceiveResponse(request.0, ptr::null_mut())
-                .map_err(|_| "ChatGPT did not return a response.")?;
         }
+        receive_response_cancellable(request.0, &stop_reason)?;
         let mut status = 0u32;
         let mut status_len = std::mem::size_of::<u32>() as u32;
         unsafe {
@@ -208,19 +259,54 @@ mod platform {
         let is_success = (200..300).contains(&(status as u16));
         let mut error_body = Vec::new();
         let mut buffer = [0u8; 8192];
+        // A short synchronous read timeout gives Stop a bounded response time
+        // even when the provider is not currently sending text deltas.
+        const READ_POLL_MS: u32 = 1000;
+        const MAX_IDLE: Duration = Duration::from_secs(300);
+        let read_timeout = READ_POLL_MS.to_le_bytes();
+        unsafe {
+            WinHttpSetOption(
+                Some(request.0.cast_const()),
+                WINHTTP_OPTION_RECEIVE_TIMEOUT,
+                Some(&read_timeout),
+            )
+            .map_err(|_| "The ChatGPT stream could not be configured for cancellation.")?;
+        }
+        let mut last_chunk_at = Instant::now();
         loop {
+            if let Some(reason) = stop_reason() {
+                return Err(reason);
+            }
             let mut read = 0u32;
-            unsafe {
+            let read_result = unsafe {
                 WinHttpReadData(
                     request.0,
                     buffer.as_mut_ptr().cast(),
                     buffer.len() as u32,
                     &mut read,
                 )
-                .map_err(|_| "The ChatGPT response was interrupted.")?;
+            };
+            if let Err(error) = read_result {
+                if error.code() == windows::core::HRESULT::from_win32(ERROR_WINHTTP_TIMEOUT) {
+                    if let Some(reason) = stop_reason() {
+                        return Err(reason);
+                    }
+                    if last_chunk_at.elapsed() >= MAX_IDLE {
+                        return Err("ChatGPT stopped responding for too long.".into());
+                    }
+                    continue;
+                }
+                if let Some(reason) = stop_reason() {
+                    return Err(reason);
+                }
+                return Err("The ChatGPT response was interrupted.".into());
             }
             if read == 0 {
                 break;
+            }
+            last_chunk_at = Instant::now();
+            if let Some(reason) = stop_reason() {
+                return Err(reason);
             }
             if is_success {
                 on_chunk(&buffer[..read as usize])?;
@@ -244,6 +330,7 @@ mod platform {
         _url: &str,
         _headers: &[(&str, &str)],
         _body: &[u8],
+        _stop_reason: impl Fn() -> Option<String>,
         _on_chunk: impl FnMut(&[u8]) -> Result<(), String>,
     ) -> Result<super::HttpResponse, String> {
         Err("ChatGPT connection is currently supported in the Windows desktop app.".into())
@@ -258,13 +345,20 @@ pub fn request_bytes(
     max_bytes: usize,
 ) -> Result<(u16, Vec<u8>), String> {
     let mut collected = Vec::new();
-    let response = platform::request(method, url, headers, body, |chunk| {
-        if collected.len().saturating_add(chunk.len()) > max_bytes {
-            return Err("ChatGPT returned an unexpectedly large response.".into());
-        }
-        collected.extend_from_slice(chunk);
-        Ok(())
-    })?;
+    let response = platform::request(
+        method,
+        url,
+        headers,
+        body,
+        || None,
+        |chunk| {
+            if collected.len().saturating_add(chunk.len()) > max_bytes {
+                return Err("ChatGPT returned an unexpectedly large response.".into());
+            }
+            collected.extend_from_slice(chunk);
+            Ok(())
+        },
+    )?;
     if !(200..300).contains(&response.status) {
         return Ok((response.status, response.body));
     }
@@ -337,7 +431,18 @@ pub fn stream_bytes(
     body: &[u8],
     on_chunk: impl FnMut(&[u8]) -> Result<(), String>,
 ) -> Result<(), String> {
-    let response = platform::request(method, url, headers, body, on_chunk)?;
+    stream_bytes_cancellable(method, url, headers, body, || None, on_chunk)
+}
+
+pub fn stream_bytes_cancellable(
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    stop_reason: impl Fn() -> Option<String>,
+    on_chunk: impl FnMut(&[u8]) -> Result<(), String>,
+) -> Result<(), String> {
+    let response = platform::request(method, url, headers, body, stop_reason, on_chunk)?;
     if !(200..300).contains(&response.status) {
         return Err(format_http_error(
             response.status,

@@ -13,9 +13,12 @@ import SettingsView from './components/SettingsView';
 import type { ChatGPTSettingsState, ThemePreference } from './components/SettingsView';
 import { desktopChatGPTGateway } from './services/chatgpt';
 import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
+import { desktopGenerationGateway } from './services/generation';
+import type { GenerationGateway } from './services/generation';
+import { GenerationSession } from './services/generation-session';
 import './styles.css';
 
-interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway }
+interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway }
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
@@ -29,10 +32,11 @@ function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['stat
   return 'error';
 }
 
-export default function App({ gateway = desktopGateway, initialSession, chatGPTService }: Props) {
+export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService }: Props) {
   const [chatGPTGateway] = useState(() => chatGPTService ?? desktopChatGPTGateway);
+  const [generationSession] = useState(() => new GenerationSession(generationService ?? desktopGenerationGateway));
   const [workspace] = useState(() => { const w = new Workspace(gateway); if (initialSession) w.attach(initialSession); return w; });
-  const { project, pending, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const { session, project, pending, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [lastSceneId, setLastSceneId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
@@ -151,7 +155,15 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   }, [workspace]);
   async function load(kind: 'create' | 'open') {
     const previous = workspace.getSnapshot().session?.sessionId;
-    await workspace.load(kind, newTitle.trim() || 'Untitled story');
+    await workspace.load(kind, newTitle.trim() || 'Untitled story', async () => {
+      if (previous && generationSession.hasActiveSession(previous)) {
+        setNotice('Stopping the current scene draft before switching projects.');
+        try { await generationSession.stopSession(previous); }
+        catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return false; }
+        setNotice('Scene generation stopped.');
+      }
+      return true;
+    });
     if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setPanel(null); setNotice(''); }
   }
   return <div className={`app ${calm ? 'calm' : ''}`} data-theme={appearance}>
@@ -167,7 +179,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     {!project ? <main id="main" className="welcome"><div className="welcome-mark"><Feather size={38}/></div><h1>Every story starts<br/>with a little room.</h1><p>Arrange the shape of your story.<br/>Then step into a scene and write freely.</p><section className="start-project"><label>Story name<input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Untitled story" maxLength={250}/></label><div className="button-row"><button className="primary" disabled={!gateway.desktop || !ready} onClick={() => run(() => load('create'))}><Plus size={17}/>New project</button><button disabled={!gateway.desktop || !ready} onClick={() => run(() => load('open'))}><FolderOpen size={17}/>Open project</button></div><small>{!ready ? 'Opening your project…' : gateway.desktop ? 'Choose where your local SQLite project lives. No account needed.' : 'Desktop app required. Open Shorthand Writer through Tauri to create or open a local project. This browser preview does not store manuscripts.'}</small></section></main> : <>
       <fieldset className="workspace-content" disabled={!ready}>
         <ProjectPanel panel={panel} project={project} workspace={workspace} locked={locked} characterId={characterId} selectCharacter={setCharacterId} onClose={() => setPanel(null)} notify={setNotice} run={run}/>
-        {scene ? <><div className="breadcrumb"><button className="quiet" onClick={backToStory}><ArrowLeft size={15}/>Back to story</button><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => { if (id) setCharacterId(id); setPanel('characters'); }}/></> : <StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/>}</fieldset>
+        {scene ? <><div className="breadcrumb"><button className="quiet" onClick={backToStory}><ArrowLeft size={15}/>Back to story</button><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => { if (id) setCharacterId(id); setPanel('characters'); }}/></> : <StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/>}</fieldset>
     </>}
     </div>
     {settingsOpen && <SettingsView appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT}

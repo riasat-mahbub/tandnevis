@@ -199,6 +199,15 @@ fn safe_event_label(value: &str) -> String {
 pub fn stream_response_with_access_token(
     access_token: &str,
     request: &ResponsesRequest,
+    callback: impl FnMut(ResponsesEvent) -> Result<(), String>,
+) -> Result<(), String> {
+    stream_response_with_access_token_cancellable(access_token, request, || None, callback)
+}
+
+pub fn stream_response_with_access_token_cancellable(
+    access_token: &str,
+    request: &ResponsesRequest,
+    stop_reason: impl Fn() -> Option<String>,
     mut callback: impl FnMut(ResponsesEvent) -> Result<(), String>,
 ) -> Result<(), String> {
     if access_token.is_empty() || access_token.len() > 2500 {
@@ -212,11 +221,12 @@ pub fn stream_response_with_access_token(
     ];
     let mut decoder = SseDecoder::default();
     let mut completed = false;
-    super::http::stream_bytes(
+    super::http::stream_bytes_cancellable(
         "POST",
         "https://api.openai.com/v1/responses",
         &headers,
         &body,
+        stop_reason,
         |chunk| decoder.feed(chunk, &mut callback, &mut completed),
     )?;
     decoder.finish(&mut callback, &mut completed)

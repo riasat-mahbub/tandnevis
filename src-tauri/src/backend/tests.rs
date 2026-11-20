@@ -85,6 +85,7 @@ fn empty_project_and_full_authoring_survive_reopen() {
             title: None,
             summary: Some("A short idea.".into()),
             tone: Some("Hopeful".into()),
+            prose: None,
             narration: Some(domain::Narration {
                 point_of_view: "Third person".into(),
                 tense: "Past".into(),
@@ -584,4 +585,496 @@ fn opening_another_project_invalidates_old_session_without_losing_persistence() 
         .unwrap();
     assert_eq!(reopened.project.chapters[0].title, "Persisted chapter");
     assert_ne!(reopened.session_id, a.session_id);
+}
+
+#[test]
+fn schema_v1_migrates_to_v2_without_losing_story_or_undo_history() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let p = beat(&mut db, &p.scenes[0].id, "The infirmary is quiet.");
+    let expected = apply(
+        &mut db,
+        UpdateScene {
+            scene_id: p.scenes[0].id.clone(),
+            title: None,
+            summary: Some("Maya tends to Damian.".into()),
+            tone: Some("Careful, awkward warmth.".into()),
+            prose: None,
+            narration: None,
+        },
+    );
+    drop(db);
+
+    // Emulate the existing v1 schema, keeping the actual project entities and history.
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    connection
+        .execute_batch(
+            "ALTER TABLE scenes DROP COLUMN prose;
+             DROP TABLE generation_jobs;
+             DROP TABLE accepted_prose_revisions;
+             PRAGMA user_version=1;",
+        )
+        .unwrap();
+    drop(connection);
+
+    let mut migrated = Database::open(file.path()).unwrap();
+    assert_eq!(migrated.read().unwrap(), expected);
+    assert_eq!(
+        migrated.apply(expected.revision, Undo).unwrap().scenes[0].beats[0].text,
+        "The infirmary is quiet."
+    );
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let version: i32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+    assert_eq!(
+        connection
+            .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
+                .get::<_, String>(0))
+            .unwrap(),
+        ""
+    );
+}
+
+fn generation_job(
+    scene_id: &str,
+    scene_revision: u64,
+    created_at_ms: u64,
+) -> domain::GenerationJob {
+    domain::GenerationJob {
+        id: new_id(),
+        scene_id: scene_id.into(),
+        scene_revision,
+        connection_id: "chatgpt-account-test".into(),
+        model: "synthetic-writing-model".into(),
+        request_snapshot: json!({
+            "scene": { "id": scene_id, "title": "School infirmary" },
+            "beats": [{ "order": 1, "text": "Maya tends to Damian." }]
+        }),
+        input_fingerprint: "synthetic-scene-input-fingerprint".into(),
+        status: domain::GenerationJobStatus::Pending,
+        draft_text: String::new(),
+        error_message: None,
+        created_at_ms,
+        updated_at_ms: created_at_ms,
+    }
+}
+
+#[test]
+fn generation_checkpoints_survive_authoring_saves_and_acceptance_is_undoable() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let job = generation_job(&scene_id, p.revision, 10);
+    db.create_generation_job(&job).unwrap();
+    assert!(db
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Completed,
+            "invalid early completion".into(),
+            None,
+            11,
+        )
+        .is_err());
+
+    let streaming = db
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Streaming,
+            "Maya paused with the needle between her fingers.".into(),
+            None,
+            12,
+        )
+        .unwrap();
+    assert_eq!(streaming.status, domain::GenerationJobStatus::Streaming);
+    drop(db);
+
+    let mut db = Database::open(file.path()).unwrap();
+    assert_eq!(db.generation_job(&job.id).unwrap(), Some(streaming.clone()));
+    // Ordinary snapshot replacement rewrites scenes, but must not remove job data.
+    let saved = db
+        .apply(
+            p.revision,
+            UpdateScene {
+                scene_id: scene_id.clone(),
+                title: None,
+                summary: Some("A first aid scene.".into()),
+                tone: None,
+                prose: None,
+                narration: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        db.generation_job(&job.id).unwrap().unwrap().draft_text,
+        streaming.draft_text
+    );
+
+    let completed_text =
+        "Maya paused with the needle between her fingers. Damian watched her face.";
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Streaming,
+        completed_text[..50].into(),
+        None,
+        13,
+    )
+    .unwrap();
+    let completed = db
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Completed,
+            completed_text.into(),
+            None,
+            14,
+        )
+        .unwrap();
+    assert_eq!(completed.status, domain::GenerationJobStatus::Completed);
+
+    let revision = domain::AcceptedProseRevision {
+        id: new_id(),
+        job_id: job.id.clone(),
+        scene_id: scene_id.clone(),
+        previous_prose: String::new(),
+        accepted_prose: completed_text.into(),
+        accepted_at_ms: 15,
+    };
+    let accepted = db
+        .accept_generated_prose(saved.revision, revision.clone())
+        .unwrap();
+    assert_eq!(accepted.scenes[0].prose, completed_text);
+    assert!(accepted.can_undo);
+    assert_eq!(
+        db.generation_job(&job.id).unwrap().unwrap().status,
+        domain::GenerationJobStatus::Accepted
+    );
+    assert_eq!(
+        db.accepted_prose_revisions_for_scene(&scene_id).unwrap(),
+        vec![revision]
+    );
+
+    let after_undo = db.apply(accepted.revision, Undo).unwrap();
+    assert_eq!(after_undo.scenes[0].prose, "");
+    assert_eq!(
+        db.accepted_prose_revisions_for_scene(&scene_id)
+            .unwrap()
+            .len(),
+        1
+    );
+    drop(db);
+    let db = Database::open(file.path()).unwrap();
+    let jobs = db.generation_jobs_for_scene(&scene_id).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].status, domain::GenerationJobStatus::Accepted);
+    assert_eq!(
+        jobs[0].request_snapshot["scene"]["title"],
+        "School infirmary"
+    );
+}
+
+#[test]
+fn draft_acceptance_rejects_stale_prose_mismatched_or_missing_jobs_and_wrong_scenes() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let completed_text = "Maya asks Damian to hold still.";
+    let job = generation_job(&scene_id, p.revision, 30);
+    db.create_generation_job(&job).unwrap();
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Streaming,
+        completed_text.into(),
+        None,
+        31,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Completed,
+        completed_text.into(),
+        None,
+        32,
+    )
+    .unwrap();
+
+    let other_scene = db
+        .apply(
+            p.revision,
+            CreateScene {
+                chapter_id: p.chapters[0].id.clone(),
+                title: "Outside the infirmary".into(),
+            },
+        )
+        .unwrap();
+    let other_scene_id = other_scene.scenes[1].id.clone();
+    let current = db
+        .apply(
+            other_scene.revision,
+            UpdateScene {
+                scene_id: scene_id.clone(),
+                title: None,
+                summary: None,
+                tone: None,
+                prose: Some("The writer changed this prose after generation.".into()),
+                narration: None,
+            },
+        )
+        .unwrap();
+
+    let revision = |id: String, target_scene: &str, previous: &str, accepted: &str| {
+        domain::AcceptedProseRevision {
+            id,
+            job_id: job.id.clone(),
+            scene_id: target_scene.into(),
+            previous_prose: previous.into(),
+            accepted_prose: accepted.into(),
+            accepted_at_ms: 40,
+        }
+    };
+
+    let missing_job = domain::AcceptedProseRevision {
+        id: new_id(),
+        job_id: new_id(),
+        scene_id: scene_id.clone(),
+        previous_prose: current.scenes[0].prose.clone(),
+        accepted_prose: completed_text.into(),
+        accepted_at_ms: 41,
+    };
+    assert!(db
+        .accept_generated_prose(current.revision, missing_job)
+        .unwrap_err()
+        .contains("job does not exist"));
+
+    let wrong_scene = revision(new_id(), &other_scene_id, "", completed_text);
+    assert!(db
+        .accept_generated_prose(current.revision, wrong_scene)
+        .unwrap_err()
+        .contains("different scene"));
+
+    let stale_previous = revision(new_id(), &scene_id, "", completed_text);
+    assert!(db
+        .accept_generated_prose(current.revision, stale_previous)
+        .unwrap_err()
+        .contains("prose changed"));
+
+    let changed_draft = revision(
+        new_id(),
+        &scene_id,
+        &current.scenes[0].prose,
+        "Not the saved draft.",
+    );
+    assert!(db
+        .accept_generated_prose(current.revision, changed_draft)
+        .unwrap_err()
+        .contains("match the saved generation draft"));
+
+    let missing_scene = revision(new_id(), &new_id(), "", completed_text);
+    assert!(db
+        .accept_generated_prose(current.revision, missing_scene)
+        .unwrap_err()
+        .contains("scene for this accepted draft no longer exists"));
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TRIGGER ignore_job_acceptance BEFORE UPDATE ON generation_jobs
+             WHEN NEW.status='accepted' BEGIN SELECT RAISE(IGNORE); END;",
+        )
+        .unwrap();
+    let conditional_update = revision(
+        new_id(),
+        &scene_id,
+        &current.scenes[0].prose,
+        completed_text,
+    );
+    assert!(db
+        .accept_generated_prose(current.revision, conditional_update)
+        .unwrap_err()
+        .contains("changed before its draft could be accepted"));
+    assert_eq!(db.read().unwrap(), current);
+    assert_eq!(
+        db.generation_job(&job.id).unwrap().unwrap().status,
+        domain::GenerationJobStatus::Completed
+    );
+    assert!(db
+        .accepted_prose_revisions_for_scene(&scene_id)
+        .unwrap()
+        .is_empty());
+    connection
+        .execute_batch("DROP TRIGGER ignore_job_acceptance;")
+        .unwrap();
+}
+
+#[test]
+fn draft_acceptance_rejects_pending_failed_interrupted_and_discarded_jobs() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let pending = generation_job(&scene_id, p.revision, 50);
+    db.create_generation_job(&pending).unwrap();
+    let revision = |job_id: String, accepted_at_ms| domain::AcceptedProseRevision {
+        id: new_id(),
+        job_id,
+        scene_id: scene_id.clone(),
+        previous_prose: String::new(),
+        accepted_prose: String::new(),
+        accepted_at_ms,
+    };
+
+    assert!(db
+        .accept_generated_prose(p.revision, revision(pending.id.clone(), 51))
+        .unwrap_err()
+        .contains("completed or stopped"));
+
+    let failed = generation_job(&scene_id, p.revision, 52);
+    db.create_generation_job(&failed).unwrap();
+    db.checkpoint_generation_job(
+        &failed.id,
+        domain::GenerationJobStatus::Failed,
+        "A partial draft.".into(),
+        Some("Synthetic provider error.".into()),
+        53,
+    )
+    .unwrap();
+    assert!(db
+        .accept_generated_prose(p.revision, revision(failed.id.clone(), 54))
+        .unwrap_err()
+        .contains("completed or stopped"));
+
+    let interrupted = generation_job(&scene_id, p.revision, 55);
+    db.create_generation_job(&interrupted).unwrap();
+    db.interrupt_unfinished_generation_jobs(56).unwrap();
+    assert!(db
+        .accept_generated_prose(p.revision, revision(interrupted.id.clone(), 57))
+        .unwrap_err()
+        .contains("completed or stopped"));
+
+    let discarded = generation_job(&scene_id, p.revision, 58);
+    db.create_generation_job(&discarded).unwrap();
+    db.checkpoint_generation_job(
+        &discarded.id,
+        domain::GenerationJobStatus::Streaming,
+        "Partial draft.".into(),
+        None,
+        59,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &discarded.id,
+        domain::GenerationJobStatus::Stopped,
+        "Partial draft.".into(),
+        None,
+        60,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &discarded.id,
+        domain::GenerationJobStatus::Discarded,
+        "Partial draft.".into(),
+        None,
+        61,
+    )
+    .unwrap();
+    assert!(db
+        .accept_generated_prose(p.revision, revision(discarded.id.clone(), 62))
+        .unwrap_err()
+        .contains("completed or stopped"));
+
+    assert_eq!(db.read().unwrap(), p);
+    assert!(db
+        .accepted_prose_revisions_for_scene(&scene_id)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn stopped_partial_generation_can_be_accepted_deliberately() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let job = generation_job(&scene_id, p.revision, 70);
+    db.create_generation_job(&job).unwrap();
+    let partial = "Maya lets the needle rest for a moment.";
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Streaming,
+        partial.into(),
+        None,
+        71,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Stopped,
+        partial.into(),
+        None,
+        72,
+    )
+    .unwrap();
+
+    let accepted = db
+        .accept_generated_prose(
+            p.revision,
+            domain::AcceptedProseRevision {
+                id: new_id(),
+                job_id: job.id.clone(),
+                scene_id: scene_id.clone(),
+                previous_prose: String::new(),
+                accepted_prose: partial.into(),
+                accepted_at_ms: 73,
+            },
+        )
+        .unwrap();
+    assert_eq!(accepted.scenes[0].prose, partial);
+    assert_eq!(
+        db.generation_job(&job.id).unwrap().unwrap().status,
+        domain::GenerationJobStatus::Accepted
+    );
+}
+
+#[test]
+fn unfinished_generation_is_marked_interrupted_without_resending() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let p = scene(&mut db);
+    let job = generation_job(&p.scenes[0].id, p.revision, 20);
+    db.create_generation_job(&job).unwrap();
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Streaming,
+        "Partial output.".into(),
+        None,
+        21,
+    )
+    .unwrap();
+
+    assert_eq!(db.interrupt_unfinished_generation_jobs(22).unwrap(), 1);
+    let interrupted = db.generation_job(&job.id).unwrap().unwrap();
+    assert_eq!(interrupted.status, domain::GenerationJobStatus::Interrupted);
+    assert_eq!(interrupted.draft_text, "Partial output.");
+    assert!(db
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Completed,
+            "Do not auto-resend.".into(),
+            None,
+            23,
+        )
+        .is_err());
+    let discarded = db
+        .checkpoint_generation_job(
+            &job.id,
+            domain::GenerationJobStatus::Discarded,
+            interrupted.draft_text,
+            None,
+            24,
+        )
+        .unwrap();
+    assert_eq!(discarded.status, domain::GenerationJobStatus::Discarded);
 }

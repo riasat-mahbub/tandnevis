@@ -9,6 +9,7 @@ mod secrets;
 
 use http::{request_bytes, request_json};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
     io::Write,
@@ -170,6 +171,52 @@ fn now_epoch() -> Result<u64> {
 fn has_plan_permission(scopes: &[String]) -> bool {
     scopes.iter().any(|scope| scope == DIRECT_SCOPE)
         && scopes.iter().any(|scope| scope == RESOURCE_SCOPE)
+}
+
+fn connection_id_for_verified_record(record: &ConnectionRecord, model: &str) -> Result<String> {
+    let client_id = record
+        .client_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Connect ChatGPT in Settings first.".to_string())?;
+    let subject = record
+        .subject
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Reconnect ChatGPT in Settings before generating.".to_string())?;
+    if record.credential_slot.is_none() {
+        return Err("Reconnect ChatGPT in Settings before generating.".into());
+    }
+    if !has_plan_permission(&record.scopes) {
+        return Err("ChatGPT plan usage permission is no longer available. Reconnect in Settings and allow plan usage.".into());
+    }
+    let consent_at = record
+        .usage_consent_at
+        .ok_or_else(|| "Confirm first use of your ChatGPT plan in Settings.".to_string())?;
+    if record.selected_model.as_deref() != Some(model) {
+        return Err("Select and test this model in ChatGPT Settings before generating.".into());
+    }
+
+    let mut scopes = record.scopes.clone();
+    scopes.sort();
+    scopes.dedup();
+    let identity = serde_json::to_vec(&(
+        "shorthand-writer/chatgpt-connection/v1",
+        subject,
+        client_id,
+        scopes,
+        consent_at,
+        model,
+        model, // runtime-verified model; caller checks the volatile verification.
+    ))
+    .map_err(|_| "Could not bind the verified ChatGPT connection.".to_string())?;
+    let digest = Sha256::digest(identity);
+    let mut opaque = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut opaque, "{byte:02x}");
+    }
+    Ok(opaque)
 }
 
 fn parse_scopes(scope: &str) -> Vec<String> {
@@ -992,8 +1039,94 @@ impl ChatGPTState {
         Ok(state)
     }
 
-    /// S4 calls this only after its request snapshot has been prepared. Readiness is
-    /// enforced again in Rust; callers never receive the bearer token.
+    /// Return an opaque binding for this verified account, authorization, consent,
+    /// and model. It intentionally excludes display labels and credentials.
+    pub fn verified_connection_id_for_model(&self, app: &AppHandle, model: &str) -> Result<String> {
+        let _operation = self.operation_guard()?;
+        let runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| "ChatGPT connection is unavailable.".to_string())?;
+        if runtime.verified_model.as_deref() != Some(model)
+            || !runtime.models.iter().any(|item| item.slug == model)
+        {
+            return Err("Test this ChatGPT model in Settings before generating.".into());
+        }
+        let record =
+            read_record(app)?.ok_or_else(|| "Connect ChatGPT in Settings first.".to_string())?;
+        connection_id_for_verified_record(&record, model)
+    }
+
+    /// S4 calls this only after its request snapshot has been prepared. Readiness
+    /// and the opaque connection binding are rechecked in Rust; callers never
+    /// receive the bearer token.
+    pub fn stream_if_ready_for_connection(
+        &self,
+        app: &AppHandle,
+        expected_connection_id: &str,
+        request: &responses::ResponsesRequest,
+        stop_reason: impl Fn() -> Option<String>,
+        mut callback: impl FnMut(responses::ResponsesEvent) -> std::result::Result<(), String>,
+    ) -> Result<()> {
+        let (epoch, access) = {
+            let _operation = self.operation_guard()?;
+            let runtime = self
+                .runtime
+                .lock()
+                .map_err(|_| "ChatGPT connection is unavailable.".to_string())?;
+            let model = request.model.as_str();
+            if runtime.verified_model.as_deref() != Some(model)
+                || !runtime.models.iter().any(|item| item.slug == model)
+            {
+                return Err("Test this ChatGPT model in Settings before generating.".into());
+            }
+            let epoch = runtime.epoch;
+            drop(runtime);
+            let mut record = read_record(app)?
+                .ok_or_else(|| "Connect ChatGPT in Settings first.".to_string())?;
+            let actual_connection_id = connection_id_for_verified_record(&record, model)?;
+            if actual_connection_id != expected_connection_id {
+                return Err(
+                    "The ChatGPT connection changed while this scene was being prepared. Test it again in Settings.".into(),
+                );
+            }
+            let access = self.refresh_access(app, &mut record, false)?;
+            // Refreshing may update authorization metadata. Recompute the binding
+            // before releasing the operation lock so a changed grant cannot pass.
+            let refreshed_connection_id = connection_id_for_verified_record(&record, model)?;
+            if refreshed_connection_id != expected_connection_id {
+                return Err(
+                    "The ChatGPT connection changed while this scene was being prepared. Test it again in Settings.".into(),
+                );
+            }
+            (epoch, access)
+        };
+        let state = self.clone();
+        let state_for_stop = state.clone();
+        let model_for_stop = request.model.clone();
+        let stop_reason = move || {
+            stop_reason().or_else(|| {
+                (!state_for_stop.is_epoch_current(epoch, &model_for_stop))
+                    .then(|| "ChatGPT connection changed while this scene was generating.".into())
+            })
+        };
+        responses::stream_response_with_access_token_cancellable(
+            &access,
+            request,
+            stop_reason,
+            move |event| {
+                if !state.is_epoch_current(epoch, &request.model) {
+                    return Err(
+                        "ChatGPT connection changed while this scene was generating.".into(),
+                    );
+                }
+                callback(event)
+            },
+        )
+    }
+
+    /// Compatibility entry point for the ChatGPT connection test. Scene
+    /// generation must use `stream_if_ready_for_connection` instead.
     pub fn stream_if_ready(
         &self,
         app: &AppHandle,
@@ -1122,6 +1255,61 @@ mod tests {
             DIRECT_SCOPE.into(),
             RESOURCE_SCOPE.into()
         ]));
+    }
+
+    #[test]
+    fn generation_connection_binding_is_opaque_and_requires_all_local_gates() {
+        let mut record = ConnectionRecord {
+            version: 2,
+            client_id: Some("client-id".into()),
+            subject: Some("account-subject".into()),
+            email: Some("writer@example.test".into()),
+            display_name: Some("Display name".into()),
+            scopes: vec![DIRECT_SCOPE.into(), RESOURCE_SCOPE.into()],
+            selected_model: Some("gpt-safe".into()),
+            credential_slot: Some("credential-slot".into()),
+            expires_at: Some(u64::MAX),
+            usage_consent_at: Some(123),
+            cleanup_slots: Vec::new(),
+        };
+        let binding = connection_id_for_verified_record(&record, "gpt-safe").unwrap();
+        assert_eq!(binding.len(), 64);
+        assert!(!binding.contains("account-subject"));
+        assert!(!binding.contains("writer@example.test"));
+
+        record.display_name = Some("Renamed display label".into());
+        record.email = Some("renamed@example.test".into());
+        assert_eq!(
+            connection_id_for_verified_record(&record, "gpt-safe").unwrap(),
+            binding
+        );
+
+        let mut changed = record.clone();
+        changed.subject = Some("different-account".into());
+        assert_ne!(
+            connection_id_for_verified_record(&changed, "gpt-safe").unwrap(),
+            binding
+        );
+        changed = record.clone();
+        changed.scopes.push("extra-grant".into());
+        assert_ne!(
+            connection_id_for_verified_record(&changed, "gpt-safe").unwrap(),
+            binding
+        );
+        assert!(connection_id_for_verified_record(&record, "another-model").is_err());
+
+        changed = record.clone();
+        changed.usage_consent_at = None;
+        assert!(connection_id_for_verified_record(&changed, "gpt-safe").is_err());
+        changed = record.clone();
+        changed.client_id = None;
+        assert!(connection_id_for_verified_record(&changed, "gpt-safe").is_err());
+        changed = record.clone();
+        changed.credential_slot = None;
+        assert!(connection_id_for_verified_record(&changed, "gpt-safe").is_err());
+        changed = record;
+        changed.scopes.retain(|scope| scope != RESOURCE_SCOPE);
+        assert!(connection_id_for_verified_record(&changed, "gpt-safe").is_err());
     }
 
     #[test]

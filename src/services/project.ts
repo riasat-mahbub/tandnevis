@@ -4,7 +4,7 @@ import type { JSONContent } from '@tiptap/core';
 
 export interface Narration { pointOfView: string; tense: string; instructions: string }
 export interface Beat { id: string; document: JSONContent; text: string }
-export interface Scene { id: string; chapterId: string; title: string; summary: string; tone: string; narration: Narration; beats: Beat[] }
+export interface Scene { id: string; chapterId: string; title: string; summary: string; tone: string; prose: string; narration: Narration; beats: Beat[] }
 export interface Chapter { id: string; title: string; sceneIds: string[] }
 export interface Character { id: string; name: string; background: string; voice: string; personality: string; archived: boolean }
 export interface TrashEntry { id: string; kind: string; title: string; deletedAtRevision: number; payload: unknown }
@@ -18,7 +18,7 @@ export type Operation =
   | { type: 'reorderChapters'; ids: string[] }
   | { type: 'deleteChapter'; chapterId: string }
   | { type: 'createScene'; chapterId: string; title: string }
-  | ({ type: 'updateScene'; sceneId: string } & Partial<Pick<Scene, 'title' | 'summary' | 'tone' | 'narration'>>)
+  | ({ type: 'updateScene'; sceneId: string } & Partial<Pick<Scene, 'title' | 'summary' | 'tone' | 'prose' | 'narration'>>)
   | { type: 'duplicateScene' | 'deleteScene'; sceneId: string }
   | { type: 'reorderScenes'; chapterId: string; ids: string[] }
   | { type: 'createBeat'; sceneId: string; document: JSONContent; text: string }

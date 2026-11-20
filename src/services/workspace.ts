@@ -39,12 +39,13 @@ export class Workspace {
     this.state = { ...this.state, ...patch, pending: this.writes.length, project: session ? projectEdits(session.project, this.writes.flatMap(w => w.operation ? [w.operation] : [])) : null };
     this.listeners.forEach(listener => listener());
   }
-  async load(kind: 'create' | 'open', title = 'Untitled story') {
+  async load(kind: 'create' | 'open', title = 'Untitled story', beforeProjectChooser?: () => Promise<boolean | void>) {
     if (!this.state.ready) throw new Error('A project is already opening.');
     this.recoveryGeneration++;
     this.publish({ ready: false, ...(!this.writes.length ? { error: null } : {}) });
     try {
     await this.flush();
+    if (await beforeProjectChooser?.() === false) return;
     const path = await (kind === 'create' ? this.gateway.chooseCreate() : this.gateway.chooseOpen());
     if (!path) return;
     // Native dialogs are asynchronous. Reject new edits for the entire switch, including the dialog.
@@ -120,6 +121,23 @@ export class Workspace {
       this.publish({ session: { ...session, project }, error: null });
       await this.pump();
     } catch (error) { if (generation === this.recoveryGeneration && this.state.session?.sessionId === session.sessionId) this.publish({ error: errorText(error) }); }
+  }
+  /** Lock authoring while a native transaction returns a new project snapshot. */
+  async applyNativeMutation(sessionId: string, mutation: (session: ProjectSession) => Promise<ProjectSnapshot>): Promise<ProjectSnapshot> {
+    await this.flush();
+    const session = this.state.session;
+    if (!session || session.sessionId !== sessionId) throw new Error('The selected project changed before the operation could finish.');
+    if (!this.state.ready) throw new Error('Wait for the current project operation to finish.');
+    this.publish({ ready: false });
+    try {
+      const project = await mutation(session);
+      if (this.state.session?.sessionId !== sessionId) throw new Error('The project session changed while the native operation was running.');
+      if (this.writes.length) throw new Error('The project received edits while a native operation was running.');
+      this.publish({ session: { ...session, project }, error: null, conflict: null });
+      return project;
+    } finally {
+      if (this.state.session?.sessionId === sessionId) this.publish({ ready: true });
+    }
   }
   async exportMarkdown() { await this.flush(); return this.gateway.exportMarkdown(this.state.session!.sessionId); }
   acceptSavedVersion() {
