@@ -14,6 +14,8 @@ import type { ChatGPTSettingsState, ThemePreference } from './components/Setting
 import './styles.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession }
+const PLATINUM_DEFAULT_VERSION = 'platinum-light-v1';
+
 export default function App({ gateway = desktopGateway, initialSession }: Props) {
   const [workspace] = useState(() => { const w = new Workspace(gateway); if (initialSession) w.attach(initialSession); return w; });
   const { project, pending, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
@@ -22,6 +24,13 @@ export default function App({ gateway = desktopGateway, initialSession }: Props)
   const [panel, setPanel] = useState<Panel>(null);
   const [appearance, setAppearance] = useState<ThemePreference>(() => {
     try {
+      // Make the new Harvest Orange / Platinum design the one-time default for
+      // existing installs too. Explicit choices made after this release stick.
+      if (localStorage.getItem('shorthand.appearance-default') !== PLATINUM_DEFAULT_VERSION) {
+        localStorage.setItem('shorthand.appearance', 'light');
+        localStorage.setItem('shorthand.appearance-default', PLATINUM_DEFAULT_VERSION);
+        return 'light';
+      }
       const saved = localStorage.getItem('shorthand.appearance');
       return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'light';
     } catch { return 'light'; }
