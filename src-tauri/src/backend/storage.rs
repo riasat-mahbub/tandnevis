@@ -229,7 +229,7 @@ impl Database {
             )
             .map_err(sql)?;
         let saved_changes = connection.total_changes();
-        Ok(Self {
+        let mut working = Self {
             connection,
             persisted: Some(PersistedProject {
                 connection: self.connection,
@@ -238,7 +238,27 @@ impl Database {
                 data_version,
                 saved_changes,
             }),
-        })
+        };
+        let mut snapshot = working.read()?;
+        let before = snapshot.clone();
+        snapshot.initialize_starters(None);
+        if snapshot != before {
+            snapshot.validate()?;
+            let tx = working
+                .connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(sql)?;
+            let cursor: i64 = tx
+                .query_row(
+                    "SELECT history_cursor FROM project WHERE singleton=1",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(sql)?;
+            persist(&tx, &snapshot, cursor)?;
+            tx.commit().map_err(sql)?;
+        }
+        Ok(working)
     }
 
     pub fn has_unsaved_changes(&self) -> bool {
@@ -437,7 +457,7 @@ impl Database {
                 |r| r.get(0),
             )
             .map_err(sql)?;
-        let mut after;
+        let mut after: ProjectSnapshot;
         let new_cursor;
         match operation {
             Some(Operation::Undo) => {
@@ -452,6 +472,7 @@ impl Database {
                     )
                     .map_err(sql)?,
                 )?;
+                after.initialize_starters(Some(&before));
                 new_cursor = cursor - 1;
             }
             Some(Operation::Redo) => {
@@ -464,6 +485,7 @@ impl Database {
                     .optional()
                     .map_err(sql)?;
                 after = decode(serialized.ok_or("Nothing to redo.")?)?;
+                after.initialize_starters(Some(&before));
                 new_cursor = cursor + 1;
             }
             operation => {

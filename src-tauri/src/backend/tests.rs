@@ -29,6 +29,213 @@ fn apply_json(db: &mut Database, value: serde_json::Value) -> ProjectSnapshot {
 }
 
 #[test]
+fn new_projects_include_complete_general_starters_without_an_add_action() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let project = db.read().unwrap();
+    assert_eq!((project.tones.len(), project.emotions.len()), (18, 24));
+    assert!(project.characters.is_empty());
+    for preset in project.tones.iter().chain(&project.emotions) {
+        assert!(
+            !preset.meaning.trim().is_empty(),
+            "{} needs a meaning",
+            preset.name
+        );
+        assert!(
+            !preset.guidance.trim().is_empty(),
+            "{} needs guidance",
+            preset.name
+        );
+        assert!(
+            !preset.example.trim().is_empty(),
+            "{} needs an example",
+            preset.name
+        );
+    }
+    assert!(!db.has_unsaved_changes());
+}
+
+#[test]
+fn older_project_gets_starters_in_working_copy_and_keeps_their_ids_through_undo_and_save() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    apply_json(
+        &mut db,
+        json!({"type":"createChapter","title":"Already written"}),
+    );
+    drop(db);
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let extras: String = connection
+        .query_row("SELECT data FROM project_extensions", [], |row| row.get(0))
+        .unwrap();
+    let mut extras: serde_json::Value = serde_json::from_str(&extras).unwrap();
+    extras["tones"] = json!([]);
+    extras["emotions"] = json!([]);
+    extras["starterTypes"] = json!([]);
+    connection
+        .execute(
+            "UPDATE project_extensions SET data=?1",
+            [extras.to_string()],
+        )
+        .unwrap();
+    let history: Vec<(i64, String, String)> = connection
+        .prepare("SELECT sequence,before_state,after_state FROM history")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+    for (sequence, before, after) in history {
+        let strip = |serialized: String| {
+            let mut state: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+            state["tones"] = json!([]);
+            state["emotions"] = json!([]);
+            state["starterTypes"] = json!([]);
+            state.to_string()
+        };
+        connection
+            .execute(
+                "UPDATE history SET before_state=?1,after_state=?2 WHERE sequence=?3",
+                rusqlite::params![strip(before), strip(after), sequence],
+            )
+            .unwrap();
+    }
+    drop(connection);
+    let original_bytes = std::fs::read(&file.0).unwrap();
+    let mut working = Database::open(file.path()).unwrap().working_copy().unwrap();
+    let upgraded = working.read().unwrap();
+    assert_eq!((upgraded.tones.len(), upgraded.emotions.len()), (18, 24));
+    assert!(working.has_unsaved_changes());
+    assert_eq!(std::fs::read(&file.0).unwrap(), original_bytes);
+    let undone = apply(&mut working, Undo);
+    assert_eq!(undone.tones, upgraded.tones);
+    assert_eq!(undone.emotions, upgraded.emotions);
+    let redone = apply(&mut working, Redo);
+    assert_eq!(redone.tones, upgraded.tones);
+    working.save().unwrap();
+    drop(working);
+    let mut reopened = Database::open(file.path()).unwrap().working_copy().unwrap();
+    assert_eq!(reopened.read().unwrap().emotions, upgraded.emotions);
+    assert!(!reopened.has_unsaved_changes());
+}
+
+#[test]
+fn starter_upgrade_preserves_custom_archived_and_deleted_definitions() {
+    let file = ProjectFile::new();
+    let mut db = file.create();
+    let initial = db.read().unwrap();
+    let wry = initial
+        .tones
+        .iter()
+        .find(|preset| preset.name == "Wry")
+        .unwrap();
+    apply_json(
+        &mut db,
+        json!({"type":"deletePreset","kind":"tone","presetId":wry.id}),
+    );
+    drop(db);
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let serialized: String = connection
+        .query_row("SELECT data FROM project_extensions", [], |row| row.get(0))
+        .unwrap();
+    let mut extras: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+    let mut custom = initial
+        .tones
+        .iter()
+        .find(|preset| preset.name == "Tender")
+        .unwrap()
+        .clone();
+    custom.archived = true;
+    custom.meaning = "My meaning".into();
+    custom.guidance = "My authored guidance".into();
+    custom.example = "My example".into();
+    let mut serious = initial
+        .emotions
+        .iter()
+        .find(|preset| preset.name == "Serious")
+        .unwrap()
+        .clone();
+    serious.meaning.clear();
+    serious.example.clear();
+    serious.guidance = "Focused and restrained; keep attention on the immediate task.".into();
+    extras["tones"] = json!([custom]);
+    extras["emotions"] = json!([serious]);
+    extras["starterTypes"] = json!(["tone", "emotion"]);
+    connection
+        .execute(
+            "UPDATE project_extensions SET data=?1",
+            [extras.to_string()],
+        )
+        .unwrap();
+    drop(connection);
+    let mut working = Database::open(file.path()).unwrap().working_copy().unwrap();
+    let upgraded = working.read().unwrap();
+    assert_eq!(
+        upgraded
+            .tones
+            .iter()
+            .find(|preset| preset.id == custom.id)
+            .unwrap(),
+        &custom
+    );
+    assert!(!upgraded
+        .tones
+        .iter()
+        .any(|preset| ["Wry", "Tense", "Playful"].contains(&preset.name.as_str())));
+    assert!(!upgraded.emotions.iter().any(|preset| preset.name == "Awe"));
+    let filled = upgraded
+        .emotions
+        .iter()
+        .find(|preset| preset.id == serious.id)
+        .unwrap();
+    assert!(!filled.meaning.is_empty() && !filled.example.is_empty());
+    working.save().unwrap();
+    drop(working);
+    assert_eq!(
+        Database::open(file.path())
+            .unwrap()
+            .working_copy()
+            .unwrap()
+            .read()
+            .unwrap()
+            .tones,
+        upgraded.tones
+    );
+}
+
+#[test]
+fn stock_profile_fields_and_default_references_are_one_undoable_creation() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let initial = db.read().unwrap();
+    let serious = &initial
+        .emotions
+        .iter()
+        .find(|preset| preset.name == "Serious")
+        .unwrap()
+        .id;
+    let created = apply_json(
+        &mut db,
+        json!({"type":"createCharacter","name":"Maya","background":"A student medic.","personality":"Guarded and practical.","voice":"Blunt, dry, concise.","defaultEmotionId":serious}),
+    );
+    assert_eq!(created.characters[0].background, "A student medic.");
+    assert_eq!(created.characters[0].default_emotion_id, *serious);
+    assert!(apply(&mut db, Undo).characters.is_empty());
+    assert_eq!(apply(&mut db, Redo).characters, created.characters);
+    let revision = db.read().unwrap().revision;
+    assert!(db
+        .apply(
+            revision,
+            serde_json::from_value(
+                json!({"type":"createCharacter","name":"Invalid","defaultToneId":"unknown"})
+            )
+            .unwrap()
+        )
+        .is_err());
+    assert_eq!(db.read().unwrap().characters, created.characters);
+}
+
+#[test]
 fn rich_summary_board_persists_shared_links_and_remaps_duplicates() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
@@ -208,8 +415,8 @@ fn shared_definitions_defaults_and_trash_survive_manual_save() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
     let initial = db.read().unwrap();
-    assert_eq!(initial.tones.len(), 3);
-    assert_eq!(initial.emotions.len(), 4);
+    assert_eq!(initial.tones.len(), 18);
+    assert_eq!(initial.emotions.len(), 24);
     let p = apply_json(
         &mut db,
         json!({"type":"createPreset","kind":"tone","name":"Quiet"}),
@@ -318,7 +525,7 @@ fn removing_starters_does_not_reseed_on_open_or_repeated_initialization() {
     );
     drop(db);
     let p = Database::open(file.path()).unwrap().read().unwrap();
-    assert_eq!(p.emotions.len(), 3);
+    assert_eq!(p.emotions.len(), 23);
     assert!(!p.emotions.iter().any(|e| e.id == id));
 }
 fn scene(db: &mut Database) -> ProjectSnapshot {
@@ -361,6 +568,11 @@ fn empty_project_and_full_authoring_survive_reopen() {
     let p = apply(
         &mut db,
         CreateCharacter {
+            background: None,
+            personality: None,
+            voice: None,
+            default_tone_id: None,
+            default_emotion_id: None,
             name: "Test character".into(),
         },
     );
@@ -518,6 +730,11 @@ fn recoverable_scene_and_chapter_deletion_keeps_profiles_and_ids() {
     let original = apply(
         &mut db,
         CreateCharacter {
+            background: None,
+            personality: None,
+            voice: None,
+            default_tone_id: None,
+            default_emotion_id: None,
             name: "Reusable character".into(),
         },
     );
@@ -783,6 +1000,11 @@ fn character_reference_validation_and_text_follow_profile_rename_and_archive() {
     let p = apply(
         &mut db,
         CreateCharacter {
+            background: None,
+            personality: None,
+            voice: None,
+            default_tone_id: None,
+            default_emotion_id: None,
             name: "Synthetic Ada".into(),
         },
     );

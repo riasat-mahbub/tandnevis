@@ -28,7 +28,7 @@ export type Operation =
   | { type: 'duplicateBeat' | 'deleteBeat'; beatId: string }
   | { type: 'reorderBeats'; sceneId: string; ids: string[] }
   | { type: 'restoreTrash'; trashId: string }
-  | { type: 'createCharacter'; name: string }
+  | ({ type: 'createCharacter'; name: string } & Partial<Pick<Character, 'background' | 'personality' | 'voice' | 'defaultToneId' | 'defaultEmotionId'>>)
   | { type: 'duplicateCharacter' | 'deleteCharacter'; characterId: string }
   | ({ type: 'updateCharacter'; characterId: string } & Partial<Omit<Character, 'id'>>)
   | { type: 'createPreset'; kind: PresetKind; name: string }

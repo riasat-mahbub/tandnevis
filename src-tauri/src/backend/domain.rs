@@ -158,6 +158,45 @@ pub struct Preset {
     pub archived: bool,
     pub revision: u64,
 }
+
+#[derive(Deserialize)]
+struct StarterCatalog {
+    version: u32,
+    tones: Vec<StarterPreset>,
+    emotions: Vec<StarterPreset>,
+}
+#[derive(Deserialize)]
+struct StarterPreset {
+    name: String,
+    meaning: String,
+    guidance: String,
+    example: String,
+}
+fn starter_catalog() -> &'static StarterCatalog {
+    static CATALOG: std::sync::OnceLock<StarterCatalog> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../src/content/starter-presets.json"))
+            .expect("The bundled starter catalog is valid JSON")
+    })
+}
+fn original_starter_guidance(kind: PresetKind, name: &str) -> Option<&'static str> {
+    match (kind, name) {
+        (PresetKind::Tone, "Tender") => Some("Emphasize small gestures of care, warmth, and vulnerability."),
+        (PresetKind::Tone, "Tense") => Some("Emphasize uncertainty and restrained pressure without inventing extra danger."),
+        (PresetKind::Tone, "Playful") => Some("Allow light teasing and gentle humor while preserving character voice."),
+        (PresetKind::Emotion, "Serious") => Some("Focused and restrained; keep attention on the immediate task."),
+        (PresetKind::Emotion, "Awe") => Some("Let wonder or admiration interrupt the character's usual reactions."),
+        (PresetKind::Emotion, "Angry") => Some("Show irritation or frustration through responses and actions, without requiring shouting."),
+        (PresetKind::Emotion, "Embarrassed") => Some("Show self-consciousness through hesitation, deflection, or awkward reactions."),
+        _ => None,
+    }
+}
+fn catalog_marker_version(marker: &str, kind: PresetKind) -> Option<u32> {
+    marker
+        .strip_prefix(&format!("{}:catalog-v", kind.as_str()))?
+        .parse()
+        .ok()
+}
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PresetKind {
@@ -254,6 +293,11 @@ pub enum Operation {
     },
     CreateCharacter {
         name: String,
+        background: Option<String>,
+        personality: Option<String>,
+        voice: Option<String>,
+        default_tone_id: Option<String>,
+        default_emotion_id: Option<String>,
     },
     DuplicateCharacter {
         character_id: String,
@@ -664,28 +708,92 @@ impl ProjectSnapshot {
         }
     }
     pub fn add_starters(&mut self, kind: PresetKind) {
-        if self.starter_types.iter().any(|k| k == kind.as_str()) {
+        self.add_starters_from(kind, None);
+    }
+    pub fn initialize_starters(&mut self, template: Option<&ProjectSnapshot>) {
+        self.add_starters_from(PresetKind::Tone, template);
+        self.add_starters_from(PresetKind::Emotion, template);
+    }
+    fn add_starters_from(&mut self, kind: PresetKind, template: Option<&ProjectSnapshot>) {
+        let catalog = starter_catalog();
+        if self
+            .starter_types
+            .iter()
+            .filter_map(|marker| catalog_marker_version(marker, kind))
+            .any(|version| version >= catalog.version)
+        {
             return;
         }
-        let starters:&[(&str,&str)] =match kind {
-            PresetKind::Tone=>&[("Tender","Emphasize small gestures of care, warmth, and vulnerability."),("Tense","Emphasize uncertainty and restrained pressure without inventing extra danger."),("Playful","Allow light teasing and gentle humor while preserving character voice.")],
-            PresetKind::Emotion=>&[("Serious","Focused and restrained; keep attention on the immediate task."),("Awe","Let wonder or admiration interrupt the character's usual reactions."),("Angry","Show irritation or frustration through responses and actions, without requiring shouting."),("Embarrassed","Show self-consciousness through hesitation, deflection, or awkward reactions.")],
+        let legacy_initialized = self
+            .starter_types
+            .iter()
+            .any(|marker| marker == kind.as_str());
+        let starters = match kind {
+            PresetKind::Tone => &catalog.tones,
+            PresetKind::Emotion => &catalog.emotions,
         };
-        let entries = self.presets_mut(kind);
-        for (name, guidance) in starters {
-            if !entries.iter().any(|p| p.name.eq_ignore_ascii_case(name)) {
-                entries.push(Preset {
-                    id: new_id(),
-                    name: (*name).into(),
-                    meaning: String::new(),
-                    guidance: (*guidance).into(),
-                    example: String::new(),
-                    archived: false,
-                    revision: 0,
-                });
+        for starter in starters {
+            if let Some(existing) = self
+                .presets_mut(kind)
+                .iter_mut()
+                .find(|preset| preset.name.trim().eq_ignore_ascii_case(starter.name.trim()))
+            {
+                // Only an untouched first-release seed is recognizable without
+                // guessing at user intent. Custom, edited and archived data wins.
+                if !existing.archived
+                    && existing.revision == 0
+                    && existing.meaning.is_empty()
+                    && existing.example.is_empty()
+                    && original_starter_guidance(kind, &starter.name)
+                        == Some(existing.guidance.as_str())
+                {
+                    existing.meaning = starter.meaning.clone();
+                    existing.example = starter.example.clone();
+                }
+                continue;
             }
+            let deleted = self.trash.iter().any(|entry| {
+                entry.kind == kind.as_str()
+                    && entry.payload["preset"]["name"]
+                        .as_str()
+                        .is_some_and(|name| name.trim().eq_ignore_ascii_case(starter.name.trim()))
+            });
+            if deleted
+                || (legacy_initialized && original_starter_guidance(kind, &starter.name).is_some())
+            {
+                continue;
+            }
+            let id = template
+                .and_then(|project| {
+                    project
+                        .presets(kind)
+                        .iter()
+                        .find(|preset| preset.name.trim().eq_ignore_ascii_case(starter.name.trim()))
+                })
+                .filter(|preset| {
+                    !self
+                        .tones
+                        .iter()
+                        .chain(&self.emotions)
+                        .any(|current| current.id == preset.id)
+                })
+                .map(|preset| preset.id.clone())
+                .unwrap_or_else(new_id);
+            self.presets_mut(kind).push(Preset {
+                id,
+                name: starter.name.clone(),
+                meaning: starter.meaning.clone(),
+                guidance: starter.guidance.clone(),
+                example: starter.example.clone(),
+                archived: false,
+                revision: 0,
+            });
         }
-        self.starter_types.push(kind.as_str().into());
+        if !legacy_initialized {
+            self.starter_types.push(kind.as_str().into());
+        }
+        self.starter_types
+            .push(format!("{}:catalog-v{}", kind.as_str(), catalog.version));
     }
     fn character_is_used(&self, id: &str) -> bool {
         self.scenes.iter().any(|s| {
@@ -1015,17 +1123,24 @@ impl ProjectSnapshot {
                 }
                 self.trash.remove(pos);
             }
-            Operation::CreateCharacter { name } => {
+            Operation::CreateCharacter {
+                name,
+                background,
+                personality,
+                voice,
+                default_tone_id,
+                default_emotion_id,
+            } => {
                 title(&name)?;
                 self.characters.push(Character {
                     id: new_id(),
                     name,
-                    background: String::new(),
-                    voice: String::new(),
-                    personality: String::new(),
+                    background: background.unwrap_or_default(),
+                    voice: voice.unwrap_or_default(),
+                    personality: personality.unwrap_or_default(),
                     archived: false,
-                    default_tone_id: String::new(),
-                    default_emotion_id: String::new(),
+                    default_tone_id: default_tone_id.unwrap_or_default(),
+                    default_emotion_id: default_emotion_id.unwrap_or_default(),
                 });
             }
             Operation::UpdateCharacter {
@@ -1296,11 +1411,12 @@ impl ProjectSnapshot {
                 return Err("Reusable block guidance exceeds the supported limits.".into());
             }
         }
-        if self
-            .starter_types
-            .iter()
-            .any(|k| k != "tone" && k != "emotion")
-        {
+        if self.starter_types.iter().any(|k| {
+            k != "tone"
+                && k != "emotion"
+                && catalog_marker_version(k, PresetKind::Tone).is_none()
+                && catalog_marker_version(k, PresetKind::Emotion).is_none()
+        }) {
             return Err("Unknown starter block category.".into());
         }
         for t in &self.trash {
