@@ -2,7 +2,7 @@ import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Workspace } from '../services/workspace';
-import { CHARACTER_REFERENCE_MIME } from './BeatEditor';
+import { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME } from './BeatEditor';
 import SceneView from './SceneView';
 import { gateway, project, session } from '../test/fixtures';
 import { GenerationSession } from '../services/generation-session';
@@ -99,6 +99,20 @@ it('opens with the title and rich summary before the beats, with no separate sce
   expect(summary.compareDocumentPosition(screen.getByRole('textbox', { name: 'Freeform text for beat 1' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByRole('combobox', { name: 'Scene tone block' })).toBeNull();
   expect(document.querySelector('.scene-generate-actions')).toContainElement(screen.getByRole('button', { name: 'Generate prose' }));
+});
+
+it('updates the local inspector to the drop destination when a summary tone is dropped after editing a beat', async () => {
+  const snapshot = project(); snapshot.tones.push({ id: 'tender', name: 'Tender', meaning: '', guidance: 'Small gestures of care.', example: '', archived: false, revision: 0 });
+  const native = gateway(snapshot), workspace = new Workspace(native); workspace.attach(session(snapshot));
+  vi.mocked(native.apply).mockImplementation(async (_session, _revision, operation) => {
+    const next = structuredClone(snapshot); next.revision++;
+    if (operation.type === 'updateScene') Object.assign(next.scenes[0], operation);
+    return next;
+  });
+  render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
+  act(() => screen.getByRole('textbox', { name: 'Freeform text for beat 1' }).focus());
+  fireEvent.drop(screen.getByRole('textbox', { name: 'Scene summary' }), { dataTransfer: { types: [PRESET_REFERENCE_MIME], getData: (type: string) => type === PRESET_REFERENCE_MIME ? JSON.stringify({ kind: 'tone', id: 'tender' }) : '' }, clientX: 10, clientY: 10 });
+  await waitFor(() => expect(document.querySelector('.inspector .scope-label')).toHaveTextContent('Summary: scene direction'));
 });
 
 it('routes the two top actions to different generation purposes without saving the project file', async () => {

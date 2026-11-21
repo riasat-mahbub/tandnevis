@@ -47,6 +47,8 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const register = useCallback((id: string, editor: Editor | null) => { if (editor) editors.current.set(id, editor); else editors.current.delete(id); }, []);
   const selectEditor = useCallback((editor: Editor) => {
     editorRef.current = editor;
+    const owner = [...editors.current].find(([, registered]) => registered === editor);
+    if (owner) setSelectedBeatId(owner[0]);
     const selection = editor.state.selection;
     const node = 'node' in selection ? selection.node as { type: { name: string }; attrs: Record<string, string> } : null;
     setReference(node && ['characterReference', 'emotionReference', 'toneReference'].includes(node.type.name) ? { kind: node.type.name, pos: selection.from, attrs: { ...node.attrs } } : null);
