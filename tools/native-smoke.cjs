@@ -71,8 +71,10 @@ async function connect(url) {
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let nextId = 0;
   const pending = new Map();
+  const observers = new Map();
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
+    if (message.method) observers.get(message.method)?.forEach(handler => handler(message.params));
     const request = pending.get(message.id);
     if (!request) return;
     clearTimeout(request.timeout); pending.delete(message.id);
@@ -85,6 +87,7 @@ async function connect(url) {
   });
   return {
     close: () => socket.close(),
+    on(method, handler) { const handlers = observers.get(method) ?? new Set(); handlers.add(handler); observers.set(method, handlers); return () => handlers.delete(handler); },
     send: (method, params = {}) => new Promise((resolve, reject) => {
       const id = ++nextId;
       const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 20_000);
@@ -143,6 +146,37 @@ async function main() {
       const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
       await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
       await evaluate(`(${button}).click()`);
+    };
+    // Intercept a real Chromium dragstart, then deliver that browser-created
+    // payload to the actual target. No synthetic DataTransfer or renderer hook.
+    const dragBlock = async (sourceSelector, targetSelector, description, modifiers = 0) => {
+      await evaluate('window.scrollTo(0, 0)');
+      const geometry = await evaluate(`(() => {
+        const source=document.querySelector(${JSON.stringify(sourceSelector)}), target=document.querySelector(${JSON.stringify(targetSelector)});
+        if (!source || !target) throw new Error('Missing drag source or destination');
+        const s=source.getBoundingClientRect(), t=target.getBoundingClientRect();
+        return {source:{x:s.x+s.width/2,y:s.y+s.height/2},target:{x:t.x+Math.min(t.width/2,85),y:t.y+t.height/2}};
+      })()`);
+      let resolveDrag;
+      const intercepted = new Promise(resolve => { resolveDrag=resolve; });
+      const off = cdp.on('Input.dragIntercepted', data => resolveDrag(data.data));
+      await cdp.send('Input.setInterceptDrags', {enabled:true});
+      try {
+        await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',...geometry.source});
+        await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',...geometry.source,button:'left',buttons:1,clickCount:1,modifiers});
+        for (let step=1;step<=8;step++) {
+          await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:geometry.source.x+(geometry.target.x-geometry.source.x)*step/8,y:geometry.source.y+(geometry.target.y-geometry.source.y)*step/8,button:'left',buttons:1,modifiers});
+        }
+        let timeout;
+        const data = await Promise.race([intercepted,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error(`Native dragstart did not fire for ${description}`)),2500);})]).finally(()=>clearTimeout(timeout));
+        assert.ok(data.items.some(item=>item.mimeType.startsWith('application/x-shorthand-')), 'Native drag payload must carry a structured block');
+        for (const type of ['dragEnter','dragOver','drop']) await cdp.send('Input.dispatchDragEvent',{type,...geometry.target,data,modifiers});
+        report.gestures.push({description,...geometry,actualDragStart:true});
+      } finally {
+        off();
+        await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',...geometry.target,button:'left',buttons:0,clickCount:1});
+        await cdp.send('Input.setInterceptDrags',{enabled:false});
+      }
     };
     const dragItems = async (sourceId, targetId, readOrder, description) => {
       const before = await readOrder();
@@ -280,10 +314,10 @@ async function main() {
     await captureView('story');
     assert.ok(await evaluate("(() => { const button = Array.from(document.querySelectorAll('button.scene-open')).find(button => button.querySelector('h3')?.textContent === 'Smoke arrival'); if (!button || button.disabled) return false; button.click(); return true; })()"), 'Persisted scene Open control must be clickable');
     await waitFor("document.body.innerText.includes('The train arrives beneath a violet sky.')", 'persisted scene beats');
-    await waitFor("Boolean(document.querySelector('.generation-settings-link'))", 'scene generation setup link');
-    const generateButton = await evaluate("(() => { const button = Array.from(document.querySelectorAll('.generation-panel button')).find(button => button.textContent.includes('Generate scene')); return button ? { disabled: button.disabled, hasSettingsLink: !!document.querySelector('.generation-settings-link') } : null; })()");
+    await waitFor("Boolean(document.querySelector('.scene-generate-actions'))", 'scene generation actions');
+    const generateButton = await evaluate("(() => { const button=Array.from(document.querySelectorAll('.scene-generate-actions button')).find(button=>button.textContent.includes('Generate prose')); return button ? {disabled:button.disabled,hasSettingsLink:Array.from(document.querySelectorAll('.scene-generate-actions button')).some(button=>button.textContent.trim()==='Open Settings')} : null; })()");
     assert.deepEqual(generateButton, { disabled: true, hasSettingsLink: true }, 'Scene generation must stay disabled until ChatGPT is verified.');
-    await evaluate("document.querySelector('.generation-settings-link').click()");
+    await clickLabel('Open Settings');
     await waitFor(`document.querySelector('#settings-page')?.innerText.includes(${JSON.stringify(runtime.portable ? 'Portable folder' : 'Standard app data')})`, 'storage mode in Settings');
     await waitFor(`document.querySelector('#settings-page')?.innerText.includes(${JSON.stringify(runtime.dataDirectory)})`, 'portable data path in Settings');
     assert.ok(await evaluate("document.querySelector('#settings-page')?.innerText.includes('Active')"), 'Settings must report the active WebView2 runtime.');
@@ -291,7 +325,8 @@ async function main() {
     await clickLabel('Back to writing');
     await waitFor("document.body.innerText.includes('The train arrives beneath a violet sky.')", 'return to selected scene');
     const uiSummary = 'The visitor steps from the train. Saved through the native scene editor.';
-    await evaluate(`(() => { const textarea = document.querySelector('textarea[aria-label="Scene summary"]'); if (!textarea) throw new Error('Scene summary control is missing.'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, ${JSON.stringify(uiSummary)}); textarea.dispatchEvent(new Event('input', { bubbles: true })); textarea.blur(); })()`);
+    await evaluate("(() => { const editor=document.querySelector('[contenteditable=\"true\"][aria-label=\"Scene summary\"]'); if(!editor)throw new Error('Summary board missing'); editor.focus(); const range=document.createRange();range.selectNodeContents(editor); const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range); })()");
+    await cdp.send('Input.insertText',{text:uiSummary});
     await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.scenes.find(scene => scene.id === ${JSON.stringify(sceneId)})?.summary === ${JSON.stringify(uiSummary)})`, 'scene summary saved to SQLite through UI');
     report.checks.push('Native Scene summary UI edit reaches the Rust SQLite repository');
     const readUi = () => evaluate("window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId })");
@@ -332,7 +367,7 @@ async function main() {
     assert.deepEqual(await readUi(), uiProject);
     await waitFor("Boolean(document.querySelector('button.scene-open'))", 'reopened Story timeline');
     assert.ok(await evaluate("(() => { const button = Array.from(document.querySelectorAll('button.scene-open')).find(button => button.querySelector('h3')?.textContent === 'Smoke arrival'); if (!button || button.disabled) return false; button.click(); return true; })()"));
-    await waitFor(`document.querySelector('textarea[aria-label="Scene summary"]')?.value === ${JSON.stringify(uiSummary)} && document.body.innerText.includes(${JSON.stringify(uiBeatText)})`, 'reopened native summary and beat edits');
+    await waitFor(`document.querySelector('[contenteditable="true"][aria-label="Scene summary"]')?.textContent === ${JSON.stringify(uiSummary)} && document.body.innerText.includes(${JSON.stringify(uiBeatText)})`, 'reopened native summary and beat edits');
     report.checks.push('Reopening through native UI preserves summary/beat edits and structural actions');
     await evaluate("(() => { const editor = document.querySelector('[contenteditable=\"true\"][aria-label=\"Freeform text for beat 1\"]'); editor.focus(); const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); const button = Array.from(document.querySelectorAll('.library button.character-chip')).find(button => button.textContent.trim() === 'Mara'); if (!button) throw new Error('Mara library button is missing.'); button.click(); })()");
     await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.scenes.flatMap(scene => scene.beats).some(beat => JSON.stringify(beat.document).includes(${JSON.stringify(`"characterId":"${characterId}"`)})))`, 'character inserted at native beat caret');
@@ -383,14 +418,29 @@ async function main() {
     let blockProject=await readUi();
     const blockScene=blockProject.scenes.find(scene=>scene.id===sceneId);
     assert.ok(JSON.stringify(blockScene).includes('targetOccurrenceId'),'Emotion blocks must target a local occurrence.');
-    await clickLabel('Tone: Tender'); await clickLabel('This scene');
-    await waitFor("document.querySelector('select[aria-label=\"Scene tone block\"]')?.value", 'scene-tone reference');
-    await selectFirstCharacter();
-    await clickLabel('Tone: Tense');
-    const beatChoice=await evaluate("Array.from(document.querySelectorAll('.block-target-picker button')).find(b=>/^Beat \\d+ only$/.test(b.textContent))?.textContent");
-    assert.ok(beatChoice,'Selected beat tone target must be offered.');
-    await clickLabel(beatChoice);
-    await waitFor("Boolean(document.querySelector('.ProseMirror .block-tone'))", 'inline beat-tone block');
+    await dragBlock('.block-shelf button[aria-label="Mara Vale"]','.summary-board .tiptap','Character from shelf into summary');
+    await waitFor("Boolean(document.querySelector('.summary-board .character-chip'))",'native character drag into summary');
+    await dragBlock('.block-shelf button[aria-label="Emotion: Awe"]','.summary-board .character-chip','Emotion from shelf onto summary character');
+    await waitFor("Boolean(document.querySelector('.summary-board .block-emotion'))",'native targeted emotion drag');
+    await dragBlock('.block-shelf button[aria-label="Tone: Tender"]','.summary-board .tiptap','Tone from shelf into summary');
+    await waitFor("document.querySelector('.summary-board .block-tone')?.textContent.includes('Scene tone: Tender')",'scene tone stored inline on summary board');
+    assert.equal(await evaluate("Boolean(document.querySelector('select[aria-label=\"Scene tone block\"]'))"),false,'No separate scene tone control');
+    await dragBlock('.block-shelf button[aria-label="Tone: Tense"]','[data-item-id] .tiptap','Tone from shelf into beat');
+    await waitFor("Boolean(document.querySelector('[data-item-id] .block-tone'))",'inline beat tone drag');
+    blockProject=await readUi();
+    const summaryDocument=blockProject.scenes.find(scene=>scene.id===sceneId).summaryDocument;
+    assert.ok(JSON.stringify(summaryDocument).includes('characterReference'));
+    assert.ok(JSON.stringify(summaryDocument).includes('targetOccurrenceId'));
+    assert.ok(JSON.stringify(summaryDocument).includes('toneReference'));
+    report.checks.push('Actual native pointer dragstart delivers character, targeted emotion, and scene/beat tone blocks from shelf to summary and beats');
+    const summaryOccurrence = await evaluate("document.querySelector('.summary-board .character-chip')?.getAttribute('data-occurrence-id')");
+    const beforeCopy = await evaluate("document.querySelectorAll('[data-item-id] .character-chip').length");
+    await dragBlock('.summary-board .character-chip','[data-item-id] .tiptap','Copy inline character and linked emotion from summary to beat',2);
+    await waitFor(`document.querySelectorAll('[data-item-id] .character-chip').length === ${beforeCopy + 1}`, 'native inline block copy');
+    assert.equal(await evaluate("document.querySelector('.summary-board .character-chip')?.getAttribute('data-occurrence-id')"),summaryOccurrence,'Copy retains the original summary occurrence');
+    const copiedIds = await evaluate("Array.from(document.querySelectorAll('[data-item-id] .character-chip')).map(node=>node.getAttribute('data-occurrence-id'))");
+    assert.equal(copiedIds.includes(summaryOccurrence),false,'Copied character gets a new occurrence identity');
+    report.checks.push('Native inline Ctrl-drag copies the character with linked emotion and fresh occurrence identity across boards');
     const colors=await evaluate("Object.fromEntries(['character','emotion','tone'].map(kind=>[kind,getComputedStyle(document.querySelector('.ProseMirror .block-'+kind)).backgroundColor]))");
     assert.equal(new Set(Object.values(colors)).size,3,'Each block type must have its own background.');
     await evaluate("document.querySelector('details.generation-preview').open=true");
