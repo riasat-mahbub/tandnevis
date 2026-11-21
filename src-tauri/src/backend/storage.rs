@@ -3,13 +3,14 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 6;
+const SCHEMA_VERSION: i32 = 7;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
 pub struct Database {
     connection: Connection,
     persisted: Option<PersistedProject>,
+    starter_initialization_pending: bool,
 }
 
 struct PersistedProject {
@@ -141,6 +142,7 @@ impl Database {
             Ok(Self {
                 connection,
                 persisted: None,
+                starter_initialization_pending: false,
             })
         })();
         // Only this call's exclusively-created file is removed when initialization fails.
@@ -157,7 +159,7 @@ impl Database {
         {
             return Err("Project path is not a file.".into());
         }
-        let mut connection = connect(path)?;
+        let connection = connect(path)?;
         let application: i32 = connection
             .query_row("PRAGMA application_id", [], |r| r.get(0))
             .map_err(sql)?;
@@ -172,40 +174,34 @@ impl Database {
                 "Unsupported project schema {version}; this app supports {SCHEMA_VERSION}."
             ));
         }
-        if version < SCHEMA_VERSION {
-            migrate(&mut connection, version)?;
-        }
-        let integrity: String = connection
-            .query_row("PRAGMA quick_check", [], |r| r.get(0))
-            .map_err(sql)?;
-        if integrity != "ok" {
-            return Err(format!(
-                "Project integrity check failed: {integrity}. Preserve this file for recovery."
-            ));
-        }
-        let foreign_key_error: Option<String> = connection
-            .query_row("PRAGMA foreign_key_check", [], |r| r.get(0))
-            .optional()
-            .map_err(sql)?;
-        if foreign_key_error.is_some() {
-            return Err(
-                "Project contains broken entity references. Preserve this file for recovery."
-                    .into(),
-            );
-        }
-        let mut database = Self {
+        let database = Self {
             connection,
             persisted: None,
+            starter_initialization_pending: version < SCHEMA_VERSION,
         };
-        database.read()?.validate()?;
-        Ok(database)
+        // Migrations run in the private working copy. Merely opening an older project
+        // must leave its selected source file byte-for-byte unchanged until Save.
+        if version < SCHEMA_VERSION {
+            database.copy_to_working_copy(false)
+        } else {
+            Ok(database)
+        }
     }
     /// Edit in a private SQLite database. A normal authoring operation never
     /// changes the chosen project file until an explicit save is requested.
     pub fn working_copy(self) -> Result<Self> {
         if self.persisted.is_some() {
-            return Ok(self);
+            if !self.starter_initialization_pending {
+                return Ok(self);
+            }
+            let mut working = self;
+            working.initialize_starters()?;
+            return Ok(working);
         }
+        self.copy_to_working_copy(true)
+    }
+
+    fn copy_to_working_copy(self, initialize_starters: bool) -> Result<Self> {
         let data_version = self
             .connection
             .query_row("PRAGMA data_version", [], |r| r.get(0))
@@ -221,6 +217,35 @@ impl Database {
         connection
             .execute_batch("PRAGMA foreign_keys = ON; PRAGMA trusted_schema = OFF;")
             .map_err(sql)?;
+        let version: i32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(sql)?;
+        if version < 1 || version > SCHEMA_VERSION {
+            return Err(format!(
+                "Unsupported project schema {version}; this app supports {SCHEMA_VERSION}."
+            ));
+        }
+        if version < SCHEMA_VERSION {
+            migrate(&mut connection, version)?;
+        }
+        let integrity: String = connection
+            .query_row("PRAGMA quick_check", [], |row| row.get(0))
+            .map_err(sql)?;
+        if integrity != "ok" {
+            return Err(format!(
+                "Project integrity check failed: {integrity}. Preserve this file for recovery."
+            ));
+        }
+        let foreign_key_error: Option<String> = connection
+            .query_row("PRAGMA foreign_key_check", [], |row| row.get(0))
+            .optional()
+            .map_err(sql)?;
+        if foreign_key_error.is_some() {
+            return Err(
+                "Project contains broken entity references. Preserve this file for recovery."
+                    .into(),
+            );
+        }
         let (project_id, revision) = connection
             .query_row(
                 "SELECT project_id,revision FROM project WHERE singleton=1",
@@ -238,13 +263,23 @@ impl Database {
                 data_version,
                 saved_changes,
             }),
+            starter_initialization_pending: self.starter_initialization_pending
+                && !initialize_starters,
         };
-        let mut snapshot = working.read()?;
+        working.read()?.validate()?;
+        if initialize_starters {
+            working.initialize_starters()?;
+        }
+        Ok(working)
+    }
+
+    fn initialize_starters(&mut self) -> Result<()> {
+        let mut snapshot = self.read()?;
         let before = snapshot.clone();
         snapshot.initialize_starters(None);
         if snapshot != before {
             snapshot.validate()?;
-            let tx = working
+            let tx = self
                 .connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(sql)?;
@@ -258,7 +293,8 @@ impl Database {
             persist(&tx, &snapshot, cursor)?;
             tx.commit().map_err(sql)?;
         }
-        Ok(working)
+        self.starter_initialization_pending = false;
+        Ok(())
     }
 
     pub fn has_unsaved_changes(&self) -> bool {
@@ -297,6 +333,10 @@ impl Database {
         {
             return Err("The project file changed in another window. Your edits remain in this window; save a recovery copy before reopening the changed file.".into());
         }
+        let schema_version: i32 = tx
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(sql)?;
+        migrate_in_transaction(&tx, schema_version)?;
         for table in SAVE_TABLES.iter().rev() {
             tx.execute(&format!("DELETE FROM {table}"), [])
                 .map_err(sql)?;
@@ -694,12 +734,23 @@ impl Database {
 }
 
 fn migrate(connection: &mut Connection, version: i32) -> Result<()> {
-    match version {
-        1 => {
-            let tx = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .map_err(sql)?;
-            tx.execute_batch(
+    let tx = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sql)?;
+    migrate_in_transaction(&tx, version)?;
+    tx.commit().map_err(sql)
+}
+
+fn migrate_in_transaction(tx: &rusqlite::Transaction<'_>, mut version: i32) -> Result<()> {
+    if version < 1 || version > SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported project schema {version}; this app supports {SCHEMA_VERSION}."
+        ));
+    }
+    while version < SCHEMA_VERSION {
+        version = match version {
+            1 => {
+                tx.execute_batch(
                 "ALTER TABLE scenes ADD COLUMN prose TEXT NOT NULL DEFAULT '';
                  CREATE TABLE generation_jobs (
                     id TEXT PRIMARY KEY,
@@ -726,52 +777,50 @@ fn migrate(connection: &mut Connection, version: i32) -> Result<()> {
                  );
                  CREATE INDEX accepted_prose_scene_time ON accepted_prose_revisions(scene_id,accepted_at_ms DESC);
                  PRAGMA user_version=2;",
-            )
-            .map_err(sql)?;
-            tx.commit().map_err(sql)?;
-            migrate(connection, 2)
-        }
-        2 => {
-            let tx = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
+                )
                 .map_err(sql)?;
-            tx.execute_batch("CREATE TABLE project_extensions (singleton INTEGER PRIMARY KEY CHECK(singleton=1), data TEXT NOT NULL CHECK(json_valid(data)));
+                2
+            }
+            2 => {
+                tx.execute_batch("CREATE TABLE project_extensions (singleton INTEGER PRIMARY KEY CHECK(singleton=1), data TEXT NOT NULL CHECK(json_valid(data)));
               ALTER TABLE trash RENAME TO trash_v2;
               CREATE TABLE trash (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('chapter','scene','beat','character','tone','emotion')), title TEXT NOT NULL, deleted_at_revision INTEGER NOT NULL CHECK(deleted_at_revision>=0), payload TEXT NOT NULL CHECK(json_valid(payload)), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
               INSERT INTO trash SELECT * FROM trash_v2; DROP TABLE trash_v2; PRAGMA user_version=3;").map_err(sql)?;
-            tx.commit().map_err(sql)?;
-            migrate(connection, 3)
-        }
-        3 => {
-            // No table rewrite: the existing extension row now owns rich summaries.
-            // Version 4 is the schema with rich summaries, tone/emotion libraries,
-            // and defaults in the extension row.
-            connection
-                .pragma_update(None, "user_version", 4)
-                .map_err(sql)?;
-            migrate(connection, 4)
-        }
-        4 => {
-            // Freeform inline references do not require a table rewrite. Bumping the
-            // gate prevents older binaries from reinterpreting the new document rules.
-            connection
-                .pragma_update(None, "user_version", 5)
-                .map_err(sql)?;
-            migrate(connection, 5)
-        }
-        5 => {
-            // Preset colors live in project-extension JSON; no table rewrite is needed.
-            // This gate keeps older binaries from discarding the new optional field.
-            connection
-                .pragma_update(None, "user_version", SCHEMA_VERSION)
-                .map_err(sql)?;
-            Ok(())
-        }
-        SCHEMA_VERSION => Ok(()),
-        _ => Err(format!(
-            "Unsupported project schema {version}; this app supports {SCHEMA_VERSION}."
-        )),
+                3
+            }
+            3 => {
+                // No table rewrite: the existing extension row now owns rich summaries.
+                // Version 4 is the schema with rich summaries, tone/emotion libraries,
+                // and defaults in the extension row.
+                tx.pragma_update(None, "user_version", 4).map_err(sql)?;
+                4
+            }
+            4 => {
+                // Freeform inline references do not require a table rewrite. Bumping the
+                // gate prevents older binaries from reinterpreting the new document rules.
+                tx.pragma_update(None, "user_version", 5).map_err(sql)?;
+                5
+            }
+            5 => {
+                // Preset colors live in project-extension JSON; no table rewrite is needed.
+                tx.pragma_update(None, "user_version", 6).map_err(sql)?;
+                6
+            }
+            6 => {
+                // Character icons live in project-extension JSON; no table rewrite is needed.
+                // This gate keeps older binaries from discarding the new optional field.
+                tx.pragma_update(None, "user_version", SCHEMA_VERSION)
+                    .map_err(sql)?;
+                SCHEMA_VERSION
+            }
+            _ => {
+                return Err(format!(
+                    "Unsupported project schema {version}; this app supports {SCHEMA_VERSION}."
+                ));
+            }
+        };
     }
+    Ok(())
 }
 
 fn generation_status(value: String) -> Result<GenerationJobStatus> {
@@ -1003,6 +1052,7 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
                 voice: r.get(3)?,
                 personality: r.get(4)?,
                 archived: r.get(5)?,
+                icon: String::new(),
                 default_tone_id: String::new(),
                 default_emotion_id: String::new(),
             })
@@ -1072,6 +1122,10 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
                 .map(|_| v["sceneSummaries"][&s.id].clone());
         }
         for c in &mut project.characters {
+            c.icon = v["characterIcons"][&c.id]
+                .as_str()
+                .unwrap_or_default()
+                .into();
             c.default_tone_id = v["characterDefaults"][&c.id]["toneId"]
                 .as_str()
                 .unwrap_or_default()
@@ -1213,6 +1267,11 @@ fn persist(connection: &Connection, project: &ProjectSnapshot, cursor: i64) -> R
             )
         })
         .collect();
+    let character_icons: serde_json::Map<String, serde_json::Value> = project
+        .characters
+        .iter()
+        .map(|c| (c.id.clone(), serde_json::json!(c.icon)))
+        .collect();
     let scene_summaries: serde_json::Map<String, serde_json::Value> = project
         .scenes
         .iter()
@@ -1222,7 +1281,7 @@ fn persist(connection: &Connection, project: &ProjectSnapshot, cursor: i64) -> R
                 .map(|d| (s.id.clone(), d.clone()))
         })
         .collect();
-    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults});
+    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults,"characterIcons":character_icons});
     connection.execute("INSERT INTO project_extensions(singleton,data) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET data=excluded.data",[encode(&extensions)?]).map_err(sql)?;
     Ok(())
 }

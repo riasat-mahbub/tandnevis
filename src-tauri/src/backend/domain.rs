@@ -142,6 +142,8 @@ pub struct Character {
     pub voice: String,
     pub personality: String,
     pub archived: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
     #[serde(default)]
     pub default_tone_id: String,
     #[serde(default)]
@@ -170,6 +172,49 @@ fn normalize_preset_color(value: &str) -> Result<String> {
         return Err("Reusable block color must be empty or a #RRGGBB hex value.".into());
     }
     Ok(value.to_ascii_uppercase())
+}
+
+const CHARACTER_ICONS: &[&str] = &[
+    "user",
+    "crown",
+    "coins",
+    "swords",
+    "shield",
+    "book-open",
+    "feather",
+    "heart",
+    "sparkles",
+    "wand-sparkles",
+    "skull",
+    "search",
+    "fingerprint",
+    "key-round",
+    "drama",
+    "glasses",
+    "graduation-cap",
+    "trophy",
+    "flame",
+    "theater",
+    "flask-conical",
+    "compass",
+    "ghost",
+    "smile",
+    "music",
+    "gem",
+    "star",
+    "moon",
+    "hat-glasses",
+    "hand-heart",
+    "briefcase",
+    "bird",
+];
+
+fn normalize_character_icon(value: &str) -> Result<String> {
+    if value.is_empty() || CHARACTER_ICONS.contains(&value) {
+        Ok(value.to_owned())
+    } else {
+        Err("Character icon is not supported.".into())
+    }
 }
 
 fn deserialize_preset_color<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
@@ -319,6 +364,8 @@ pub enum Operation {
         background: Option<String>,
         personality: Option<String>,
         voice: Option<String>,
+        #[serde(default)]
+        icon: Option<String>,
         default_tone_id: Option<String>,
         default_emotion_id: Option<String>,
     },
@@ -335,6 +382,8 @@ pub enum Operation {
         voice: Option<String>,
         personality: Option<String>,
         archived: Option<bool>,
+        #[serde(default)]
+        icon: Option<String>,
         default_tone_id: Option<String>,
         default_emotion_id: Option<String>,
     },
@@ -1157,10 +1206,16 @@ impl ProjectSnapshot {
                 background,
                 personality,
                 voice,
+                icon,
                 default_tone_id,
                 default_emotion_id,
             } => {
                 title(&name)?;
+                let icon = icon
+                    .as_deref()
+                    .map(normalize_character_icon)
+                    .transpose()?
+                    .unwrap_or_default();
                 self.characters.push(Character {
                     id: new_id(),
                     name,
@@ -1168,6 +1223,7 @@ impl ProjectSnapshot {
                     voice: voice.unwrap_or_default(),
                     personality: personality.unwrap_or_default(),
                     archived: false,
+                    icon,
                     default_tone_id: default_tone_id.unwrap_or_default(),
                     default_emotion_id: default_emotion_id.unwrap_or_default(),
                 });
@@ -1179,12 +1235,17 @@ impl ProjectSnapshot {
                 voice,
                 personality,
                 archived,
+                icon,
                 default_tone_id,
                 default_emotion_id,
             } => {
                 if let Some(ref name) = name {
                     title(name)?;
                 }
+                let icon = icon
+                    .as_deref()
+                    .map(normalize_character_icon)
+                    .transpose()?;
                 let c = self
                     .characters
                     .iter_mut()
@@ -1204,6 +1265,9 @@ impl ProjectSnapshot {
                 }
                 if let Some(v) = archived {
                     c.archived = v;
+                }
+                if let Some(v) = icon {
+                    c.icon = v;
                 }
                 if let Some(v) = default_tone_id {
                     c.default_tone_id = v;
@@ -1433,6 +1497,9 @@ impl ProjectSnapshot {
         for c in &self.characters {
             add(&c.id)?;
             title(&c.name)?;
+            if normalize_character_icon(&c.icon)? != c.icon {
+                return Err("Character icon is not normalized.".into());
+            }
             if !c.default_tone_id.is_empty()
                 && !self.tones.iter().any(|p| p.id == c.default_tone_id)
             {

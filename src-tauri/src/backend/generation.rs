@@ -1891,6 +1891,7 @@ mod tests {
                     voice: "Measured and dry.".into(),
                     personality: "Protective.".into(),
                     archived: true,
+                    icon: String::new(),
                 },
                 Character {
                     default_tone_id: String::new(),
@@ -1901,6 +1902,7 @@ mod tests {
                     voice: String::new(),
                     personality: String::new(),
                     archived: false,
+                    icon: String::new(),
                 },
             ],
             trash: vec![],
@@ -1947,6 +1949,18 @@ mod tests {
         unrelated_edit.title = "A renamed project".into();
         let unrelated_context = build_scene_context(&unrelated_edit, "scene-a").unwrap();
         assert_eq!(fingerprint(&unrelated_context, "").unwrap(), original);
+
+        let mut icon_edit = project.clone();
+        icon_edit.revision += 1;
+        icon_edit.characters[0].icon = "bird".into();
+        let icon_context = build_scene_context(&icon_edit, "scene-a").unwrap();
+        assert_eq!(fingerprint(&icon_context, "").unwrap(), original);
+        assert!(serde_json::to_value(&icon_context.referenced_characters)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|character| character.get("icon").is_none()));
 
         let mut changed_scene = project;
         changed_scene.scenes[0].tone = "Light and comic".into();

@@ -6,6 +6,17 @@ import sharedBlocks from '../test/global-block-context.json';
 import summaryBlocks from '../test/summary-board-context.json';
 
 describe('scene generation input fingerprint', () => {
+  it('keeps character icons out of generation context and the stale-draft fingerprint', () => {
+    const baseline = buildSceneGenerationContext(sharedBlocks, 'scene');
+    const decorated = structuredClone(sharedBlocks);
+    decorated.characters = decorated.characters.map(character => ({ ...character, icon: 'crown' }));
+    const context = buildSceneGenerationContext(decorated, 'scene');
+
+    expect(context).toEqual(baseline);
+    expect(JSON.stringify(context)).not.toContain('"icon"');
+    expect(generationInputFingerprint(context, '')).toBe(generationInputFingerprint(baseline, ''));
+  });
+
   it('keeps display-only preset colors out of the v2 context and fingerprint', () => {
     const baseline = buildSceneGenerationContext(sharedBlocks, 'scene');
     const colored = structuredClone(sharedBlocks);

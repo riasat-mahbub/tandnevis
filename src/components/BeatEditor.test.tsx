@@ -11,6 +11,19 @@ import { project } from '../test/fixtures';
 
 afterEach(() => { cleanup(); document.body.innerHTML = ''; });
 
+it('refreshes a referenced character icon without rewriting the inline document', async () => {
+  const p = project(), onChange = vi.fn();
+  const character = { ...p.characters[0], icon: 'coins' };
+  const beat = { id: 'icon-beat', text: character.name, document: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'characterReference', attrs: { characterId: character.id, label: character.name, occurrenceId: 'icon-occurrence' } }] }] } };
+  const props = { beat, index: 0, characters: [character], onChange, onFocus: vi.fn(), onSelection: vi.fn(), register: vi.fn() };
+  const view = render(<BeatEditor {...props}/>);
+  expect(await view.findByText(character.name)).toContainElement(view.container.querySelector('[data-character-icon="coins"]'));
+  view.rerender(<BeatEditor {...props} characters={[{ ...character, icon: 'crown' }]}/>);
+  await waitFor(() => expect(view.container.querySelector('[data-character-icon="crown"]')).not.toBeNull());
+  expect(view.container.querySelector('[data-character-icon="coins"]')).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 function dataTransfer() {
   const values = new Map<string, string>();
   return {

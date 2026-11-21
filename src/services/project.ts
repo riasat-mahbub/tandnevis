@@ -6,7 +6,7 @@ export interface Narration { pointOfView: string; tense: string; instructions: s
 export interface Beat { id: string; document: JSONContent; text: string }
 export interface Scene { id: string; chapterId: string; title: string; summary: string; summaryDocument?: JSONContent | null; tone: string; toneId: string; prose: string; narration: Narration; beats: Beat[] }
 export interface Chapter { id: string; title: string; sceneIds: string[] }
-export interface Character { id: string; name: string; background: string; voice: string; personality: string; archived: boolean; defaultToneId: string; defaultEmotionId: string }
+export interface Character { id: string; name: string; background: string; voice: string; personality: string; archived: boolean; icon?: string; defaultToneId: string; defaultEmotionId: string }
 export type PresetKind = 'tone' | 'emotion';
 export interface Preset { id: string; name: string; meaning: string; guidance: string; example: string; color?: string; archived: boolean; revision: number }
 export interface TrashEntry { id: string; kind: string; title: string; deletedAtRevision: number; payload: unknown }
@@ -28,7 +28,7 @@ export type Operation =
   | { type: 'duplicateBeat' | 'deleteBeat'; beatId: string }
   | { type: 'reorderBeats'; sceneId: string; ids: string[] }
   | { type: 'restoreTrash'; trashId: string }
-  | ({ type: 'createCharacter'; name: string } & Partial<Pick<Character, 'background' | 'personality' | 'voice' | 'defaultToneId' | 'defaultEmotionId'>>)
+  | ({ type: 'createCharacter'; name: string } & Partial<Pick<Character, 'background' | 'personality' | 'voice' | 'icon' | 'defaultToneId' | 'defaultEmotionId'>>)
   | { type: 'duplicateCharacter' | 'deleteCharacter'; characterId: string }
   | ({ type: 'updateCharacter'; characterId: string } & Partial<Omit<Character, 'id'>>)
   | { type: 'createPreset'; kind: PresetKind; name: string; color?: string }

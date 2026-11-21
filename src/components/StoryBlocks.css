@@ -1,4 +1,5 @@
 .story-block { display:inline-flex; align-items:center; gap:4px; max-width:100%; padding:3px 7px; border:1px solid transparent; border-radius:5px; font:12px/1.45 'Segoe UI',system-ui,sans-serif; vertical-align:baseline; overflow-wrap:anywhere; }
+.story-block>svg { flex-shrink:0; pointer-events:none; }
 .story-block.block-character { background:var(--block-character-bg,#DCEBDD); color:var(--block-character-ink,#274B35); }
 .story-block.block-emotion:not(.preset-colored) { background:var(--block-emotion-bg,#EADFF4); color:var(--block-emotion-ink,#543769); }
 .story-block.block-tone:not(.preset-colored) { background:var(--block-tone-bg,#FFE0B8); color:var(--block-tone-ink,#6A3A12); }

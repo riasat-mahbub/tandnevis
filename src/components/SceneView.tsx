@@ -11,6 +11,7 @@ import { summaryBoard } from '../services/summary-board';
 import { moved } from '../services/workspace';
 import type { Workspace } from '../services/workspace';
 import { effectiveColor, groupPresetsByColor, presetColorStyle } from '../services/preset-colors';
+import CharacterIcon from './CharacterIcon';
 import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, characterTargets, insertInlineReference } from './BeatEditor';
 import type { LibraryKind } from './LibraryView';
 import GenerationPanel from './GenerationPanel';
@@ -116,7 +117,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
           <div className="block-panel-heading"><h3>{blockTabTitles[activeBlockTab]}</h3><button className="quiet block-manage" onClick={() => manage(activeBlockTab)}>Manage {blockTabTitles[activeBlockTab]}</button></div>
           <label className="block-search"><span><Search size={13}/></span><span className="sr-only">Search {blockTabTitles[activeBlockTab].toLowerCase()}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${blockTabTitles[activeBlockTab].toLowerCase()}`}/></label>
           {activeBlockTab === 'characters' && <>
-            <div className="block-collection" aria-label="Character blocks">{filteredCharacters.map(character => <button key={character.id} aria-label={`Character: ${character.name}`} className="character-chip story-block block-character" disabled={locked} draggable={!locked} title="Drag to add a character reference, or click to insert at the caret" onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData(CHARACTER_REFERENCE_MIME, character.id); event.dataTransfer.effectAllowed = 'copy'; }} onClick={() => insertReference('character', character)}>{character.name}<Plus size={12}/></button>)}</div>
+            <div className="block-collection" aria-label="Character blocks">{filteredCharacters.map(character => <button key={character.id} aria-label={`Character: ${character.name}`} className="character-chip story-block block-character" disabled={locked} draggable={!locked} title="Drag to add a character reference, or click to insert at the caret" onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData(CHARACTER_REFERENCE_MIME, character.id); event.dataTransfer.effectAllowed = 'copy'; }} onClick={() => insertReference('character', character)}><CharacterIcon icon={character.icon} size={14}/>{character.name}<Plus size={12}/></button>)}</div>
             <button className="shelf-new-character" disabled={locked} onClick={() => manage('characters', 'new')}><Plus size={14}/>New character</button>
           </>}
           {activeBlockTab === 'emotions' && <div className="preset-color-groups" aria-label="Emotion blocks">{emotionGroups.map(group => <section key={group.id} className="preset-color-group" aria-label={group.name}>

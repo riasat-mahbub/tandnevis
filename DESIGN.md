@@ -10,6 +10,8 @@ The accepted scene-writer workflow remains: two views at two conceptual zoom lev
 
 ## Composition
 
+The [stock character library revamp](docs/stock-character-revamp-plan.md) replaces the six invented templates with 53 reference-backed types. New character provides category buttons, grouped search, icons, source details, and a preview before explicit application. The form keeps the name and icon controls above the browser, then editable profile fields. A 32-icon picker supports custom and existing characters; icons appear in the library, shelf, and inline references. Icons are visual metadata and never enter generation context. Existing creation entry points and the visual system remain in place.
+
 The next screens are described concretely in [Global blocks: UI design brief](docs/global-blocks-ui-design.md): persistent project/navigation/save groups, a Scene block shelf and local inspector, full master/detail library editors, explicit drop feedback, and responsive behavior. It extends this visual system without changing the accepted writing workflow.
 
 **Story view (zoomed out)** is a vertical scene timeline, grouped by chapter. Scene blocks show their title and summary excerpt. Opening a block switches into that individual scene's editor. Drag scenes vertically, with explicit before/after insertion feedback; visible move controls offer the same action without dragging. The timeline stays vertical at every size.

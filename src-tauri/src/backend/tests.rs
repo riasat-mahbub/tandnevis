@@ -585,6 +585,7 @@ fn duplicating_a_legacy_character_without_an_occurrence_id_keeps_unbound_emotion
             background: None,
             personality: None,
             voice: None,
+            icon: None,
             default_tone_id: None,
             default_emotion_id: None,
         })
@@ -881,6 +882,7 @@ fn empty_project_and_full_authoring_survive_reopen() {
             background: None,
             personality: None,
             voice: None,
+            icon: None,
             default_tone_id: None,
             default_emotion_id: None,
             name: "Test character".into(),
@@ -897,6 +899,7 @@ fn empty_project_and_full_authoring_survive_reopen() {
             voice: Some("Quiet".into()),
             personality: Some("Curious".into()),
             archived: Some(true),
+            icon: None,
         },
     );
     let p = apply(
@@ -921,6 +924,65 @@ fn empty_project_and_full_authoring_survive_reopen() {
     assert_eq!(restored, p);
     assert_eq!(restored.project_id, empty.project_id);
     assert!(restored.characters[0].archived);
+}
+
+#[test]
+fn character_icons_persist_through_history_trash_save_reopen_and_markdown_import() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let before = db.read().unwrap();
+    let invalid = serde_json::from_value(json!({
+        "type": "createCharacter",
+        "name": "Invalid icon",
+        "icon": "not-a-supported-icon"
+    }))
+    .unwrap();
+    assert!(db.apply(before.revision, invalid).is_err());
+    assert_eq!(db.read().unwrap(), before);
+
+    let created = apply_json(
+        &mut db,
+        json!({"type":"createCharacter","name":"Icon character","icon":"skull"}),
+    );
+    let character_id = created.characters[0].id.clone();
+    assert_eq!(created.characters[0].icon, "skull");
+
+    let updated = apply_json(
+        &mut db,
+        json!({"type":"updateCharacter","characterId":character_id,"icon":"bird"}),
+    );
+    assert_eq!(updated.characters[0].icon, "bird");
+    assert_eq!(apply(&mut db, Undo).characters[0].icon, "skull");
+    assert_eq!(apply(&mut db, Redo).characters[0].icon, "bird");
+
+    let duplicated = apply(&mut db, DuplicateCharacter { character_id });
+    let duplicate_id = duplicated.characters[1].id.clone();
+    assert_eq!(duplicated.characters[1].icon, "bird");
+    let deleted = apply(&mut db, DeleteCharacter { character_id: duplicate_id });
+    assert_eq!(deleted.trash[0].payload["character"]["icon"], "bird");
+    let restored = apply(&mut db, RestoreTrash { trash_id: deleted.trash[0].id.clone() });
+    assert_eq!(restored.characters[1].icon, "bird");
+
+    let undone = apply(&mut db, Undo);
+    assert_eq!(undone.characters.len(), 1);
+    assert_eq!(undone.trash[0].payload["character"]["icon"], "bird");
+    let ready_to_save = apply(&mut db, Redo);
+    db.save().unwrap();
+    drop(db);
+
+    let mut reopened = Database::open(file.path()).unwrap();
+    let snapshot = reopened.read().unwrap();
+    assert_eq!(snapshot, ready_to_save);
+    assert!(snapshot.characters.iter().all(|character| character.icon == "bird"));
+    let from_history = apply(&mut reopened, Undo);
+    assert_eq!(from_history.characters.len(), 1);
+    assert_eq!(from_history.trash[0].payload["character"]["icon"], "bird");
+    let after_history = apply(&mut reopened, Redo);
+    assert!(after_history.characters.iter().all(|character| character.icon == "bird"));
+    let markdown = snapshot.markdown();
+    assert!(!markdown.contains("bird"));
+    let imported = reopened.import(after_history.revision, &markdown).unwrap();
+    assert!(imported.characters.iter().all(|character| character.icon == "bird"));
 }
 
 #[test]
@@ -1043,6 +1105,7 @@ fn recoverable_scene_and_chapter_deletion_keeps_profiles_and_ids() {
             background: None,
             personality: None,
             voice: None,
+            icon: None,
             default_tone_id: None,
             default_emotion_id: None,
             name: "Reusable character".into(),
@@ -1313,6 +1376,7 @@ fn character_reference_validation_and_text_follow_profile_rename_and_archive() {
             background: None,
             personality: None,
             voice: None,
+            icon: None,
             default_tone_id: None,
             default_emotion_id: None,
             name: "Synthetic Ada".into(),
@@ -1340,6 +1404,7 @@ fn character_reference_validation_and_text_follow_profile_rename_and_archive() {
             voice: None,
             personality: None,
             archived: Some(true),
+            icon: None,
         },
     );
     assert_eq!(p.scenes[0].beats[0].text, "Synthetic Bea enters.");
@@ -1514,7 +1579,7 @@ fn full_save_detects_external_writes_even_without_a_revision_change() {
 }
 
 #[test]
-fn schema_v1_migrates_to_v5_without_losing_story_or_undo_history() {
+fn schema_v1_migrates_on_save_without_losing_story_or_undo_history() {
     let file = ProjectFile::new();
     let mut db = file.create();
     let p = scene(&mut db);
@@ -1554,14 +1619,23 @@ fn schema_v1_migrates_to_v5_without_losing_story_or_undo_history() {
     let mut migrated = Database::open(file.path()).unwrap();
     assert_eq!(migrated.read().unwrap(), expected);
     assert_eq!(
+        rusqlite::Connection::open(file.path())
+            .unwrap()
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+            .unwrap(),
+        1,
+        "Opening an old project must not rewrite its source schema."
+    );
+    assert_eq!(
         migrated.apply(expected.revision, Undo).unwrap().scenes[0].beats[0].text,
         "The infirmary is quiet."
     );
+    migrated.save().unwrap();
     let connection = rusqlite::Connection::open(file.path()).unwrap();
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 6);
+    assert_eq!(version, 7);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
@@ -1572,7 +1646,7 @@ fn schema_v1_migrates_to_v5_without_losing_story_or_undo_history() {
 }
 
 #[test]
-fn schema_v4_migrates_through_v5_to_v6_without_rewriting_project_extensions_or_history() {
+fn schema_v4_migrates_in_working_copy_without_rewriting_project_extensions_or_history() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
     let initial = scene(&mut db);
@@ -1641,7 +1715,7 @@ fn schema_v4_migrates_through_v5_to_v6_without_rewriting_project_extensions_or_h
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 6);
+    assert_eq!(version, 4);
     assert_eq!(after, before);
     let history_after: Vec<(i64, String, String)> = connection
         .prepare("SELECT sequence,before_state,after_state FROM history ORDER BY sequence")
@@ -1654,7 +1728,7 @@ fn schema_v4_migrates_through_v5_to_v6_without_rewriting_project_extensions_or_h
 }
 
 #[test]
-fn schema_v5_migrates_to_v6_without_rewriting_extensions_or_history() {
+fn schema_v5_migrates_in_working_copy_without_rewriting_extensions_or_history() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
     apply_json(&mut db, json!({"type":"createChapter","title":"History stays"}));
@@ -1701,9 +1775,156 @@ fn schema_v5_migrates_to_v6_without_rewriting_extensions_or_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 6);
+    assert_eq!(version, 5);
     assert_eq!(extensions_after, extensions_before);
     assert_eq!(history_after, history_before);
+}
+
+#[test]
+fn opening_v6_keeps_source_unchanged_and_conflicting_save_does_not_upgrade_it() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let created = apply_json(
+        &mut db,
+        json!({"type":"createCharacter","name":"Saved profile"}),
+    );
+    let character_id = created.characters[0].id.clone();
+    db.save().unwrap();
+    drop(db);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let mut extensions: serde_json::Value = serde_json::from_str(
+        &connection
+            .query_row(
+                "SELECT data FROM project_extensions WHERE singleton=1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    extensions.as_object_mut().unwrap().remove("characterIcons");
+    connection
+        .execute(
+            "UPDATE project_extensions SET data=?1 WHERE singleton=1",
+            [extensions.to_string()],
+        )
+        .unwrap();
+    connection.pragma_update(None, "user_version", 6).unwrap();
+    drop(connection);
+
+    let source_before_open = std::fs::read(file.path()).unwrap();
+    let mut working = Database::open(file.path()).unwrap();
+    assert_eq!(std::fs::read(file.path()).unwrap(), source_before_open);
+    apply_json(
+        &mut working,
+        json!({"type":"updateCharacter","characterId":character_id,"icon":"bird"}),
+    );
+    let external = rusqlite::Connection::open(file.path()).unwrap();
+    external
+        .execute("UPDATE project SET title='External edit' WHERE singleton=1", [])
+        .unwrap();
+    drop(external);
+
+    assert!(working
+        .save()
+        .unwrap_err()
+        .contains("changed in another window"));
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    assert_eq!(
+        connection
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+            .unwrap(),
+        6
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT title FROM project WHERE singleton=1", [], |row| row
+                .get::<_, String>(0))
+            .unwrap(),
+        "External edit"
+    );
+    let saved_extensions: String = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(!saved_extensions.contains("characterIcons"));
+}
+
+#[test]
+fn failed_v6_save_rolls_back_schema_upgrade_and_all_table_changes() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let story = scene(&mut db);
+    let scene_id = story.scenes[0].id.clone();
+    apply_json(
+        &mut db,
+        json!({"type":"createCharacter","name":"Saved profile"}),
+    );
+    db.save().unwrap();
+    drop(db);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let mut extensions: serde_json::Value = serde_json::from_str(
+        &connection
+            .query_row(
+                "SELECT data FROM project_extensions WHERE singleton=1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    extensions.as_object_mut().unwrap().remove("characterIcons");
+    connection
+        .execute(
+            "UPDATE project_extensions SET data=?1 WHERE singleton=1",
+            [extensions.to_string()],
+        )
+        .unwrap();
+    connection.execute_batch(
+        "CREATE TRIGGER fail_character_copy BEFORE INSERT ON characters
+         BEGIN SELECT RAISE(ABORT, 'synthetic save failure'); END;",
+    ).unwrap();
+    connection.pragma_update(None, "user_version", 6).unwrap();
+    drop(connection);
+
+    let source_before_open = std::fs::read(file.path()).unwrap();
+    let mut working = Database::open(file.path()).unwrap();
+    assert_eq!(std::fs::read(file.path()).unwrap(), source_before_open);
+    let current = working.read().unwrap();
+    let mut job = generation_job(&scene_id, current.revision, 202);
+    job.id = new_id();
+    working.create_generation_job(&job).unwrap();
+    assert!(working.save().unwrap_err().contains("synthetic save failure"));
+    assert!(working.has_unsaved_changes());
+    assert_eq!(std::fs::read(file.path()).unwrap(), source_before_open);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    assert_eq!(
+        connection
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+            .unwrap(),
+        6
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM characters", [], |row| row
+                .get::<_, usize>(0))
+            .unwrap(),
+        1
+    );
+    let saved_extensions: String = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(!saved_extensions.contains("characterIcons"));
 }
 
 fn generation_job(

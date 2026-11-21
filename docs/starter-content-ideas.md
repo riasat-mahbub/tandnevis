@@ -2,7 +2,7 @@
 
 The app automatically includes 18 editable tones and 24 emotions, each with meaning, writing guidance, and an example. New projects include them immediately; existing projects receive missing starters once in the working copy. Save keeps that upgrade. Custom edits, archived definitions, and earlier deletions are preserved. No Add starter action is needed.
 
-The canonical bundled content is [starter-presets.json](../src/content/starter-presets.json). Stock characters remain optional buttons under Stock characters in the Scene sidebar. New character is always available beside the character blocks.
+The canonical bundled tone/emotion content is [starter-presets.json](../src/content/starter-presets.json). Optional character templates live in [stock-characters.ts](../src/content/stock-characters.ts) and are available in the New character form. New character is also available from the Scene sidebar's Characters tab.
 
 ## Tones
 
@@ -60,18 +60,13 @@ An emotion belongs to one character occurrence. It changes that moment's express
 | Longing | A strong desire remains out of reach. | Draw attention toward what the character wants through lingering observation, restraint, or imagined proximity. Longing can concern a person, place, possibility, or former life. | She stopped outside the music room until the final note faded, then continued down the hall. |
 | Disgusted | Strong aversion creates an impulse to reject or withdraw. | Identify what repels the character and show the fitting bodily or moral response. Avoid using disgust as an unexplained judgment of a person's identity or appearance. | He pushed the ledger away. 'You charged them for water during the drought?' |
 
-## Stock character profiles
+## Character templates and icons
 
-Treat these as starting points, not prescribed roles or fixed relationships. Rename them and revise their background before using them in a manuscript.
+The catalog includes 53 reference-backed stock types in six groups: classical/traditional, social/personality, crime/mystery, school/coming of age, fantasy/adventure/fairy tale, and eccentric/comic. The New character form offers search, category buttons, icon-led results, and a preview with historical context and source details. Search also finds aliases and related historical names, with accent-insensitive matching. Previewing never changes the draft. Use template fills background, personality, voice, and the suggested icon, preserving the name; replacing existing text or a chosen icon requires explicit confirmation.
 
-| Profile | Background and personality | Baseline voice | Useful default |
-|---|---|---|---|
-| Maya, the guarded medic | A student who learned first aid while caring for family. Competent, practical, reluctant to admit concern. | Blunt, dry, concise; care comes through instructions. | Serious emotion |
-| Damian, the proud rival | Frequently arrives with injuries and an inadequate explanation. Defensive about dependence; notices kindness more than he admits. | Terse and combative when vulnerable; unexpectedly direct when sincere. | Serious emotion |
-| Joy, the observant friend | Knows everyone's habits and keeps the group connected. Warm, curious, occasionally oversteps. | Conversational, quick questions, vivid details; talks around awkward silences. | Playful tone |
-| Elias, the charming liar | Survives by improvising convincing explanations. Sociable, resourceful, frightened of being known too well. | Smooth and specific; answers a nearby question when the real one hurts. | Wry tone |
-| Vera, the tired mentor | Has solved similar problems before, at a personal cost. Patient with effort, impatient with posturing. | Measured and economical; asks questions that expose assumptions. | Serious emotion |
-| Kit, the anxious planner | Usually prepared because uncertainty is difficult. Loyal, observant, prone to rehearsing outcomes. | Precise and qualified; becomes startlingly clear during an actual emergency. | No required default |
+Names remain blank until supplied by the writer, and templates attach no tone/emotion defaults. Create adds one ordinary project character. Templates can be reused; existing profiles from earlier catalogs keep their fields and identities. The [research audit](stock-character-catalog-research.md) records evidence for the 53 shipped entries and six deferred candidates from the original 59. Background, personality, and voice suggestions are authored for this application rather than prescribed by the sources.
+
+Blank custom characters and existing profiles can choose from 32 Lucide icons or reset to the default person icon. Character icons persist through Undo/Redo, duplication, Trash, Save, and reopen. Icons appear in the library, Scene shelf, and inline character references. They never change prose or generation context. Schema 7 preserves icons in project extension metadata; older project files remain untouched until explicit Save.
 
 ## What a block contributes to generation
 

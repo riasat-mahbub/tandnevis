@@ -48,14 +48,15 @@ describe('connected writing views', () => {
     created.revision = 1;
     vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
       if (operation.type !== 'createCharacter') throw new Error('Unexpected write');
-      created.characters.push({ id: 'character-new', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', archived: false, defaultToneId: '', defaultEmotionId: '' });
+      created.characters.push({ id: 'character-new', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', icon: operation.icon ?? '', archived: false, defaultToneId: '', defaultEmotionId: '' });
       return structuredClone(created);
     });
     render(<App gateway={g} initialSession={session(initial)}/>);
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Start from a template' }), { target: { value: 'charming-liar' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview The Con Artist' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use template' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Sable' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Baseline voice' }), { target: { value: 'Careful, warm, and specific.' } });
     expect(g.apply).not.toHaveBeenCalled();
