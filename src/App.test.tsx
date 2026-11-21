@@ -13,6 +13,19 @@ import { deferred, gateway, project, session } from './test/fixtures';
 
 afterEach(cleanup);
 describe('connected writing views', () => {
+  it('puts contextual Back before the Project menu in the far-left header group', () => {
+    render(<App gateway={gateway()} initialSession={session()}/>);
+    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    const identity = document.querySelector('.project-header-identity')!;
+    expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Back to story' }));
+    expect(document.querySelector('.breadcrumb button')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Return to Arrival' }));
+    expect(screen.queryByRole('button', { name: 'Add starter emotions' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add starter tones' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Return to Arrival' }));
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBeVisible();
+  });
   it('opens full global library destinations and returns to the same scene with unsaved text', async () => {
     const g = gateway(), saved = project(); saved.revision = 1; saved.scenes[0].summary = 'Keep my place.';
     vi.mocked(g.apply).mockResolvedValue(saved);

@@ -10,12 +10,30 @@
 .summary-board .tiptap:focus-visible { outline:1px solid var(--focus,#435058); outline-offset:5px; }
 .block-drop-target { outline:2px solid var(--focus,#435058)!important; outline-offset:3px; }
 .block-collection { display:flex; flex-wrap:wrap; align-items:flex-start; gap:7px; }
+.block-shelf .block-collection { max-height:160px; overflow-y:auto; padding:4px 5px 5px 4px; margin:-4px -5px -5px -4px; overscroll-behavior:contain; scrollbar-gutter:stable; }
 .block-collection .story-block { min-height:32px; text-align:left; cursor:grab; }
 .block-collection .story-block:active { cursor:grabbing; }
 .shelf-group { margin-top:23px; }
 .shelf-heading { display:flex; flex-direction:column; align-items:flex-start; gap:3px; margin-bottom:10px; }
 .shelf-heading h3 { margin:0; }
 .shelf-heading button { padding:2px 0; min-height:25px; font-size:10px; }
+.shelf-new-character { width:100%; justify-content:flex-start; min-height:32px; margin-top:12px; padding:6px 8px; font-size:11px; }
+.stock-character-picker { margin-top:12px; }
+.stock-character-picker>summary { cursor:pointer; color:var(--ink); font-size:11px; padding:6px 0; }
+.stock-character-picker>p { margin:5px 0 10px; font-size:11px; line-height:1.6; }
+.stock-character-options { display:grid; gap:6px; max-height:240px; overflow-y:auto; padding:3px; margin:-3px; overscroll-behavior:contain; }
+.stock-character-options>button { display:block; width:100%; padding:8px; text-align:left; white-space:normal; }
+.stock-character-options>button>span { display:flex; align-items:center; justify-content:space-between; gap:5px; }
+.stock-character-options strong { font-size:11px; font-weight:600; }
+.stock-character-options small { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.5; }
+.stock-character-options>button:disabled { opacity:1; color:var(--muted); background:var(--soft); }
+.stock-character-options>button:disabled strong { color:var(--muted); }
+@media(min-width:901px) {
+  .block-shelf.library { position:sticky; top:0; align-self:start; max-height:calc(100vh - 190px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+}
+@media(min-width:901px) and (max-width:1260px) {
+  .block-shelf.library { max-height:calc(100vh - 240px); }
+}
 .block-search { margin-top:18px; }
 .block-search>span { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--muted); }
 .block-search input { min-width:0; padding:7px; font-size:12px; }

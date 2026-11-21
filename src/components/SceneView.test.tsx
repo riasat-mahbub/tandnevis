@@ -10,6 +10,62 @@ import type { GenerationJob } from '../services/generation';
 
 afterEach(cleanup);
 
+it('always offers New character alongside existing character blocks', () => {
+  const snapshot = project(), native = gateway(snapshot), workspace = new Workspace(native); workspace.attach(session(snapshot));
+  const manageLibrary = vi.fn();
+  render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} manageLibrary={manageLibrary} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
+  expect(screen.getByRole('button', { name: 'Maya' })).toHaveAttribute('draggable', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+  expect(manageLibrary).toHaveBeenCalledWith('characters', 'new');
+  expect(native.apply).not.toHaveBeenCalled();
+});
+
+it('adds an optional stock character with a complete profile and available default in one unsaved operation', async () => {
+  const snapshot = project(), original = structuredClone(snapshot);
+  snapshot.tones.push({ id: 'playful-tone', name: 'Playful', meaning: '', guidance: 'Light teasing.', example: '', archived: false, revision: 0 });
+  const native = gateway(snapshot), workspace = new Workspace(native); workspace.attach(session(snapshot));
+  vi.mocked(native.apply).mockImplementation(async (_session, _revision, operation) => {
+    const next = structuredClone(snapshot); next.revision++;
+    if (operation.type === 'createCharacter') next.characters.push({ id: 'joy-profile', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', archived: false, defaultToneId: operation.defaultToneId ?? '', defaultEmotionId: operation.defaultEmotionId ?? '' });
+    return next;
+  });
+  const props = { project: snapshot, scene: snapshot.scenes[0], workspace, sessionId: 'session-1', generation: generationSession(), generationReady: false, defaultGuidance: '', locked: false, openSettings: vi.fn(), manageCharacters: vi.fn(), notify: vi.fn(), run: (action: () => Promise<unknown>) => { void action().catch(() => {}); } };
+  const view = render(<SceneView {...props}/>);
+  expect(native.apply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText('Stock characters'));
+  expect(screen.getByRole('button', { name: 'Maya already added' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Add Joy' }));
+  await waitFor(() => expect(native.apply).toHaveBeenCalledTimes(1));
+  expect(native.apply).toHaveBeenCalledWith('session-1', 0, {
+    type: 'createCharacter', name: 'Joy',
+    background: "Knows everyone's habits and keeps the group connected.",
+    personality: 'Warm, curious, and occasionally prone to overstepping.',
+    voice: 'Conversational, quick questions, and vivid details; talks around awkward silences.',
+    defaultToneId: 'playful-tone',
+  });
+  await waitFor(() => expect(workspace.getSnapshot().project?.characters).toHaveLength(2));
+  const next = workspace.getSnapshot().project!;
+  view.rerender(<SceneView {...props} project={next} scene={next.scenes[0]}/>);
+  expect(screen.getByRole('button', { name: 'Joy already added' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Joy' })).toHaveAttribute('draggable', 'true');
+  expect(snapshot.characters).toEqual(original.characters);
+  expect(snapshot.characters[0].background).toBe('');
+  expect(native.save).not.toHaveBeenCalled();
+});
+
+it('does not overwrite or duplicate an archived stock-name character with different capitalization', () => {
+  const snapshot = project(); snapshot.characters[0] = { ...snapshot.characters[0], name: 'mAyA', background: 'My own medic background', archived: true };
+  const native = gateway(snapshot), workspace = new Workspace(native); workspace.attach(session(snapshot));
+  render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
+  fireEvent.click(screen.getByText('Stock characters'));
+  const added = screen.getByRole('button', { name: 'Maya already added' });
+  expect(added).toBeDisabled(); expect(added).toHaveTextContent('Added');
+  fireEvent.click(added);
+  expect(native.apply).not.toHaveBeenCalled();
+  expect(snapshot.characters[0].background).toBe('My own medic background');
+  expect(screen.getByRole('button', { name: 'New character' })).toBeEnabled();
+});
+
 function generationSession() {
   return new GenerationSession({
     desktop: false,
@@ -102,7 +158,7 @@ it('opens with the title and rich summary before the beats, with no separate sce
 });
 
 it('updates the local inspector to the drop destination when a summary tone is dropped after editing a beat', async () => {
-  const snapshot = project(); snapshot.tones.push({ id: 'tender', name: 'Tender', meaning: '', guidance: 'Small gestures of care.', example: '', archived: false, revision: 0 });
+  const snapshot = project(); snapshot.tones.push({ id: 'tender', name: 'Tender', meaning: 'Care expressed with restraint.', guidance: 'Small gestures of care.', example: 'She warmed the bandage in her hands.', archived: false, revision: 0 });
   const native = gateway(snapshot), workspace = new Workspace(native); workspace.attach(session(snapshot));
   vi.mocked(native.apply).mockImplementation(async (_session, _revision, operation) => {
     const next = structuredClone(snapshot); next.revision++;
@@ -113,6 +169,9 @@ it('updates the local inspector to the drop destination when a summary tone is d
   act(() => screen.getByRole('textbox', { name: 'Freeform text for beat 1' }).focus());
   fireEvent.drop(screen.getByRole('textbox', { name: 'Scene summary' }), { dataTransfer: { types: [PRESET_REFERENCE_MIME], getData: (type: string) => type === PRESET_REFERENCE_MIME ? JSON.stringify({ kind: 'tone', id: 'tender' }) : '' }, clientX: 10, clientY: 10 });
   await waitFor(() => expect(document.querySelector('.inspector .scope-label')).toHaveTextContent('Summary: scene direction'));
+  expect(document.querySelector('.inspector .preset-guidance')).toHaveTextContent('Care expressed with restraint.');
+  expect(document.querySelector('.inspector .preset-guidance')).toHaveTextContent('Small gestures of care.');
+  expect(document.querySelector('.inspector .preset-guidance')).toHaveTextContent('She warmed the bandage in her hands.');
 });
 
 it('routes the two top actions to different generation purposes without saving the project file', async () => {

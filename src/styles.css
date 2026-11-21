@@ -285,6 +285,10 @@
 @layer layout {
   .project-app-header { display:grid; grid-template-columns:minmax(190px,.85fr) auto minmax(340px,1fr); gap:18px; min-height:76px; padding:14px 24px; background:var(--panel); }
   .project-header-identity { display:flex; align-items:center; gap:12px; min-width:0; }
+  .project-back { flex:0 0 32px; padding:6px; margin-left:-6px; }
+  .preset-guidance { margin:12px 0; display:grid; gap:12px; }
+  .preset-guidance dt { font-size:11px; font-weight:600; margin-bottom:4px; }
+  .preset-guidance dd { margin:0; font-size:12px; line-height:1.65; overflow-wrap:anywhere; }
   .project-header-identity>.title-field { min-width:0; flex:1; max-width:195px; }
   .project-header-identity>.title-field input { width:100%; font:600 12px/1.5 'Segoe UI',sans-serif; padding:6px 3px; }
   .app-brand-name { font:22px Georgia,serif; }
