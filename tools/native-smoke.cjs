@@ -6,6 +6,7 @@ const { existsSync } = require('node:fs');
 const fs = require('node:fs/promises');
 const net = require('node:net');
 const path = require('node:path');
+const starterCatalog = require('../src/content/starter-presets.json');
 
 const root = path.resolve(__dirname, '..');
 const argv = process.argv.slice(2);
@@ -154,6 +155,7 @@ async function main() {
       const geometry = await evaluate(`(() => {
         const source=document.querySelector(${JSON.stringify(sourceSelector)}), target=document.querySelector(${JSON.stringify(targetSelector)});
         if (!source || !target) throw new Error('Missing drag source or destination');
+        source.scrollIntoView({block:'nearest',inline:'nearest'});
         const s=source.getBoundingClientRect(), t=target.getBoundingClientRect();
         return {source:{x:s.x+s.width/2,y:s.y+s.height/2},target:{x:t.x+Math.min(t.width/2,85),y:t.y+t.height/2}};
       })()`);
@@ -241,8 +243,9 @@ async function main() {
     assert.equal(await evaluate("(() => { const checkbox = Array.from(document.querySelectorAll('label')).find(label => label.querySelector('strong')?.textContent === 'Autosave')?.querySelector('input[type=checkbox]'); if (!checkbox) throw new Error('Autosave setting is missing.'); return checkbox.checked; })()"), false, 'Manual save must be the first-run default.');
     await clickLabel('Back to writing');
     let session = await invoke('create_project', { path: projectPath, title: 'Native smoke story' });
-    assert.deepEqual(session.project.tones.map(tone => tone.name).sort(), ['Playful', 'Tender', 'Tense']);
-    assert.deepEqual(session.project.emotions.map(emotion => emotion.name).sort(), ['Angry', 'Awe', 'Embarrassed', 'Serious']);
+    assert.deepEqual(session.project.tones.map(tone => tone.name).sort(), starterCatalog.tones.map(tone=>tone.name).sort());
+    assert.deepEqual(session.project.emotions.map(emotion => emotion.name).sort(), starterCatalog.emotions.map(emotion=>emotion.name).sort());
+    for (const preset of [...session.project.tones,...session.project.emotions]) assert.ok(preset.meaning.trim() && preset.guidance.trim() && preset.example.trim(), `${preset.name} needs complete guidance`);
     report.checks.push('New native projects contain editable starter tone and emotion definitions');
     assert.equal(await invoke('project_has_unsaved_changes', { sessionId: session.sessionId }), false);
     const initialProjectFile = await fs.readFile(projectPath);
@@ -391,8 +394,20 @@ async function main() {
     assert.equal(afterRename.characters.find(character => character.id === characterId).voice, '');
     assert.ok(afterRename.scenes.flatMap(scene => scene.beats).some(beat => JSON.stringify(beat.document).includes('"emotion":"Relieved"')));
     report.checks.push('Native library insertion, pointer chip selection, occurrence-only emotion, and latest shared name rendering without extra saves');
+    assert.equal(await evaluate("document.querySelector('.project-header-identity')?.firstElementChild?.classList.contains('project-back')"),true,'Back is the leftmost header control');
+    await clickLabel('New character');
+    await waitFor("Boolean(document.querySelector('.global-library-character .library-create input'))", 'persistent sidebar New character action');
+    await clickLabel('Cancel');
+    await clickLabel('Scene');
+    await clickLabel('Stock characters');
+    await clickLabel('Add Joy');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Joy'&&c.background&&c.personality&&c.voice&&c.defaultToneId))", 'stock profile added atomically with its default');
+    await waitFor("document.querySelector('button[aria-label=\"Joy already added\"]')?.disabled", 'stock duplicate guard');
+    await clickLabel('Stock characters');
+    report.checks.push('Far-left Back, persistent sidebar New character, and opt-in complete stock profiles with duplicate protection');
     await clickLabel('Tones');
     await waitFor("Boolean(document.querySelector('.global-library-tones, .global-library-tone'))", 'full Tones screen');
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).some(button=>/^Add starter (tones|emotions)$/.test(button.textContent.trim()))"),false,'Starter presets never require an Add button');
     await clickLabel('New tone');
     await evaluate("(() => { const input=document.querySelector('.global-library-tone .library-create input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Stillness'); input.dispatchEvent(new Event('input',{bubbles:true})); })()");
     await clickLabel('Create tone');
@@ -428,6 +443,8 @@ async function main() {
     assert.equal(await evaluate("Boolean(document.querySelector('select[aria-label=\"Scene tone block\"]'))"),false,'No separate scene tone control');
     await dragBlock('.block-shelf button[aria-label="Tone: Tense"]','[data-item-id] .tiptap','Tone from shelf into beat');
     await waitFor("Boolean(document.querySelector('[data-item-id] .block-tone'))",'inline beat tone drag');
+    const tenseStarter=starterCatalog.tones.find(preset=>preset.name==='Tense');
+    await waitFor(`document.querySelector('.inspector .preset-guidance')?.textContent.includes(${JSON.stringify(tenseStarter.meaning)}) && document.querySelector('.inspector .preset-guidance')?.textContent.includes(${JSON.stringify(tenseStarter.example)})`, 'meaning, guidance and example in the selected tone inspector');
     blockProject=await readUi();
     const summaryDocument=blockProject.scenes.find(scene=>scene.id===sceneId).summaryDocument;
     assert.ok(JSON.stringify(summaryDocument).includes('characterReference'));
