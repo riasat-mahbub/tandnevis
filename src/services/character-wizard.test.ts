@@ -286,5 +286,21 @@ describe('character creation wizard state', () => {
     expect(state.submission).toEqual({ status: 'succeeded', characterId: 'character-1' });
     expect(state.step).toBe('review');
     expect(state.draft.name).toBe(' Rae ');
+
+    const resolvedWithoutCommit = reduce(reviewState('Rae'),
+      { type: 'SUBMISSION_STARTED' },
+      { type: 'SUBMISSION_FAILED', error: 'Connection interrupted.' },
+      { type: 'RECOVERY_STARTED' },
+      { type: 'SUBMISSION_CONFLICT', error: 'A newer revision exists.' },
+      { type: 'SUBMISSION_RESET_AFTER_RECOVERY' },
+    );
+    expect(resolvedWithoutCommit.submission).toEqual({ status: 'idle' });
+    expect(resolvedWithoutCommit.step).toBe('review');
+    expect(resolvedWithoutCommit.draft.name).toBe('Rae');
+    const preflightResolved = reduce(reviewState('Rae'),
+      { type: 'SUBMISSION_STARTED' },
+      { type: 'SUBMISSION_RESET_AFTER_RECOVERY' },
+    );
+    expect(preflightResolved.submission).toEqual({ status: 'idle' });
   });
 });

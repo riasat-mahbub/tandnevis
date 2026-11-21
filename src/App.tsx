@@ -2,9 +2,17 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronRight, Feather, FolderOpen, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { desktopGateway } from './services/project';
-import type { ProjectGateway, ProjectSession } from './services/project';
+import type { Character, ProjectGateway, ProjectSession, ProjectSnapshot } from './services/project';
 import { Workspace } from './services/workspace';
 import { TitleField } from './components/Fields';
+import CharacterCreationWizard from './components/CharacterCreationWizard';
+import {
+  characterWizardCreateOperation,
+  characterWizardHasPersonalEdits,
+  characterWizardReducer,
+  createCharacterWizard,
+} from './services/character-wizard';
+import type { CharacterWizardAction, CharacterWizardOrigin, CharacterWizardState } from './services/character-wizard';
 import LibraryView from './components/LibraryView';
 import type { LibraryKind } from './components/LibraryView';
 import StoryView from './components/StoryView';
@@ -22,7 +30,7 @@ import type { ApplicationRuntimeInfo, RuntimeGateway } from './services/runtime'
 import './styles.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway }
-type Destination = 'story' | 'scene' | LibraryKind | 'trash';
+type Destination = 'story' | 'scene' | LibraryKind | 'trash' | 'character-wizard';
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
@@ -36,6 +44,27 @@ function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['stat
   return 'error';
 }
 
+interface CharacterCreateAttempt {
+  sessionId: string;
+  existingIds: Set<string>;
+  operation: ReturnType<typeof characterWizardCreateOperation>;
+}
+interface CharacterRecoveryResolution {
+  kind: 'active' | 'saved';
+  project: ProjectSnapshot;
+  characters: Character[];
+}
+
+function matchingCreatedCharacters(project: ProjectSnapshot, attempt: CharacterCreateAttempt): Character[] {
+  const { operation, existingIds } = attempt;
+  return project.characters.filter(character => !existingIds.has(character.id)
+    && character.name === operation.name
+    && character.background === (operation.background ?? '')
+    && character.personality === (operation.personality ?? '')
+    && character.voice === (operation.voice ?? '')
+    && (character.icon ?? '') === (operation.icon ?? ''));
+}
+
 export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService, runtimeService }: Props) {
   const [chatGPTGateway] = useState(() => chatGPTService ?? desktopChatGPTGateway);
   const [runtimeGateway] = useState(() => runtimeService ?? desktopRuntimeGateway);
@@ -44,15 +73,44 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const [generationSession] = useState(() => new GenerationSession(generationService ?? desktopGenerationGateway, () => workspace.markDirty()));
   const { session, project, pending, dirty, saving, error, ready, conflict } = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const [unsavedPrompt, setUnsavedPrompt] = useState(false);
+  const [wizardBoundaryPrompt, setWizardBoundaryPrompt] = useState(false);
   const [promptBusy, setPromptBusy] = useState(false);
   const [promptError, setPromptError] = useState('');
   const leaveDecision = useRef<((proceed: boolean) => void) | null>(null);
+  const wizardBoundaryDecision = useRef<((discard: boolean) => void) | null>(null);
+  const [characterWizard, setCharacterWizard] = useState<CharacterWizardState | null>(null);
+  const [characterRecoveryResolution, setCharacterRecoveryResolution] = useState<CharacterRecoveryResolution | null>(null);
+  const characterWizardRef = useRef<CharacterWizardState | null>(null);
+  const characterCreateInFlight = useRef(false);
+  const characterCreateAttempt = useRef<CharacterCreateAttempt | null>(null);
+  function replaceCharacterWizard(next: CharacterWizardState | null) {
+    characterWizardRef.current = next;
+    setCharacterWizard(next);
+  }
+  function dispatchCharacterWizard(action: CharacterWizardAction) {
+    const current = characterWizardRef.current;
+    if (!current) return current;
+    const next = characterWizardReducer(current, action);
+    if (next !== current) replaceCharacterWizard(next);
+    return next;
+  }
   async function confirmLeaving() {
     if (!workspace.getSnapshot().error && !await workspace.hasUnsavedChanges()) return true;
     setPromptError(''); setUnsavedPrompt(true);
     return new Promise<boolean>(resolve => { leaveDecision.current = resolve; });
   }
   function finishLeaving(proceed: boolean) { leaveDecision.current?.(proceed); leaveDecision.current = null; setUnsavedPrompt(false); }
+  async function confirmWizardDiscard() {
+    const current = characterWizardRef.current;
+    if (!current || !characterWizardHasPersonalEdits(current)) return true;
+    setWizardBoundaryPrompt(true);
+    return new Promise<boolean>(resolve => { wizardBoundaryDecision.current = resolve; });
+  }
+  function finishWizardDiscard(discard: boolean) {
+    wizardBoundaryDecision.current?.(discard);
+    wizardBoundaryDecision.current = null;
+    setWizardBoundaryPrompt(false);
+  }
   async function saveBeforeLeaving() {
     setPromptBusy(true); setPromptError('');
     try { if (workspace.getSnapshot().error) await workspace.retry(); await workspace.save(); finishLeaving(true); }
@@ -63,7 +121,9 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [lastSceneId, setLastSceneId] = useState<string | null>(null);
   const [destination, setDestination] = useState<Destination>('story');
+  const destinationRef = useRef<Destination>('story');
   const [librarySelection, setLibrarySelection] = useState<Record<LibraryKind, string | null>>({ characters: null, tones: null, emotions: null });
+  const [characterProfileRequests, setCharacterProfileRequests] = useState(0);
   const [createRequests, setCreateRequests] = useState<Record<LibraryKind, number>>({ characters: 0, tones: 0, emotions: 0 });
   const destinationScroll = useRef<Record<string, number>>({});
   const previousDestination = useRef<Destination>('story');
@@ -135,19 +195,155 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const navigate = (next: Destination) => {
     destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
     if (destination === 'story') storyScroll.current = window.scrollY;
-    setSettingsOpen(false); setDestination(next);
+    setSettingsOpen(false); destinationRef.current = next; setDestination(next);
     requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[next === 'scene' ? `scene:${sceneId}` : next] ?? 0));
   };
   const backToStory = () => navigate('story');
   const openScene = (id: string) => {
     if (destination === 'story') storyScroll.current = window.scrollY;
     destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
-    setSceneId(id); setLastSceneId(id); setDestination('scene'); setSettingsOpen(false);
+    setSceneId(id); setLastSceneId(id); destinationRef.current = 'scene'; setDestination('scene'); setSettingsOpen(false);
     requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[`scene:${id}`] ?? 0));
   };
+  function startCharacterWizard(origin: CharacterWizardOrigin) {
+    const activeSession = workspace.getSnapshot().session;
+    if (!activeSession) return;
+    const existing = characterWizardRef.current;
+    if (existing?.projectSessionId === activeSession.sessionId && existing.cancel.status !== 'discarded' && existing.submission.status !== 'succeeded') {
+      navigate('character-wizard');
+      return;
+    }
+    const next = createCharacterWizard({ projectSessionId: activeSession.sessionId, origin });
+    characterCreateAttempt.current = null;
+    characterCreateInFlight.current = false;
+    setCharacterRecoveryResolution(null);
+    replaceCharacterWizard(next);
+    navigate('character-wizard');
+  }
+  function resumeCharacterWizard() {
+    const existing = characterWizardRef.current;
+    if (existing?.projectSessionId === workspace.getSnapshot().session?.sessionId) navigate('character-wizard');
+  }
+  function returnToWizardOrigin(origin: CharacterWizardOrigin, projectSnapshot = workspace.getSnapshot().project) {
+    if (origin.kind === 'scene' && projectSnapshot?.scenes.some(item => item.id === origin.sceneId)) {
+      setSceneId(origin.sceneId);
+      setLastSceneId(origin.sceneId);
+      navigate('scene');
+    } else navigate(origin.kind === 'scene' ? 'story' : 'characters');
+  }
+  function cancelCharacterWizard() {
+    const current = characterWizardRef.current;
+    if (!current || characterCreateInFlight.current) return;
+    const origin = current.origin;
+    if (current.cancel.status !== 'discarded' && characterWizardHasPersonalEdits(current)) return;
+    characterCreateAttempt.current = null;
+    setCharacterRecoveryResolution(null);
+    replaceCharacterWizard(null);
+    returnToWizardOrigin(origin);
+  }
+  function finishCharacterCreation(character: Character, attempt: CharacterCreateAttempt, projectSnapshot: ProjectSnapshot) {
+    if (characterCreateAttempt.current?.sessionId !== attempt.sessionId) return;
+    const current = characterWizardRef.current;
+    const origin = current?.projectSessionId === attempt.sessionId ? current.origin : { kind: 'library' as const };
+    if (current?.projectSessionId === attempt.sessionId) dispatchCharacterWizard({ type: 'SUBMISSION_SUCCEEDED', characterId: character.id });
+    characterCreateAttempt.current = null;
+    characterCreateInFlight.current = false;
+    setCharacterRecoveryResolution(null);
+    if (origin.kind === 'library') {
+      setLibrarySelection(selection => ({ ...selection, characters: character.id }));
+      setCharacterProfileRequests(request => request + 1);
+    }
+    const shouldReturn = destinationRef.current === 'character-wizard'
+      && current?.projectSessionId === attempt.sessionId;
+    if (shouldReturn) {
+      replaceCharacterWizard(null);
+      returnToWizardOrigin(origin, projectSnapshot);
+    } else if (current?.projectSessionId === attempt.sessionId) replaceCharacterWizard(null);
+    setNotice(`${character.name} created. Save the project to keep it.`);
+  }
+  async function recoverCharacterCreation() {
+    const attempt = characterCreateAttempt.current;
+    const current = characterWizardRef.current;
+    if (!attempt || !current || current.projectSessionId !== attempt.sessionId || characterCreateInFlight.current) return;
+    characterCreateInFlight.current = true;
+    dispatchCharacterWizard({ type: 'RECOVERY_STARTED' });
+    try {
+      await workspace.retry();
+      const snapshot = workspace.getSnapshot();
+      if (snapshot.session?.sessionId !== attempt.sessionId) return;
+      const matches = snapshot.project ? matchingCreatedCharacters(snapshot.project, attempt) : [];
+      if (matches.length === 1) {
+        finishCharacterCreation(matches[0], attempt, snapshot.project!);
+      } else if (matches.length > 1) {
+        setCharacterRecoveryResolution({ kind: 'active', project: snapshot.project!, characters: matches });
+        dispatchCharacterWizard({ type: 'SUBMISSION_CONFLICT', error: 'More than one new character matches this creation. No retry was sent; inspect the project before resolving it.' });
+      } else if (snapshot.conflict) {
+        const savedMatches = matchingCreatedCharacters(snapshot.conflict, attempt);
+        if (savedMatches.length > 1) setCharacterRecoveryResolution({ kind: 'saved', project: snapshot.conflict, characters: savedMatches });
+        dispatchCharacterWizard({ type: 'SUBMISSION_CONFLICT', error: savedMatches.length > 1
+          ? 'Several saved characters match this creation. Review the saved project before resolving it.'
+          : savedMatches.length === 1
+            ? 'A matching character may already be in the saved project. Use the saved version to resolve it without creating another.'
+            : snapshot.error ?? 'Review the saved project before choosing how to recover this creation.' });
+      } else if (snapshot.error) {
+        dispatchCharacterWizard({ type: 'SUBMISSION_FAILED', error: snapshot.error });
+      } else if (snapshot.pending === 0) {
+        characterCreateAttempt.current = null;
+        dispatchCharacterWizard({ type: 'SUBMISSION_RESET_AFTER_RECOVERY' });
+        setNotice('The saved project does not contain this character. Your draft is ready to create again.');
+      } else dispatchCharacterWizard({ type: 'SUBMISSION_FAILED', error: 'The project still has a waiting creation. Retry recovery before creating again.' });
+    } catch (error) {
+      dispatchCharacterWizard({ type: 'SUBMISSION_FAILED', error: error instanceof Error ? error.message : String(error) });
+    } finally { characterCreateInFlight.current = false; }
+  }
+  function requestCharacterCreation(requestState: CharacterWizardState) {
+    const current = characterWizardRef.current;
+    if (!current || current.projectSessionId !== requestState.projectSessionId || characterCreateInFlight.current) return;
+    if (current.submission.status === 'failed' || current.submission.status === 'conflict') {
+      void recoverCharacterCreation();
+      return;
+    }
+    if (current.submission.status !== 'idle' || current.step !== 'review') return;
+    const workspaceState = workspace.getSnapshot();
+    if (!workspaceState.session || workspaceState.session.sessionId !== current.projectSessionId || !workspaceState.project) return;
+    let operation: ReturnType<typeof characterWizardCreateOperation>;
+    try { operation = characterWizardCreateOperation(current); }
+    catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
+
+    const attempt: CharacterCreateAttempt = {
+      sessionId: current.projectSessionId,
+      existingIds: new Set(workspaceState.project.characters.map(character => character.id)),
+      operation,
+    };
+    characterCreateAttempt.current = attempt;
+    characterCreateInFlight.current = true;
+    dispatchCharacterWizard({ type: 'SUBMISSION_STARTED' });
+    void workspace.dispatch(operation).then(snapshot => {
+      const matches = matchingCreatedCharacters(snapshot, attempt);
+      if (matches.length === 1) finishCharacterCreation(matches[0], attempt, snapshot);
+      else if (matches.length > 1) {
+        setCharacterRecoveryResolution({ kind: 'active', project: snapshot, characters: matches });
+        dispatchCharacterWizard({ type: 'SUBMISSION_CONFLICT', error: 'More than one new character matches the returned project. No retry was sent; inspect the project before resolving it.' });
+      }
+      else dispatchCharacterWizard({ type: 'SUBMISSION_CONFLICT', error: 'Creation was acknowledged without a matching character in the returned project. Check recovery before retrying.' });
+    }).catch(error => {
+      const currentWorkspace = workspace.getSnapshot();
+      const message = error instanceof Error ? error.message : String(error);
+      if (currentWorkspace.conflict) dispatchCharacterWizard({ type: 'SUBMISSION_CONFLICT', error: currentWorkspace.error ?? message });
+      else dispatchCharacterWizard({ type: 'SUBMISSION_FAILED', error: message });
+    }).finally(() => { characterCreateInFlight.current = false; });
+  }
   const openLibrary = (kind: LibraryKind, id?: string) => {
+    if (kind === 'characters' && id === 'new') {
+      const activeScene = destinationRef.current === 'scene' && sceneId ? project?.scenes.find(item => item.id === sceneId) : undefined;
+      startCharacterWizard(activeScene ? { kind: 'scene', sceneId: activeScene.id, sceneTitle: activeScene.title } : { kind: 'library' });
+      return;
+    }
     if (id === 'new') setCreateRequests(requests => ({ ...requests, [kind]: requests[kind] + 1 }));
-    else if (id) setLibrarySelection(selection => ({ ...selection, [kind]: id }));
+    else if (id) {
+      setLibrarySelection(selection => ({ ...selection, [kind]: id }));
+      if (kind === 'characters') setCharacterProfileRequests(request => request + 1);
+    }
     navigate(kind);
   };
   const openUsage = (id: string, beatId?: string, occurrenceId?: string) => {
@@ -170,9 +366,26 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     setAppearance(value);
     try { localStorage.setItem('shorthand.appearance', value); } catch { /* The session preference still applies. */ }
   };
-  useEffect(() => { if (sceneId && project && !project.scenes.some(s => s.id === sceneId)) { setSceneId(null); setLastSceneId(null); setDestination('story'); } }, [project, sceneId]);
+  useEffect(() => { if (sceneId && project && !project.scenes.some(s => s.id === sceneId)) { setSceneId(null); setLastSceneId(null); destinationRef.current = 'story'; setDestination('story'); } }, [project, sceneId]);
   useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => { const s = workspace.getSnapshot(); if (s.pending || s.dirty || s.saving || s.error) event.preventDefault(); };
+    const current = characterWizardRef.current;
+    if (!current || current.projectSessionId === session?.sessionId) return;
+    characterCreateAttempt.current = null;
+    characterCreateInFlight.current = false;
+    setCharacterRecoveryResolution(null);
+    replaceCharacterWizard(null);
+    destinationRef.current = 'story'; setDestination('story');
+    setSceneId(null); setLastSceneId(null); setLibrarySelection({ characters: null, tones: null, emotions: null });
+    setCharacterProfileRequests(0); destinationScroll.current = {};
+  }, [session?.sessionId]);
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      const s = workspace.getSnapshot();
+      const wizardDraft = characterWizardRef.current;
+      if (s.pending || s.dirty || s.saving || s.error || !!wizardDraft && characterWizardHasPersonalEdits(wizardDraft)) {
+        event.preventDefault(); event.returnValue = '';
+      }
+    };
     window.addEventListener('beforeunload', beforeUnload);
     let disposed = false;
     let stop: (() => void) | undefined;
@@ -185,7 +398,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
         const s = workspace.getSnapshot();
         if (!s.ready) { setNotice('Wait for the current project operation to finish, then close the app.'); return; }
         if (s.session && generationSession.hasActiveSession(s.session.sessionId)) await generationSession.stopSession(s.session.sessionId);
-        if (await confirmLeaving()) await getCurrentWindow().destroy();
+        if (await confirmLeaving() && await confirmWizardDiscard()) await getCurrentWindow().destroy();
       } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
       finally { closing = false; }
     }).then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(() => {});
@@ -241,9 +454,71 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
         catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return false; }
         setNotice('Scene generation stopped.');
       }
-      return confirmLeaving();
+      if (!await confirmLeaving()) return false;
+      return confirmWizardDiscard();
     });
-    if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setLastSceneId(null); setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice(''); }
+    if (workspace.getSnapshot().session?.sessionId !== previous) {
+      characterCreateAttempt.current = null;
+      characterCreateInFlight.current = false;
+      setCharacterRecoveryResolution(null);
+      replaceCharacterWizard(null);
+      setSceneId(null); setLastSceneId(null); destinationRef.current = 'story'; setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCharacterProfileRequests(0); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice('');
+    }
+  }
+  function retryWorkspace() {
+    const current = characterWizardRef.current;
+    if (characterCreateAttempt.current && current && (current.submission.status === 'creating' || current.submission.status === 'failed' || current.submission.status === 'conflict')) {
+      if (current.submission.status === 'creating') characterCreateInFlight.current = false;
+      void recoverCharacterCreation();
+      return;
+    }
+    run(() => workspace.retry());
+  }
+  function acceptSavedVersion() {
+    const current = workspace.getSnapshot();
+    const attempt = characterCreateAttempt.current;
+    const matches = attempt && current.conflict ? matchingCreatedCharacters(current.conflict, attempt) : [];
+    const savedVersion = current.conflict;
+    if (matches && matches.length > 1) {
+      setReviewRecovery(true);
+      setCharacterRecoveryResolution({ kind: 'saved', project: savedVersion!, characters: matches });
+      setNotice('Several new characters match this draft. Review the saved version before resolving the conflict. No creation was repeated.');
+      return;
+    }
+    workspace.acceptSavedVersion();
+    setReviewRecovery(false);
+    if (!attempt || !savedVersion || !characterWizardRef.current) {
+      setNotice('Using the saved database version.');
+      return;
+    }
+    if (matches?.length === 1) {
+      finishCharacterCreation(matches[0], attempt, savedVersion);
+      return;
+    }
+    characterCreateAttempt.current = null;
+    characterCreateInFlight.current = false;
+    setCharacterRecoveryResolution(null);
+    dispatchCharacterWizard({ type: 'SUBMISSION_RESET_AFTER_RECOVERY' });
+    setNotice('The saved version did not contain the new character. Your draft is ready to create again.');
+  }
+  function resolveCharacterRecoveryCandidate(characterId: string) {
+    const resolution = characterRecoveryResolution;
+    const attempt = characterCreateAttempt.current;
+    const current = workspace.getSnapshot();
+    if (!resolution || !attempt || current.session?.sessionId !== attempt.sessionId) return;
+    const sourceProject = resolution.kind === 'saved' ? current.conflict : current.project;
+    if (!sourceProject) return;
+    const candidate = matchingCreatedCharacters(sourceProject, attempt).find(character => character.id === characterId);
+    if (!candidate) {
+      setCharacterRecoveryResolution(null);
+      setNotice('That matching character is no longer available. Check the current project before retrying.');
+      return;
+    }
+    if (resolution.kind === 'saved') {
+      workspace.acceptSavedVersion();
+      setReviewRecovery(false);
+    }
+    finishCharacterCreation(candidate, attempt, sourceProject);
   }
   function closeProjectMenu() { if (projectMenu.current) projectMenu.current.open = false; }
   async function interchange(mode: 'import' | 'export') {
@@ -257,6 +532,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     : !project || destination === 'story' ? null
     : destination === 'scene' ? { label: 'Back to story', run: backToStory }
     : destination === 'trash' ? { label: `Back to ${previousDestination.current}`, run: () => navigate(previousDestination.current) }
+    : destination === 'character-wizard' ? { label: characterWizard?.origin.kind === 'scene' ? `Return to ${characterWizard.origin.sceneTitle ?? 'scene'}` : 'Return to Characters', run: () => characterWizard && returnToWizardOrigin(characterWizard.origin) }
     : { label: scene ? `Return to ${scene.title}` : 'Back to story', run: () => navigate(scene ? 'scene' : 'story') };
   return <div className={`app ${calm ? 'calm' : ''}`} data-theme={appearance}>
     <header className="app-header project-app-header">
@@ -280,19 +556,22 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       </div>
     </header>
     <div className="app-workspace" hidden={settingsOpen}>
-    {error && <div className="error-banner" role="alert"><div><strong>{pending ? 'Your latest edits are waiting to save.' : 'The project could not be opened.'}</strong><p>{error}</p>{pending > 0 && <p>Edits stay in this window. Retry checks the current database revision before replaying anything.</p>}</div><button onClick={() => run(() => workspace.retry())}>Retry save</button></div>}
-    {conflict && <section className="conflict-review"><button onClick={() => setReviewRecovery(!reviewRecovery)}>Review saved version and recovery copy</button>{reviewRecovery && <><p>The database is at revision {conflict.revision}. Your waiting version is shown below. Save or copy it before choosing the saved version; choosing it discards the waiting changes in this window.</p><div className="recovery-columns"><label>Waiting version — select all to copy<textarea readOnly rows={12} value={JSON.stringify(project, null, 2)} onFocus={e => e.target.select()}/></label><label>Saved database version<textarea readOnly rows={12} value={JSON.stringify(conflict, null, 2)} onFocus={e => e.target.select()}/></label></div><button onClick={() => { workspace.acceptSavedVersion(); setReviewRecovery(false); setNotice('Using the saved database version.'); }}>Use saved version and discard waiting changes</button></>}</section>}
+    {error && <div className="error-banner" role="alert"><div><strong>{pending ? 'Your latest edits are waiting to save.' : 'The project could not be opened.'}</strong><p>{error}</p>{pending > 0 && <p>Edits stay in this window. Retry checks the current database revision before replaying anything.</p>}</div><button onClick={retryWorkspace}>Retry save</button></div>}
+    {characterRecoveryResolution && <section className="conflict-review character-recovery-resolution" aria-labelledby="character-recovery-heading"><h2 id="character-recovery-heading">Choose a matching character</h2><p>More than one new profile matches this creation. No second create was sent. Choose the profile to resolve this recovery.</p>{characterRecoveryResolution.kind === 'saved' && <p>Choosing a saved character adopts the saved project version and discards waiting changes in this window.</p>}<ul>{characterRecoveryResolution.characters.map((character, index) => <li key={character.id}><button onClick={() => resolveCharacterRecoveryCandidate(character.id)}>{characterRecoveryResolution.kind === 'saved' ? 'Use saved version and open' : 'Open'} {character.name} (match {index + 1})</button></li>)}</ul></section>}
+    {conflict && <section className="conflict-review"><button onClick={() => setReviewRecovery(!reviewRecovery)}>Review saved version and recovery copy</button>{reviewRecovery && <><p>The database is at revision {conflict.revision}. Your waiting version is shown below. Save or copy it before choosing the saved version; choosing it discards the waiting changes in this window.</p><div className="recovery-columns"><label>Waiting version — select all to copy<textarea readOnly rows={12} value={JSON.stringify(project, null, 2)} onFocus={e => e.target.select()}/></label><label>Saved database version<textarea readOnly rows={12} value={JSON.stringify(conflict, null, 2)} onFocus={e => e.target.select()}/></label></div><button onClick={acceptSavedVersion}>Use saved version and discard waiting changes</button></>}</section>}
     {notice && <div className="notice" role="status"><span>{notice}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={15}/></button></div>}
     {!project ? <main id="main" className="welcome"><div className="welcome-mark"><Feather size={38}/></div><h1>Every story starts<br/>with a little room.</h1><p>Arrange the shape of your story.<br/>Then step into a scene and write freely.</p><section className="start-project"><label>Story name<input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Untitled story" maxLength={250}/></label><div className="button-row"><button className="primary" disabled={!gateway.desktop || !ready} onClick={() => run(() => load('create'))}><Plus size={17}/>New project</button><button disabled={!gateway.desktop || !ready} onClick={() => run(() => load('open'))}><FolderOpen size={17}/>Open project</button></div><small>{!ready ? 'Opening your project…' : gateway.desktop ? 'Choose where your local SQLite project lives. No account needed.' : 'Desktop app required. Open Shorthand Writer through Tauri to create or open a local project. This browser preview does not store manuscripts.'}</small></section></main> : <>
       <fieldset id="workspace-main" className="workspace-content" disabled={!ready}>
         <div className="destination-view" hidden={destination !== 'story'}><StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/></div>
         {scene && <div className="destination-view" hidden={destination !== 'scene'}><div className="breadcrumb"><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>}
-        {(['characters', 'tones', 'emotions'] as const).map(kind => <div key={`${project.projectId}:${kind}`} className="destination-view" hidden={destination !== kind}><LibraryView kind={kind} project={project} workspace={workspace} locked={locked} selectedId={librarySelection[kind]} onSelect={id => setLibrarySelection(selection => ({ ...selection, [kind]: id }))} createRequest={createRequests[kind]} onOpenUsage={openUsage} onOpenCharacter={id => openLibrary('characters', id)} notify={setNotice} run={run}/></div>)}
+        {characterWizard && <div className="destination-view character-wizard-destination" hidden={destination !== 'character-wizard'}><CharacterCreationWizard state={characterWizard} dispatch={dispatchCharacterWizard} onCreate={requestCharacterCreation} onCancel={cancelCharacterWizard}/></div>}
+        {(['characters', 'tones', 'emotions'] as const).map(kind => <div key={`${project.projectId}:${kind}`} className="destination-view" hidden={destination !== kind}><LibraryView kind={kind} project={project} workspace={workspace} locked={locked} selectedId={librarySelection[kind]} onSelect={id => setLibrarySelection(selection => ({ ...selection, [kind]: id }))} createRequest={createRequests[kind]} openSelectionRequest={kind === 'characters' ? characterProfileRequests : 0} onCreateCharacter={() => startCharacterWizard({ kind: 'library' })} hasCharacterDraft={!!characterWizard && characterWizard.projectSessionId === session?.sessionId && characterWizard.submission.status !== 'succeeded'} onResumeCharacterDraft={resumeCharacterWizard} onOpenUsage={openUsage} onOpenCharacter={id => openLibrary('characters', id)} notify={setNotice} run={run}/></div>)}
         {destination === 'trash' && <main className="recovery-screen" aria-labelledby="trash-heading"><div className="recovery-heading"><div><h1 id="trash-heading">Trash</h1><p>Restore deleted writing and unused definitions to this project.</p></div></div>{project.trash.length ? <ul className="trash-list">{project.trash.map(item => <li key={item.id}><div><strong>{item.title || 'Untitled item'}</strong><small>{item.kind} - Deleted at revision {item.deletedAtRevision}</small></div><button disabled={locked} onClick={() => run(async () => { await workspace.dispatch({ type: 'restoreTrash', trashId: item.id }); setNotice(`${item.title || item.kind} restored. Save the project to keep this change.`); })}>Restore</button></li>)}</ul> : <div className="library-empty"><h2>Trash is empty</h2><p>Deleted scenes, beats, chapters, and unused definitions can be restored here.</p></div>}</main>}
       </fieldset>
     </>}
     </div>
     {unsavedPrompt && <UnsavedDialog busy={promptBusy} error={promptError} onSave={() => { void saveBeforeLeaving(); }} onDiscard={() => finishLeaving(true)} onCancel={() => finishLeaving(false)}/>}
+    {wizardBoundaryPrompt && <UnsavedDialog kind="character-draft" busy={false} error="" onSave={() => {}} onDiscard={() => finishWizardDiscard(true)} onCancel={() => finishWizardDiscard(false)}/>}
     {settingsOpen && <SettingsView autosave={autosave} onAutosaveChange={changeAutosave} appearance={appearance} onAppearanceChange={changeAppearance} calm={calm} onCalmChange={setCalm} chatGPT={chatGPT}
       runtimeInfo={runtimeInfo} runtimeError={runtimeError} runtimeLoading={runtimeLoading} desktopRuntime={runtimeGateway.desktop}
       onRetryRuntime={() => { setRuntimeInfo(null); setRuntimeError(''); setRuntimeRetry(value => value + 1); }}

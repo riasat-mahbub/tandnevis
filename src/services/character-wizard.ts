@@ -85,6 +85,7 @@ export type CharacterWizardAction =
   | { type: 'SUBMISSION_FAILED'; error: string }
   | { type: 'RECOVERY_STARTED' }
   | { type: 'SUBMISSION_CONFLICT'; error?: string }
+  | { type: 'SUBMISSION_RESET_AFTER_RECOVERY' }
   | { type: 'SUBMISSION_SUCCEEDED'; characterId: string };
 
 const blankStartingPoint: CharacterWizardBlankStartingPoint = { kind: 'blank' };
@@ -172,7 +173,7 @@ function applyProvisional(state: CharacterWizardState): CharacterWizardState {
 }
 
 export function characterWizardReducer(state: CharacterWizardState, action: CharacterWizardAction): CharacterWizardState {
-  const submissionActions: CharacterWizardAction['type'][] = ['SUBMISSION_FAILED', 'RECOVERY_STARTED', 'SUBMISSION_CONFLICT', 'SUBMISSION_SUCCEEDED'];
+  const submissionActions: CharacterWizardAction['type'][] = ['SUBMISSION_FAILED', 'RECOVERY_STARTED', 'SUBMISSION_CONFLICT', 'SUBMISSION_RESET_AFTER_RECOVERY', 'SUBMISSION_SUCCEEDED'];
   if (hasSubmissionLock(state) && !submissionActions.includes(action.type)) return state;
   switch (action.type) {
     case 'OPEN_CATALOG':
@@ -261,8 +262,11 @@ export function characterWizardReducer(state: CharacterWizardState, action: Char
     case 'SUBMISSION_CONFLICT':
       if (state.submission.status !== 'creating' && state.submission.status !== 'recovering') return state;
       return { ...state, submission: { status: 'conflict', ...(action.error ? { error: action.error } : {}) } };
+    case 'SUBMISSION_RESET_AFTER_RECOVERY':
+      if (state.submission.status !== 'creating' && state.submission.status !== 'failed' && state.submission.status !== 'recovering' && state.submission.status !== 'conflict') return state;
+      return { ...state, submission: { status: 'idle' }, nameError: null };
     case 'SUBMISSION_SUCCEEDED':
-      if (state.submission.status !== 'creating' && state.submission.status !== 'recovering') return state;
+      if (state.submission.status !== 'creating' && state.submission.status !== 'recovering' && state.submission.status !== 'conflict') return state;
       return { ...state, submission: { status: 'succeeded', characterId: action.characterId } };
   }
 }

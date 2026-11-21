@@ -11,6 +11,9 @@ import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import type { ProjectSnapshot } from './services/project';
 import { deferred, gateway, project, session } from './test/fixtures';
 
+const nativeWindow = vi.hoisted(() => ({ destroy: vi.fn(async () => {}), unlisten: vi.fn() }));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ destroy: nativeWindow.destroy, onCloseRequested: vi.fn(async () => nativeWindow.unlisten) }) }));
+
 afterEach(cleanup);
 describe('connected writing views', () => {
   it('puts contextual Back before the Project menu in the far-left header group', () => {
@@ -43,7 +46,7 @@ describe('connected writing views', () => {
     expect(summary).toHaveTextContent('Keep my place.');
     expect(g.save).not.toHaveBeenCalled();
   });
-  it('keeps an uncommitted character draft and the scene editor when moving between destinations', async () => {
+  it('creates once from Review and returns to the original scene without inserting a reference', async () => {
     const initial = project(), g = gateway(initial), created = structuredClone(initial);
     created.revision = 1;
     vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
@@ -54,25 +57,173 @@ describe('connected writing views', () => {
     render(<App gateway={g} initialSession={session(initial)}/>);
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    const editor = (summary as HTMLElement & { editor: Editor }).editor;
+    editor.commands.setTextSelection(4);
+    const caret = editor.state.selection.from;
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Preview The Con Artist' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Use template' }));
+    expect(screen.getByTestId('character-creation-wizard')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Sable' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Baseline voice' }), { target: { value: 'Careful, warm, and specific.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review now' }));
     expect(g.apply).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
-    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
-    expect(screen.getByRole('textbox', { name: 'Character name' })).toHaveValue('Sable');
-    expect(screen.getByRole('textbox', { name: 'Baseline voice' })).toHaveValue('Careful, warm, and specific.');
     fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
     await waitFor(() => expect(g.apply).toHaveBeenCalledTimes(1));
-    expect(g.apply).toHaveBeenCalledWith('session-1', 0, expect.objectContaining({ type: 'createCharacter', name: 'Sable', voice: 'Careful, warm, and specific.' }));
+    expect(g.apply).toHaveBeenCalledWith('session-1', 0, { type: 'createCharacter', name: 'Sable', background: '', personality: '', voice: '' });
+    expect(await screen.findByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+    expect((summary as HTMLElement & { editor: Editor }).editor).toBe(editor);
+    expect(editor.state.selection.from).toBe(caret);
+    expect(summary).not.toHaveTextContent('Sable');
     expect(g.save).not.toHaveBeenCalled();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
-    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+  it('resumes the same session draft from Characters and cancels back to its original scene', async () => {
+    const initial = project(), g = gateway(initial);
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Juniper' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume character draft' }));
+    expect(screen.getByRole('textbox', { name: 'Character name' })).toHaveValue('Juniper');
+    expect(g.apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel creation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    expect(await screen.findByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+    expect(g.apply).not.toHaveBeenCalled();
+    expect(g.save).not.toHaveBeenCalled();
+  });
+
+  it('keeps a draft when the project chooser is canceled after discard approval', async () => {
+    const initial = project(), g = gateway(initial);
+    g.desktop = true;
+    vi.mocked(g.chooseOpen).mockResolvedValueOnce(null);
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Maren' } });
+    fireEvent.click(screen.getByLabelText('Project menu'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open project' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard draft' }));
+    await waitFor(() => expect(g.chooseOpen).toHaveBeenCalledOnce());
+    expect(screen.getByRole('textbox', { name: 'Character name' })).toHaveValue('Maren');
+    expect(screen.getByTestId('character-creation-wizard')).toBeVisible();
+    expect(g.open).not.toHaveBeenCalled();
+    expect(g.apply).not.toHaveBeenCalled();
+  });
+
+  it('keeps the wizard draft when Open fails after discard approval', async () => {
+    const initial = project(), g = gateway(initial);
+    g.desktop = true;
+    vi.mocked(g.open).mockRejectedValueOnce(new Error('That file is not a Shorthand project.'));
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Maren' } });
+    fireEvent.click(screen.getByLabelText('Project menu'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open project' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard draft' }));
+    await waitFor(() => expect(g.open).toHaveBeenCalledOnce());
+    expect(screen.getByTestId('character-creation-wizard')).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'Character name' })).toHaveValue('Maren');
+    expect(g.apply).not.toHaveBeenCalled();
+  });
+
+  it('clears a draft only after a different project session opens', async () => {
+    const initial = project(), g = gateway(initial);
+    g.desktop = true;
+    const other = project(); other.projectId = 'project-2'; other.title = 'A different story';
+    vi.mocked(g.open).mockResolvedValueOnce({ sessionId: 'session-2', project: other });
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Maren' } });
+    fireEvent.click(screen.getByLabelText('Project menu'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open project' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard draft' }));
+    await waitFor(() => expect(g.open).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId('character-creation-wizard')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    expect(screen.queryByRole('button', { name: 'Resume character draft' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Project title' })).toHaveValue('A different story');
+    expect(g.apply).not.toHaveBeenCalled();
+  });
+
+  it('opens a library-created character in its ordinary profile editor', async () => {
+    const initial = project(), g = gateway(initial), created = structuredClone(initial);
+    created.revision = 1;
+    vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
+      if (operation.type !== 'createCharacter') throw new Error('Unexpected write');
+      created.characters.push({ id: 'character-new', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', icon: operation.icon ?? '', archived: false, defaultToneId: '', defaultEmotionId: '' });
+      return structuredClone(created);
+    });
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Tamsin' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+    expect(await screen.findByRole('textbox', { name: 'Character name' })).toHaveValue('Tamsin');
+    expect(screen.getByText('Character: Tamsin')).toBeVisible();
+    expect(g.apply).toHaveBeenCalledTimes(1);
+    expect(g.save).not.toHaveBeenCalled();
+  });
+
+  it('resolves a committed create from the saved conflict version without replaying it', async () => {
+    const initial = project(), g = gateway(initial), saved = structuredClone(initial);
+    saved.revision = 1;
+    saved.characters.push({ id: 'committed-character', name: 'Rowan', background: '', personality: '', voice: '', icon: '', archived: false, defaultToneId: '', defaultEmotionId: '' });
+    vi.mocked(g.apply).mockRejectedValueOnce(new Error('IPC connection interrupted.'));
+    vi.mocked(g.read).mockResolvedValueOnce(saved);
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Rowan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry character creation' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Review saved version and recovery copy' })).toBeVisible());
+    expect(g.apply).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Review saved version and recovery copy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use saved version and discard waiting changes' }));
+    expect(await screen.findByText('Character: Rowan')).toBeVisible();
+    expect(g.apply).toHaveBeenCalledTimes(1);
+    expect(g.save).not.toHaveBeenCalled();
+  });
+
+  it('leaves multiple matching creations unresolved instead of claiming one', async () => {
+    const initial = project(), g = gateway(initial), saved = structuredClone(initial);
+    saved.revision = 1;
+    saved.characters.push(
+      { id: 'candidate-1', name: 'Rowan', background: '', personality: '', voice: '', icon: '', archived: false, defaultToneId: '', defaultEmotionId: '' },
+      { id: 'candidate-2', name: 'Rowan', background: '', personality: '', voice: '', icon: '', archived: false, defaultToneId: '', defaultEmotionId: '' },
+    );
+    vi.mocked(g.apply).mockRejectedValueOnce(new Error('IPC connection interrupted.'));
+    vi.mocked(g.read).mockResolvedValueOnce(saved);
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Rowan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry character creation' }));
+    await waitFor(() => expect(screen.getByTestId('character-creation-wizard')).toHaveTextContent('Several saved characters match'));
+    fireEvent.click(screen.getByRole('button', { name: 'Review saved version and recovery copy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use saved version and discard waiting changes' }));
+    const chooseCandidates = await screen.findAllByRole('button', { name: /Use saved version and open Rowan/ });
+    expect(chooseCandidates).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Use saved version and discard waiting changes' })).toBeVisible();
+    expect(screen.getByTestId('character-creation-wizard')).toBeVisible();
+    fireEvent.click(chooseCandidates[0]);
+    expect(await screen.findByText('Character: Rowan')).toBeVisible();
+    expect(g.apply).toHaveBeenCalledTimes(1);
   });
   it('creates a tone in its full library and keeps it unsaved until project Save', async () => {
     const g = gateway(), created = project(); created.revision = 1;
