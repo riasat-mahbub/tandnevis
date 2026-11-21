@@ -9,6 +9,8 @@ const path = require('node:path');
 const starterCatalog = require('../src/content/starter-presets.json');
 
 const root = path.resolve(__dirname, '..');
+const presetPalette = ['#BE527A', '#B98116', '#C85343', '#8260AD', '#527FB0', '#25877F', '#657080'];
+const presetFamilyNames = ['Connection', 'Positive energy', 'Conflict', 'Unease', 'Vulnerability', 'Discovery', 'Focus'];
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
   console.log('Usage: node tools/native-smoke.cjs [--exe path/to/shorthand-writer.exe]\nRequires a built Windows app. Launches that exact child with an isolated WebView2 profile and temporary CDP port.');
@@ -21,6 +23,24 @@ if (argv.length && (exeIndex !== 0 || argv.length !== 2 || !argv[1])) {
 }
 const exe = path.resolve(root, exeIndex >= 0 ? argv[exeIndex + 1] ?? '' : 'src-tauri/target/release/shorthand-writer.exe');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function rgbChannels(value) {
+  const match = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(value);
+  assert.ok(match, `Expected computed RGB color, received ${value}`);
+  return match.slice(1).map(Number);
+}
+function linearChannel(channel) {
+  const normalized = channel / 255;
+  return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+}
+function contrastRatio(background, foreground) {
+  const luminance = color => {
+    const [red, green, blue] = rgbChannels(color).map(linearChannel);
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const values = [luminance(background), luminance(foreground)].sort((a, b) => b - a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
 
 function assertDescendant(parent, candidate) {
   const relative = path.relative(parent, candidate);
@@ -139,8 +159,9 @@ async function main() {
       return result.result?.value;
     };
     const waitFor = async (expression, description) => {
+      const booleanExpression = `Promise.resolve((${expression})).then(value => Boolean(value))`;
       const until = Date.now() + 15_000;
-      while (Date.now() < until) { if (await evaluate(expression)) return; await pause(100); }
+      while (Date.now() < until) { if (await evaluate(booleanExpression)) return; await pause(100); }
       throw new Error(`Timed out waiting for ${description}.`);
     };
     const clickLabel = async name => {
@@ -209,10 +230,72 @@ async function main() {
     };
     const captureView = async view => {
       for (const theme of ['light', 'dark']) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
         await clickLabel('Open Settings');
         await evaluate(`document.querySelector('input[name="appearance"][value="${theme}"]').click()`);
         await clickLabel('Back to writing');
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        if (view === 'emotions') {
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+          const row = await evaluate(`(() => { const button=Array.from(document.querySelectorAll('.global-library-emotion .definition-rows>li>button.preset-colored')).find(item=>item.getClientRects().length&&item.querySelector('strong')?.textContent.trim()==='Awe'); const small=button?.querySelector('small'); if(!button||!small) throw new Error('Visible custom preset row text is missing.'); return {background:getComputedStyle(button).backgroundColor,ink:getComputedStyle(button).color,smallInk:getComputedStyle(small).color}; })()`);
+          assert.equal(row.smallInk, row.ink, 'Preset row secondary text inherits the helper-selected foreground.');
+          assert.ok(contrastRatio(row.background, row.ink) >= 4.5, `Preset row text meets contrast in ${theme}.`);
+          assert.ok(contrastRatio(row.background, row.smallInk) >= 4.5, `Preset row secondary text meets contrast in ${theme}.`);
+        }
+        if (view === 'scene') {
+          for (const [tab, selector, reference] of [
+            ['Emotions', '[aria-label="Emotion: Awe"]', '.ProseMirror .block-emotion'],
+            ['Tones', '[aria-label="Tone: Tender"]', '.ProseMirror .block-tone'],
+          ]) {
+            await clickSidebarTab(tab);
+            await waitFor(`Boolean(document.querySelector('.block-shelf ${selector}') && document.querySelector('${reference}'))`, `${tab} inline and shelf color samples`);
+            const groups = await evaluate("Array.from(document.querySelectorAll('.block-shelf .preset-color-group-heading')).map(heading=>heading.textContent.trim())");
+            assert.deepEqual(groups, [...presetFamilyNames, 'Custom colors'], `${tab} displays the seven named families and its custom color group.`);
+            const colors = await evaluate(`(() => { const shelf=document.querySelector('.block-shelf ${selector}'), inline=document.querySelector('${reference}'); return { shelf:getComputedStyle(shelf).backgroundColor, inline:getComputedStyle(inline).backgroundColor }; })()`);
+            assert.equal(colors.shelf, colors.inline, `${tab} shelf and inline blocks use the same computed color in ${theme}.`);
+          }
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+          const actionStyles = await evaluate(`(() => {
+            const buttons=Array.from(document.querySelectorAll('.app button.primary:not(:disabled)')).filter(button=>button.getClientRects().length).map(button=>({label:button.getAttribute('aria-label')||button.textContent.trim(),disabled:button.disabled,color:getComputedStyle(button).color,background:getComputedStyle(button).backgroundColor}));
+            const probePanel=document.createElement('section'); probePanel.className='generation-panel'; probePanel.style.cssText='position:fixed;left:-10000px;top:0';
+            const probe=document.createElement('button'); probe.type='button'; probe.className='generation-primary'; probe.textContent='Generation contrast probe'; probePanel.append(probe); document.querySelector('.app').append(probePanel);
+            const generation={disabled:probe.disabled,color:getComputedStyle(probe).color,background:getComputedStyle(probe).backgroundColor}; probePanel.remove();
+            return {buttons,generation};
+          })()`);
+          assert.ok(actionStyles.buttons.length, 'The scene must expose at least one enabled primary action.');
+          for (const button of [...actionStyles.buttons, actionStyles.generation]) {
+            assert.equal(button.disabled, false, `${button.label ?? 'GenerationPanel action'} must be enabled for its contrast check.`);
+            assert.equal(button.color, 'rgb(255, 255, 255)', `${button.label ?? 'GenerationPanel action'} uses white text.`);
+            assert.ok(contrastRatio(button.background, button.color) >= 4.5, `${button.label ?? 'GenerationPanel action'} has at least 4.5:1 contrast in ${theme}.`);
+          }
+          const presetProbe = await evaluate(`(() => {
+            const probe=document.createElement('button'); probe.type='button'; probe.className='story-block block-tone preset-colored'; probe.textContent='Preset hover contrast probe'; probe.setAttribute('data-native-preset-hover-probe','');
+            probe.style.cssText='position:fixed;left:24px;top:24px;z-index:2147483647;--preset-bg-light:#FDFDDB;--preset-ink-light:#000000;--preset-bg-dark:#787911;--preset-ink-dark:#FFFFFF';
+            document.querySelector('.app').append(probe); const rect=probe.getBoundingClientRect();
+            const read=()=>({background:getComputedStyle(probe).backgroundColor,ink:getComputedStyle(probe).color,filter:getComputedStyle(probe).filter});
+            return {x:rect.x+rect.width/2,y:rect.y+rect.height/2,normal:read()};
+          })()`);
+          const presetBackground = theme === 'dark' ? 'rgb(120, 121, 17)' : 'rgb(253, 253, 219)';
+          const presetInk = theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)';
+          const assertPresetState = (state, name) => {
+            assert.equal(state.background, presetBackground, `Preset ${name} background stays fixed in ${theme}.`);
+            assert.equal(state.ink, presetInk, `Preset ${name} ink stays fixed in ${theme}.`);
+            assert.ok(state.filter === 'none' || state.filter === 'brightness(1)', `Preset ${name} has no contrast-reducing filter in ${theme}.`);
+            assert.ok(contrastRatio(state.background, state.ink) >= 4.5, `Preset ${name} keeps 4.5:1 contrast in ${theme}.`);
+          };
+          try {
+            assertPresetState(presetProbe.normal, 'normal');
+            await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: presetProbe.x, y: presetProbe.y });
+            await waitFor("document.querySelector('[data-native-preset-hover-probe]')?.matches(':hover')", 'preset hover probe');
+            assertPresetState(await evaluate("(() => { const probe=document.querySelector('[data-native-preset-hover-probe]'),style=getComputedStyle(probe); return {background:style.backgroundColor,ink:style.color,filter:style.filter}; })()"), 'hover');
+            await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: presetProbe.x, y: presetProbe.y, button: 'left', buttons: 1, clickCount: 1 });
+            await waitFor("document.querySelector('[data-native-preset-hover-probe]')?.matches(':active')", 'preset pressed probe');
+            assertPresetState(await evaluate("(() => { const probe=document.querySelector('[data-native-preset-hover-probe]'),style=getComputedStyle(probe); return {background:style.backgroundColor,ink:style.color,filter:style.filter}; })()"), 'pressed');
+          } finally {
+            await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: presetProbe.x, y: presetProbe.y, button: 'left', buttons: 0, clickCount: 1 });
+            await evaluate("(() => { const probe=document.querySelector('[data-native-preset-hover-probe]'); probe?.blur(); probe?.remove(); })()");
+          }
+        }
         for (const width of [1440, 800]) {
           await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 960, deviceScaleFactor: 1, mobile: false });
           if (view === 'scene') await evaluate("(() => { const toggle=document.querySelector('.shelf-toggle'); if(toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click(); })()");
@@ -251,12 +334,24 @@ async function main() {
     let session = await invoke('create_project', { path: projectPath, title: 'Native smoke story' });
     assert.deepEqual(session.project.tones.map(tone => tone.name).sort(), starterCatalog.tones.map(tone=>tone.name).sort());
     assert.deepEqual(session.project.emotions.map(emotion => emotion.name).sort(), starterCatalog.emotions.map(emotion=>emotion.name).sort());
+    const seededColors = [...session.project.tones, ...session.project.emotions].map(preset => preset.color).filter(Boolean);
+    assert.deepEqual([...new Set(seededColors)].sort(), [...presetPalette].sort(), 'Starter definitions must seed all seven named palette colors.');
+    for (const preset of [...session.project.tones, ...session.project.emotions]) {
+      const catalogPreset = [...starterCatalog.tones, ...starterCatalog.emotions].find(item => item.name === preset.name);
+      assert.ok(catalogPreset, `Starter catalog entry ${preset.name} must exist.`);
+      assert.equal(preset.color ?? '', catalogPreset.color, `${preset.name} keeps its catalog default color.`);
+    }
     for (const preset of [...session.project.tones,...session.project.emotions]) assert.ok(preset.meaning.trim() && preset.guidance.trim() && preset.example.trim(), `${preset.name} needs complete guidance`);
-    report.checks.push('New native projects contain editable starter tone and emotion definitions');
+    report.checks.push('New native projects contain all 42 starter definitions with seven seeded palette colors');
     assert.equal(await invoke('project_has_unsaved_changes', { sessionId: session.sessionId }), false);
     const initialProjectFile = await fs.readFile(projectPath);
     let project = session.project;
     const apply = async operation => { project = await invoke('apply_operation', { sessionId: session.sessionId, expectedRevision: project.revision, operation }); return project; };
+    const awePresetId = project.emotions.find(preset => preset.name === 'Awe')?.id;
+    assert.ok(awePresetId, 'Starter Awe preset is found by name.');
+    await apply({ type: 'updatePreset', kind: 'emotion', presetId: awePresetId, color: '' });
+    assert.equal(project.emotions.find(preset => preset.id === awePresetId)?.color ?? '', '', 'Clearing a starter color restores its catalog fallback.');
+    report.checks.push('Native preset color reset stores the catalog fallback for older uncolored definitions');
     await apply({ type: 'createChapter', title: 'Chapter One' });
     const chapterId = project.chapters[0].id;
     await apply({ type: 'createScene', chapterId, title: 'Smoke arrival' });
@@ -338,6 +433,7 @@ async function main() {
     await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.scenes.find(scene => scene.id === ${JSON.stringify(sceneId)})?.summary === ${JSON.stringify(uiSummary)})`, 'scene summary saved to SQLite through UI');
     report.checks.push('Native Scene summary UI edit reaches the Rust SQLite repository');
     const readUi = () => evaluate("window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId })");
+    const setCustomPresetColor = async (kind, color) => evaluate(`(() => { const library=Array.from(document.querySelectorAll('.global-library-${kind}')).find(element=>element.getClientRects().length); const input=library?.querySelector('.definition-detail input[aria-label="Custom color"]'); if(!input||!input.getClientRects().length) throw new Error('Visible ${kind} custom color input is missing.'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(color)}); input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
     const uiProse = 'A synthetic prose draft saved from the packaged desktop editor.';
     await evaluate(`(() => { const textarea = document.querySelector('.scene-prose-editor textarea'); if (!textarea) throw new Error('Scene prose editor is missing.'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, ${JSON.stringify(uiProse)}); textarea.dispatchEvent(new Event('input', { bubbles: true })); textarea.blur(); })()`);
     await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.scenes.find(scene => scene.id === ${JSON.stringify(sceneId)})?.prose === ${JSON.stringify(uiProse)})`, 'editable scene prose persisted to SQLite');
@@ -414,24 +510,62 @@ async function main() {
     report.checks.push('Character templates fill an editable draft and remain unsaved until Create character');
     await clickSidebarTab('Tones');
     await clickLabel('Manage Tones');
-    await waitFor("Boolean(document.querySelector('.global-library-tones, .global-library-tone'))", 'full Tones screen');
+    await waitFor("Array.from(document.querySelectorAll('.global-library-tone')).some(element=>element.getClientRects().length>0)", 'visible full Tones screen');
     assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).some(button=>/^Add starter (tones|emotions)$/.test(button.textContent.trim()))"),false,'Starter presets never require an Add button');
     await clickLabel('New tone');
-    await evaluate("(() => { const input=document.querySelector('.global-library-tone .library-create input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Stillness'); input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await evaluate("(() => { const input=Array.from(document.querySelectorAll('.global-library-tone .library-create input')).find(element=>element.getClientRects().length); if(!input)throw new Error('Visible new Tone name input is missing.'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Stillness'); input.dispatchEvent(new Event('input',{bubbles:true})); })()");
     await clickLabel('Create tone');
-    await waitFor("document.querySelector('input[aria-label=\"Tone name\"]')?.value === 'Stillness'", 'new reusable tone editor');
-    await evaluate("(() => { const textarea=Array.from(document.querySelectorAll('.global-library-tone label')).find(label=>label.textContent.startsWith('Writing guidance')).querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(textarea,'Let quiet pauses carry the scene.'); textarea.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await waitFor("Array.from(document.querySelectorAll('.global-library-tone .definition-detail input[aria-label=\"Tone name\"]')).some(input=>input.getClientRects().length>0&&input.value==='Stillness')", 'visible new reusable tone editor');
+    await evaluate("(() => { const label=Array.from(document.querySelectorAll('.global-library-tone .definition-detail label')).find(item=>item.getClientRects().length&&item.textContent.startsWith('Writing guidance')); const textarea=label?.querySelector('textarea'); if(!textarea)throw new Error('Visible tone guidance field is missing.'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(textarea,'Let quiet pauses carry the scene.'); textarea.dispatchEvent(new Event('input',{bubbles:true})); })()");
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.tones.some(t=>t.name==='Stillness'&&t.guidance==='Let quiet pauses carry the scene.'))", 'tone guidance in the native working copy');
+    await setCustomPresetColor('tone', '#FF00AA');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.tones.some(t=>t.name==='Stillness'&&t.color==='#FF00AA'))", 'custom color on the new tone');
+    await clickLabel('Undo project change');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>{const tone=p.tones.find(t=>t.name==='Stillness');return !!tone&&(tone.color??'')===''})", 'Undo restores the new tone default color');
+    await clickLabel('Redo project change');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.tones.some(t=>t.name==='Stillness'&&t.color==='#FF00AA'))", 'Redo restores the new tone custom color');
+    report.checks.push('A new preset color can be customized, undone, and redone through native UI history');
     await captureView('tones');
     await clickLabel('Scene');
     await clickSidebarTab('Emotions');
     await clickLabel('Manage Emotions');
-    await waitFor("Boolean(document.querySelector('.global-library-emotion'))", 'full Emotions screen');
+    await waitFor("Array.from(document.querySelectorAll('.global-library-emotion')).some(element=>element.getClientRects().length>0)", 'visible full Emotions screen');
+    await evaluate("(() => { const row=Array.from(document.querySelectorAll('.global-library-emotion .definition-rows button')).find(button=>button.getClientRects().length&&button.querySelector('strong')?.textContent.trim()==='Awe'); if(!row) throw new Error('Visible starter Awe row is missing.'); row.click(); })()");
+    await waitFor("Array.from(document.querySelectorAll('.global-library-emotion .definition-detail input[aria-label=\"Custom color\"]')).some(input=>input.getClientRects().length>0)", 'visible starter preset color editor after row selection');
+    const projectBeforePresetColor = await readUi();
+    const aweBeforePresetColor = projectBeforePresetColor.emotions.find(preset => preset.name === 'Awe');
+    assert.ok(aweBeforePresetColor, 'Starter Awe preset is found by name in the library.');
+    const referencedDocumentsBeforePresetColor = projectBeforePresetColor.scenes.flatMap(scene => [scene.summaryDocument, ...scene.beats.map(beat => beat.document)]);
+    await setCustomPresetColor('emotion', '#000000');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.emotions.some(e=>e.name==='Awe'&&e.color==='#000000'))", 'custom color on the built-in Awe preset');
+    let projectAfterPresetColor = await readUi();
+    const referencedDocumentsAfterPresetColor = projectAfterPresetColor.scenes.flatMap(scene => [scene.summaryDocument, ...scene.beats.map(beat => beat.document)]);
+    assert.deepEqual(referencedDocumentsAfterPresetColor, referencedDocumentsBeforePresetColor, 'Changing a preset color never writes summary or beat documents.');
+    await clickLabel('Undo project change');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>{const preset=p.emotions.find(e=>e.name==='Awe');return !!preset&&(preset.color??'')===''})", 'Undo restores the built-in catalog fallback');
+    await clickLabel('Redo project change');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.emotions.some(e=>e.name==='Awe'&&e.color==='#000000'))", 'Redo restores the built-in custom color');
+    report.checks.push('Built-in preset color edits preserve inline documents and participate in Undo/Redo');
     await captureView('emotions');
     await clickLabel('Scene');
+    projectAfterPresetColor = await readUi();
+    await clickLabel('Save');
+    await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'custom preset color Save acknowledgement');
+    const previousPresetColorSession = await evaluate('window.__nativeSmokeSessionId');
+    await clickLabel('Project menu');
+    await clickLabel('Open project');
+    await waitFor(`window.__nativeSmokeSessionId !== ${JSON.stringify(previousPresetColorSession)}`, 'reopened custom preset color session');
+    assert.deepEqual(await readUi(), projectAfterPresetColor, 'Reopening preserves built-in and new custom preset colors.');
+    await waitFor("Boolean(document.querySelector('button.scene-open'))", 'Story timeline after preset color reopen');
+    assert.ok(await evaluate("(() => { const button=Array.from(document.querySelectorAll('button.scene-open')).find(item=>item.querySelector('h3')?.textContent==='Smoke arrival'); if(!button||button.disabled)return false; button.click(); return true; })()"));
+    await waitFor("document.querySelector('[contenteditable=\"true\"][aria-label=\"Scene summary\"]')", 'scene after preset color reopen');
+    const persistedColors = await readUi();
+    assert.equal(persistedColors.emotions.find(preset => preset.name === 'Awe')?.color, '#000000');
+    assert.equal(persistedColors.tones.find(preset => preset.name === 'Stillness')?.color, '#FF00AA');
+    report.checks.push('Native Save and UI reopen preserve custom colors on built-in and newly created presets');
     await clickSidebarTab('Characters');
     await clickLabel('Manage Characters');
-    await waitFor("Boolean(document.querySelector('.global-library-character'))", 'full Characters screen');
+    await waitFor("Array.from(document.querySelectorAll('.global-library-character')).some(element=>element.getClientRects().length>0)", 'visible full Characters screen');
     await captureView('characters');
     await clickLabel('Scene');
     await clickSidebarTab('Characters');
@@ -477,7 +611,11 @@ async function main() {
     report.checks.push('Generic inline drag moves emotions and tones across boards and Ctrl-drag copies only the selected character with a fresh occurrence ID');
     await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('#scene-details-panel')?.hidden === true", 'reference drops do not open scene details');
     const colors=await evaluate("Object.fromEntries(['character','emotion','tone'].map(kind=>[kind,getComputedStyle(document.querySelector('.ProseMirror .block-'+kind)).backgroundColor]))");
-    assert.equal(new Set(Object.values(colors)).size,3,'Each block type must have its own background.');
+    assert.ok(Object.values(colors).every(color => typeof color === 'string' && color.startsWith('rgb(')), 'Character, emotion, and tone references all have a computed background.');
+    const roseTone = starterCatalog.tones.find(preset => preset.name === 'Tender');
+    const roseEmotion = starterCatalog.emotions.find(preset => preset.name === 'Affectionate');
+    assert.ok(roseTone && roseEmotion);
+    assert.equal(roseTone.color, roseEmotion.color, 'Tone and emotion definitions may share the same named palette family.');
     await evaluate("document.querySelector('details.generation-preview').open=true");
     await waitFor("document.querySelector('.generation-preview pre')?.textContent.includes('Referenced reusable blocks:') && document.querySelector('.generation-preview pre')?.textContent.includes('- Tone: Tender') && document.querySelector('.generation-preview pre')?.textContent.includes('- Emotion: Awe')", 'generation preview includes definitions referenced inline');
     report.checks.push('Referenced definitions appear in generation context; optional scene details remain closed after insertion');
@@ -494,6 +632,7 @@ async function main() {
     await evaluate("document.querySelector('details.generation-preview').open=false");
     await captureView('scene');
     report.checks.push('Actual native Story and Scene UI render the reopened SQLite content');
+    report.checks.push('Preset shelf and inline colors match in light/dark; enabled white-text actions and preset normal/hover/pressed states keep 4.5:1 contrast');
     report.checks.push('Native Story, library, template draft, and expanded-sidebar Scene inspected in light/dark at 1440px and 800px without horizontal overflow');
     report.checks.push('Collapsing the Scene sidebar at 1440px gives the writing area more width and can be expanded again');
     assert.equal(report.gestureErrors?.length ?? 0, 0, report.gestureErrors?.join('; '));
