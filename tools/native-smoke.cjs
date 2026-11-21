@@ -424,6 +424,7 @@ async function main() {
     await waitFor("Boolean(document.querySelector('.summary-board .block-emotion'))",'native targeted emotion drag');
     await dragBlock('.block-shelf button[aria-label="Tone: Tender"]','.summary-board .tiptap','Tone from shelf into summary');
     await waitFor("document.querySelector('.summary-board .block-tone')?.textContent.includes('Scene tone: Tender')",'scene tone stored inline on summary board');
+    await waitFor("document.querySelector('.inspector .scope-label')?.textContent === 'Summary: scene direction'", 'inspector follows summary drop scope');
     assert.equal(await evaluate("Boolean(document.querySelector('select[aria-label=\"Scene tone block\"]'))"),false,'No separate scene tone control');
     await dragBlock('.block-shelf button[aria-label="Tone: Tense"]','[data-item-id] .tiptap','Tone from shelf into beat');
     await waitFor("Boolean(document.querySelector('[data-item-id] .block-tone'))",'inline beat tone drag');
@@ -435,8 +436,10 @@ async function main() {
     report.checks.push('Actual native pointer dragstart delivers character, targeted emotion, and scene/beat tone blocks from shelf to summary and beats');
     const summaryOccurrence = await evaluate("document.querySelector('.summary-board .character-chip')?.getAttribute('data-occurrence-id')");
     const beforeCopy = await evaluate("document.querySelectorAll('[data-item-id] .character-chip').length");
+    const emotionsBeforeCopy = await evaluate("document.querySelectorAll('[data-item-id] .block-emotion').length");
     await dragBlock('.summary-board .character-chip','[data-item-id] .tiptap','Copy inline character and linked emotion from summary to beat',2);
     await waitFor(`document.querySelectorAll('[data-item-id] .character-chip').length === ${beforeCopy + 1}`, 'native inline block copy');
+    await waitFor(`document.querySelectorAll('[data-item-id] .block-emotion').length === ${emotionsBeforeCopy + 1}`, 'linked emotion copied with character');
     assert.equal(await evaluate("document.querySelector('.summary-board .character-chip')?.getAttribute('data-occurrence-id')"),summaryOccurrence,'Copy retains the original summary occurrence');
     const copiedIds = await evaluate("Array.from(document.querySelectorAll('[data-item-id] .character-chip')).map(node=>node.getAttribute('data-occurrence-id'))");
     assert.equal(copiedIds.includes(summaryOccurrence),false,'Copied character gets a new occurrence identity');

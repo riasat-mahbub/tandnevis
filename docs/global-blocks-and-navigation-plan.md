@@ -1,5 +1,7 @@
 # Global blocks and usable navigation
 
+Scene layout update: [Scene board and generation revision](scene-board-and-generation.md) supersedes the separate scene-tone target, plain summary, and single generation action described below. The summary is now a rich board with the same blocks as beats. Global library behavior remains as specified here.
+
 Status: implemented core workflow, 20 November 2026. See [implementation progress](implementation-progress.md) for checks and remaining verification limits. This supersedes the contextual character-manager navigation and preset interaction details in older interface documents. Story and Scene remain the two writing zoom levels; Characters, Tones, and Emotions are full project screens. The acceptance list below remains the behavior contract, not a claim that every device or input method has been manually tested.
 
 ## 1. What the current interface gets wrong

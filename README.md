@@ -1,10 +1,12 @@
 # Shorthand Writer
 
-A local desktop writing application: each scene sits on a timeline and contains a scene idea/summary plus ordered beat cards. Beats are freeform text with reusable character, emotion, and tone blocks, and can contain zero, one, or many characters. Separate Characters, Tones, and Emotions screens manage project-wide definitions. Optional physical stages remain planned.
+A local desktop writing application: each scene sits on a timeline and contains a freeform summary board plus ordered beat cards. Summary and beats accept text and draggable character, emotion, and tone blocks, with zero, one, or many characters. Separate Characters, Tones, and Emotions screens manage project-wide definitions. Optional physical stages remain planned.
 
 **Status:** native SQLite authoring, Story/Scene timelines, full global libraries, scoped emotion/scene-tone/beat-tone blocks, ChatGPT Settings, and individual scene drafting are implemented. New projects include editable starter emotions and tones; existing projects can add them explicitly. Drafts support streaming, Stop, recovery, Copy/Discard, and undoable acceptance into editable scene prose. Platinum is the default appearance. Live ChatGPT account eligibility and inference still require an eligible test account. [Implementation progress](docs/implementation-progress.md) records verification and remaining features.
 
 **Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
+
+In Scene view, **Generate scene** proposes editable beats from the summary; **Generate prose** drafts narration and dialogue from the summary and beats. Both actions sit at the top left and require the configured ChatGPT connection. Review before accepting: generated beats append without replacing existing writing. A Tone block on the summary guides the scene, while a beat tone overrides only that beat. [Scene board behavior](docs/scene-board-and-generation.md) and [starter character/preset ideas](docs/starter-content-ideas.md) describe the workflow.
 
 Saving is manual by default: use **Save** or **Ctrl+S** (Cmd+S on macOS keyboards). Text, timeline changes, characters, history, and generated drafts remain in the current session until saved. Settings → Appearance → **Autosave** enables saving after editing settles. Closing or switching projects offers Save / Discard / Cancel for unsaved work. Unsaved manual changes are lost if the app crashes or is forcibly terminated.
 

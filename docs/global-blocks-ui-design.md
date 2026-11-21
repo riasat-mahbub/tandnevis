@@ -1,5 +1,7 @@
 # Global blocks: UI design brief
 
+Scene layout update: [Scene board and generation revision](scene-board-and-generation.md) replaces the standalone Scene tone control with a Tone block on the rich summary board. It puts title and summary together above the beats, with Generate scene and Generate prose at the top left. The global library screens and shared color system remain unchanged.
+
 Status: implemented design direction, 20 November 2026. Read alongside [the behavior and delivery plan](global-blocks-and-navigation-plan.md) and [implementation progress](implementation-progress.md). This brief records the intended interface; the progress ledger records verified behavior and remaining limits.
 
 ## Design intent

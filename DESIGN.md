@@ -1,5 +1,7 @@
 # Shorthand Writer — two-view design
 
+The current scene composition is defined by [Scene board and generation revision](docs/scene-board-and-generation.md), which supersedes the standalone scene-tone row and plain summary field below. Top-left Generate scene/Generate prose actions precede the title; the title is followed directly by a rich summary board, then the freeform beat timeline. Summary and beats accept the same native draggable blocks. A summary tone guides the scene; a beat tone overrides that beat only. Context preview belongs after the beats.
+
 The latest planned navigation extends the two writing zoom levels with full **Characters, Tones, and Emotions** screens. Their reusable blocks are inserted from a Scene library shelf: character into beat text, separate emotion block onto an explicit character occurrence, and tone onto the scene or into a freeform beat. Beat tone overrides scene tone for that beat only. Characters use sage backgrounds, Emotions lilac, and Tones apricot, consistently across insertion and editing. New projects include editable starter emotions and tones. Save stays in the app header; New/Open, Markdown import/export, and Trash move to a labeled Project menu. [Global blocks and usable navigation](docs/global-blocks-and-navigation-plan.md) is the current contract for this extension and supersedes the older contextual character panel. The reference in `outputs/review/` governs the block-use workflow, extended by beat-tone blocks; the current Platinum/Harvest Orange visual system and alternating timelines remain authoritative.
 
 The accepted scene-writer workflow remains: two views at two conceptual zoom levels, scene summaries, and freeform beat cards. The next visual iteration adds a playful touch with selective skew and asymmetry, together with clearer editing controls. Functional requirements remain in [the development plan](docs/development-plan.md); the detailed next-step brief is [the interface plan](docs/interface-plan.md). The [interactive design reference](outputs/scene-writer-studio.html) shows the current functional baseline. The new visual treatment and additional controls are planned, not implemented in that prototype.
@@ -10,7 +12,7 @@ The next screens are described concretely in [Global blocks: UI design brief](do
 
 **Story view (zoomed out)** is a vertical scene timeline, grouped by chapter. Scene blocks show their title and summary excerpt. Opening a block switches into that individual scene's editor. Drag scenes vertically, with explicit before/after insertion feedback; visible move controls offer the same action without dragging. The timeline stays vertical at every size.
 
-**Scene view (zoomed in)** retains the accepted scene writer: editable title, scene tone, a distinct scene idea/summary field, and ordered freeform beat cards. A beat can contain any text and zero or more character references. Back to story returns to the overview; Story/Scene controls switch zoom levels. A chapter/scene breadcrumb preserves orientation.
+**Scene view (zoomed in)** has an editable title directly above a freeform rich summary board and ordered beat cards. Every board can contain text and zero or more Character, Emotion, and Tone blocks. A tone in the summary supplies scene guidance without a separate selector. Back to story returns to the overview; Story/Scene controls switch zoom levels. A chapter/scene breadcrumb preserves orientation.
 
 The latest planned extension arranges those beats on a matching vertical timeline: alternate left/right around numbered nodes, preserve freeform editing, and keep the scene summary above the timeline. This remains part of Scene view, with no third zoom level. Collapse to one column when the editor cannot provide comfortable alternating-card widths.
 
@@ -37,7 +39,7 @@ Add clear New/Add actions, and expose drag handles, Duplicate, and Delete direct
 ## Interaction contract
 
 - The next tranche adds a global Settings page for one ChatGPT connection and appearance settings. It returns to the selected writing view and does not add a third writing zoom level.
-- Generate one selected scene from its ordered beats and resolved character-reference data. Inline blocks encode model instructions, not physical simulation. Generate stays grey/disabled until the Settings connection/model test succeeds, with an adjacent explanation and Open Settings link. See the [scoped plan](docs/install-and-ai-plan.md).
+- Generate scene proposes editable beats from the summary board; Generate prose writes narration and dialogue from the summary and ordered beats. Both review results before acceptance. Inline blocks encode model instructions. Both actions stay grey/disabled until the Settings connection/model test succeeds, with an explanation and Open Settings link.
 
 - Title and summary edits update the corresponding timeline block. Switching scenes preserves separate title, summary, beat, prose, and optional stage state.
 - Scene and beat identities survive movement. Ordering is reading order, not proportional elapsed time.
