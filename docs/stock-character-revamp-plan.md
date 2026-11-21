@@ -2,6 +2,8 @@
 
 Implemented 21 November 2026, with an expanded visual browser and selectable character icons. The list below preserves the original research inventory; entry-level keep/defer decisions belong in the catalog research record. See the [progress ledger](implementation-progress.md) for test and packaged verification evidence.
 
+The subsequent [character creation wizard proposal](character-creation-wizard-plan.md) supersedes this document's combined creation-page composition when implemented. Catalog evidence, editable starting text, icon persistence, and project-safety requirements continue to apply.
+
 ## Purpose and scope
 
 Give a writer recognizable, reference-backed stock types from which to create an individual character. Replace the invented six-profile catalog with established names, concise explanations, and useful editable starting text. Retain the blank-character path and the existing Characters library and Scene-sidebar entry points.

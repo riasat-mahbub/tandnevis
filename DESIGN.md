@@ -10,6 +10,8 @@ The accepted scene-writer workflow remains: two views at two conceptual zoom lev
 
 ## Composition
 
+Planned next revision: [Character creation wizard](docs/character-creation-wizard-plan.md) separates Starting point, Name and icon, Profile details, and Review into focused steps. It replaces the combined creation page described below when implemented, while retaining the catalog, icon system, and ordinary profile editing. The wizard is planning-only.
+
 The [stock character library revamp](docs/stock-character-revamp-plan.md) replaces the six invented templates with 53 reference-backed types. New character provides category buttons, grouped search, icons, source details, and a preview before explicit application. The form keeps the name and icon controls above the browser, then editable profile fields. A 32-icon picker supports custom and existing characters; icons appear in the library, shelf, and inline references. Icons are visual metadata and never enter generation context. Existing creation entry points and the visual system remain in place.
 
 The next screens are described concretely in [Global blocks: UI design brief](docs/global-blocks-ui-design.md): persistent project/navigation/save groups, a Scene block shelf and local inspector, full master/detail library editors, explicit drop feedback, and responsive behavior. It extends this visual system without changing the accepted writing workflow.
