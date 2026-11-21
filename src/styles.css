@@ -121,9 +121,19 @@
   .story-bottom { display:flex; align-items:center; gap:20px; border-top:1px solid var(--line); padding-top:25px; margin-top:25px; }
   .dragging { opacity:.6; z-index:3; }
   .drop-target::after { content:''; position:absolute; left:0; right:0; top:-14px; height:3px; background:var(--accent); border-radius:2px; }
-  .scene-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:15px; }
+  .scene-heading { display:flex; flex-direction:column; align-items:stretch; gap:14px; margin-bottom:18px; }
   .scene-heading .title-field { flex:1; }
   .scene-heading>span { white-space:nowrap; }
+  .scene-generate-actions { display:flex; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:8px; }
+  .scene-generate-actions button { min-height:36px; }
+  .scene-generation-hint { margin:-4px 0 0; font-size:12px; color:var(--muted); }
+  .summary-board { scroll-margin-block:110px; }
+  .summary-board h2 { font:500 12px/1.5 'Segoe UI',system-ui,sans-serif; margin:0 0 6px; }
+  .summary-board .beat-prose .tiptap { min-height:130px; }
+  .summary-board.selected { border-color:var(--focus); }
+  .scene-draft-review { margin:24px 0; }
+  .draft-review-switch { display:flex; gap:8px; margin-bottom:10px; }
+  .draft-review-switch button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
   .tone-field { display:flex; gap:9px; align-items:center; color:var(--ink); margin-bottom:28px; font-size:11px; }
   .tone-field input { background:var(--soft-orange); color:var(--ink); border-color:transparent; width:200px; font-size:12px; padding:5px 8px; }
   .summary-note { position:relative; isolation:isolate; margin-bottom:36px; padding:18px 20px; background:var(--surface-raised); border:1px solid var(--line); border-radius:7px; }

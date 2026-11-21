@@ -3,6 +3,7 @@ import { Archive, ArrowLeft, Copy, Plus, Search, Trash2, Users, Heart, Waves } f
 import type { Character, Operation, Preset, PresetKind, ProjectSnapshot } from '../services/project';
 import type { Workspace } from '../services/workspace';
 import { TitleField } from './Fields';
+import { summaryBoard } from '../services/summary-board';
 
 export type LibraryKind = 'characters' | 'tones' | 'emotions';
 type Definition = Character | Preset;
@@ -34,6 +35,10 @@ export function libraryUsages(project: ProjectSnapshot, kind: LibraryKind, id: s
   const usages: Usage[] = [];
   for (const scene of project.scenes) {
     if (kind === 'tones' && scene.toneId === id) usages.push({ key: `scene:${scene.id}`, label: `${scene.title} · Scene tone`, sceneId: scene.id });
+    const summary = summaryBoard(scene, project.tones);
+    references(summary.document, kind, id).forEach((reference, occurrence) => {
+      usages.push({ key: `${summary.id}:${occurrence}`, label: `${scene.title} · Summary`, sceneId: scene.id, beatId: summary.id, occurrenceId: reference.occurrenceId });
+    });
     scene.beats.forEach((beat, index) => references(beat.document, kind, id).forEach((reference, occurrence) => {
       usages.push({ key: `${beat.id}:${occurrence}`, label: `${scene.title} · Beat ${index + 1}${reference.occurrenceId ? ` · ${kind === 'characters' ? 'Character reference' : 'Character emotion'}` : ''}`, sceneId: scene.id, beatId: beat.id, occurrenceId: reference.occurrenceId });
     }));

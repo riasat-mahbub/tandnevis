@@ -2,6 +2,11 @@ import './test/dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+import type { Editor } from '@tiptap/core';
+
+function setSummary(element: HTMLElement, text: string) {
+  act(() => (element as HTMLElement & { editor: Editor }).editor.commands.setContent({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }));
+}
 import type { ChatGPTGateway, NativeChatGPTState } from './services/chatgpt';
 import type { ProjectSnapshot } from './services/project';
 import { deferred, gateway, project, session } from './test/fixtures';
@@ -14,7 +19,7 @@ describe('connected writing views', () => {
     render(<App gateway={g} initialSession={session()}/>);
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
-    fireEvent.change(summary, { target: { value: 'Keep my place.' } });
+    setSummary(summary, 'Keep my place.');
     for (const name of ['Characters', 'Tones', 'Emotions']) {
       fireEvent.click(screen.getByRole('button', { name }));
       expect(screen.getByRole('heading', { name, level: 1 })).toBeVisible();
@@ -22,7 +27,7 @@ describe('connected writing views', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
-    expect(summary).toHaveValue('Keep my place.');
+    expect(summary).toHaveTextContent('Keep my place.');
     expect(g.save).not.toHaveBeenCalled();
   });
   it('creates a tone in its full library and keeps it unsaved until project Save', async () => {
@@ -183,8 +188,8 @@ describe('connected writing views', () => {
     render(<App gateway={g} initialSession={session()}/>);
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
-    fireEvent.change(summary, { target: { value: 'The beginning' } });
-    fireEvent.change(summary, { target: { value: 'The beginning of a difficult conversation.' } });
+    setSummary(summary, 'The beginning');
+    setSummary(summary, 'The beginning of a difficult conversation.');
     fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
     expect(document.querySelector('.destination-view:not([hidden]) .scene-open p')).toHaveTextContent('The beginning of a difficult conversation.');
     expect(screen.getByText('Unsaved changes')).toBeVisible();
@@ -194,8 +199,8 @@ describe('connected writing views', () => {
     const latest = structuredClone(saved); latest.revision = 2; latest.scenes[0].summary = 'The beginning of a difficult conversation.';
     await act(async () => { second.resolve(latest); await second.promise; });
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
-    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveValue(latest.scenes[0].summary);
-    expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, { type: 'updateScene', sceneId: 'scene-1', summary: latest.scenes[0].summary });
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveTextContent(latest.scenes[0].summary);
+    expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, expect.objectContaining({ type: 'updateScene', sceneId: 'scene-1', summary: latest.scenes[0].summary, summaryDocument: expect.any(Object) }));
   });
   it('stages a valid title while focused and writes the project only on Save', async () => {
     const g = gateway(); const saved = project(); saved.revision = 1; saved.title = 'A changed title'; vi.mocked(g.apply).mockResolvedValueOnce(saved);
@@ -212,12 +217,12 @@ describe('connected writing views', () => {
     const g = gateway(); vi.mocked(g.apply).mockRejectedValueOnce(new Error('Read-only disk'));
     render(<App gateway={g} initialSession={session()}/>);
     fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Scene summary' }), { target: { value: 'Unsaved but visible.' } });
-    await screen.findByRole('alert'); expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveValue('Unsaved but visible.');
+    setSummary(screen.getByRole('textbox', { name: 'Scene summary' }), 'Unsaved but visible.');
+    await screen.findByRole('alert'); expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveTextContent('Unsaved but visible.');
     expect(screen.getByRole('button', { name: 'Add beat' })).toBeDisabled();
     const saved = project(); saved.revision = 1; saved.scenes[0].summary = 'Unsaved but visible.'; vi.mocked(g.apply).mockResolvedValueOnce(saved);
     fireEvent.click(screen.getByRole('button', { name: 'Retry save' })); await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveValue('Unsaved but visible.');
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveTextContent('Unsaved but visible.');
   });
   it('uses a single native reorder operation from a visible keyboard-accessible move button', async () => {
     const g = gateway(); const saved = project(); saved.revision = 1; saved.chapters[0].sceneIds = ['scene-2','scene-1']; vi.mocked(g.apply).mockResolvedValueOnce(saved);

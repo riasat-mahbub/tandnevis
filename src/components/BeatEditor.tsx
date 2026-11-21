@@ -14,7 +14,91 @@ import './StoryBlocks.css';
 
 export const CHARACTER_REFERENCE_MIME = 'application/x-shorthand-character-id';
 export const PRESET_REFERENCE_MIME = 'application/x-shorthand-preset';
+export const INLINE_REFERENCE_MIME = 'application/x-shorthand-inline-reference';
 const newOccurrenceId = () => crypto.randomUUID();
+type BoardScope = 'summary' | 'beat';
+interface InlineDrag { token: string; source: EditorView; node: PMNode; pos: number; document: PMNode }
+let inlineDrag: InlineDrag | null = null;
+
+/** The board includes empty padding, where the browser cannot always find a text caret. */
+function dropPosition(view: EditorView, event: Pick<DragEvent, 'clientX' | 'clientY'>): number {
+  let position: number;
+  try { position = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.doc.content.size; }
+  catch { position = view.state.doc.content.size; }
+  return TextSelection.near(view.state.doc.resolve(Math.max(0, Math.min(position, view.state.doc.content.size))), -1).from;
+}
+
+function clearDropFeedback(view: EditorView) {
+  view.dom.classList.remove('board-drop-active');
+  view.dom.querySelectorAll('.block-drop-target').forEach(item => item.classList.remove('block-drop-target'));
+}
+
+function removeDraggedSource(drag: InlineDrag) {
+  if (drag.source.isDestroyed || !drag.source.editable || !drag.source.state.doc.eq(drag.document)) return false;
+  const tr = drag.source.state.tr, removals: Array<[number, number]> = [[drag.pos, drag.node.nodeSize]];
+  if (drag.node.type.name === 'characterReference' && drag.node.attrs.occurrenceId) {
+    drag.document.descendants((node, pos) => {
+      if (node.type.name === 'emotionReference' && node.attrs.targetOccurrenceId === drag.node.attrs.occurrenceId) removals.push([pos, node.nodeSize]);
+    });
+  }
+  for (const [pos, size] of removals.sort((a, b) => b[0] - a[0])) tr.delete(pos, pos + size);
+  drag.source.dispatch(closeHistory(tr));
+  return true;
+}
+
+function handleInlineReferenceDrop(view: EditorView, event: DragEvent, notify: (message: string) => void): boolean {
+  const token = event.dataTransfer?.getData(INLINE_REFERENCE_MIME);
+  if (!token) return false;
+  event.preventDefault(); event.stopPropagation();
+  const drag = inlineDrag;
+  if (!view.editable || !drag || drag.token !== token || drag.source.isDestroyed || !drag.source.state.doc.eq(drag.document)) {
+    notify('This block changed while dragging. Drag it again from its current position.'); return true;
+  }
+  const copy = event.ctrlKey || event.altKey;
+  const type = drag.node.type.name;
+  if (type === 'emotionReference') {
+    const element = (event.target as Element | null)?.closest?.('[data-occurrence-id]');
+    const occurrenceId = element?.getAttribute('data-occurrence-id');
+    let pos = -1;
+    view.state.doc.descendants((node, at) => { if (node.type.name === 'characterReference' && occurrenceId && node.attrs.occurrenceId === occurrenceId) pos = at; });
+    if (pos < 0) { notify('Drop an emotion directly onto the character block it should affect.'); return true; }
+    if (!copy && drag.source === view && occurrenceId === drag.node.attrs.targetOccurrenceId) return true;
+    if (!copy && drag.source === view) { removeDraggedSource(drag); }
+    const applied = applyEmotion(view, { id: drag.node.attrs.emotionId, name: drag.node.attrs.label } as Preset, { pos, occurrenceId: occurrenceId! });
+    if (applied && !copy && drag.source !== view) removeDraggedSource(drag);
+    view.focus(); return true;
+  }
+  if (type === 'toneReference') {
+    if (drag.source === view) return true; // A tone has whole-board scope; its position carries no meaning.
+    const applied = applyTone(view, { id: drag.node.attrs.toneId, name: drag.node.attrs.label } as Preset, dropPosition(view, event));
+    if (applied && !copy) removeDraggedSource(drag);
+    view.focus(); return true;
+  }
+  if (type !== 'characterReference') return true;
+  const oldId = drag.node.attrs.occurrenceId, newId = copy || drag.source !== view || !oldId ? newOccurrenceId() : oldId;
+  const nodes: PMNode[] = [view.state.schema.nodes.characterReference.create({ ...drag.node.attrs, occurrenceId: newId })];
+  drag.document.descendants(node => {
+    if (node.type.name === 'emotionReference' && oldId && node.attrs.targetOccurrenceId === oldId) {
+      nodes.push(view.state.schema.nodes.emotionReference.create({ ...node.attrs, targetOccurrenceId: newId }));
+    }
+  });
+  let position = dropPosition(view, event);
+  const tr = view.state.tr;
+  if (!copy && drag.source === view) {
+    const removals: Array<[number, number]> = [[drag.pos, drag.node.nodeSize]];
+    drag.document.descendants((node, pos) => { if (node.type.name === 'emotionReference' && oldId && node.attrs.targetOccurrenceId === oldId) removals.push([pos, node.nodeSize]); });
+    for (const [pos, size] of removals.sort((a, b) => b[0] - a[0])) tr.delete(pos, pos + size);
+    position = TextSelection.near(tr.doc.resolve(tr.mapping.map(position)), -1).from;
+  }
+  const $position = tr.doc.resolve(position), before = $position.nodeBefore, after = $position.nodeAfter;
+  const leading = !!before && !(before.isText && /\s/.test(before.text?.slice(-1) ?? ''));
+  const trailing = !(after?.isText && /\s/.test(after.text?.slice(0, 1) ?? ''));
+  const fragment = Fragment.fromArray([...(leading ? [view.state.schema.text(' ')] : []), ...nodes, ...(trailing ? [view.state.schema.text(' ')] : [])]);
+  tr.insert(position, fragment); tr.setSelection(TextSelection.near(tr.doc.resolve(position + fragment.size), 1));
+  view.dispatch(closeHistory(tr).scrollIntoView());
+  if (!copy && drag.source !== view) removeDraggedSource(drag);
+  view.focus(); return true;
+}
 export interface CharacterTarget { pos: number; occurrenceId: string; characterId: string; label: string; excerpt: string }
 export function characterTargets(editor: Editor): CharacterTarget[] {
   const result: CharacterTarget[] = [];
@@ -45,8 +129,7 @@ export function handleCharacterReferenceDrop(view: EditorView, event: DragEvent,
   if (!id) return false;
   event.preventDefault(); event.stopPropagation();
   const character = characters.find(candidate => candidate.id === id && !candidate.archived);
-  const point = view.posAtCoords({ left: event.clientX, top: event.clientY });
-  if (character && point && view.editable) insertCharacterAt(view, character, TextSelection.near(view.state.doc.resolve(point.pos)).from);
+  if (character && view.editable) insertCharacterAt(view, character, dropPosition(view, event));
   return true;
 }
 function applyEmotion(view: EditorView, emotion: Preset, target: Pick<CharacterTarget, 'pos' | 'occurrenceId'>) {
@@ -100,39 +183,39 @@ export function updateCharacterReference(editor: Editor, attributes: { emotion?:
   }).run();
 }
 
-const Definitions = createContext<{ characters: Character[]; tones: Preset[]; emotions: Preset[] }>({ characters: [], tones: [], emotions: [] });
-function CharacterChip({ node, selected }: NodeViewProps) {
+const Definitions = createContext<{ characters: Character[]; tones: Preset[]; emotions: Preset[]; scope: BoardScope }>({ characters: [], tones: [], emotions: [], scope: 'beat' });
+function CharacterChip({ node, selected, getPos }: NodeViewProps) {
   const { characters } = useContext(Definitions);
   const label = characters.find(c => c.id === node.attrs.characterId)?.name ?? node.attrs.label;
-  return <NodeViewWrapper as="span" className={`character-chip story-block block-character ${selected ? 'block-selected' : ''}`} data-occurrence-id={node.attrs.occurrenceId} contentEditable={false} title="Character · select to inspect this occurrence">{[label, node.attrs.emotion && `Emotion: ${node.attrs.emotion}`, node.attrs.delivery && `Delivery: ${node.attrs.delivery}`].filter(Boolean).join(' · ')}</NodeViewWrapper>;
+  return <NodeViewWrapper as="span" className={`character-chip story-block block-character ${selected ? 'block-selected' : ''}`} data-occurrence-id={node.attrs.occurrenceId} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Character · drag to move, Ctrl-drag to copy; select to inspect">{[label, node.attrs.emotion && `Emotion: ${node.attrs.emotion}`, node.attrs.delivery && `Delivery: ${node.attrs.delivery}`].filter(Boolean).join(' · ')}</NodeViewWrapper>;
 }
-function EmotionChip({ node, editor, selected }: NodeViewProps) {
+function EmotionChip({ node, editor, selected, getPos }: NodeViewProps) {
   const { emotions, characters } = useContext(Definitions);
   const definition = emotions.find(p => p.id === node.attrs.emotionId);
   let target = '';
   editor.state.doc.descendants(candidate => { if (candidate.type.name === 'characterReference' && candidate.attrs.occurrenceId === node.attrs.targetOccurrenceId) target = characters.find(c => c.id === candidate.attrs.characterId)?.name ?? candidate.attrs.label; });
-  return <NodeViewWrapper as="span" className={`story-block block-emotion ${selected ? 'block-selected' : ''}`} contentEditable={false} title={`Emotion for ${target || 'unresolved target'} · this occurrence only`}>Emotion: {definition?.name ?? node.attrs.label}</NodeViewWrapper>;
+  return <NodeViewWrapper as="span" className={`story-block block-emotion ${selected ? 'block-selected' : ''}`} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title={`Emotion for ${target || 'unresolved target'} · drag onto another character to move`}>Emotion: {definition?.name ?? node.attrs.label}</NodeViewWrapper>;
 }
-function ToneChip({ node, selected }: NodeViewProps) {
-  const { tones } = useContext(Definitions);
-  return <NodeViewWrapper as="span" className={`story-block block-tone ${selected ? 'block-selected' : ''}`} contentEditable={false} title="Tone for this beat only">Beat tone: {tones.find(p => p.id === node.attrs.toneId)?.name ?? node.attrs.label}</NodeViewWrapper>;
+function ToneChip({ node, selected, getPos }: NodeViewProps) {
+  const { tones, scope } = useContext(Definitions);
+  return <NodeViewWrapper as="span" className={`story-block block-tone ${selected ? 'block-selected' : ''}`} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title={scope === 'summary' ? 'Default tone for this scene' : 'Tone for this beat only'}>{scope === 'summary' ? 'Scene tone' : 'Beat tone'}: {tones.find(p => p.id === node.attrs.toneId)?.name ?? node.attrs.label}</NodeViewWrapper>;
 }
 export const CharacterReference = Node.create({
-  name: 'characterReference', group: 'inline', inline: true, atom: true, selectable: true,
+  name: 'characterReference', group: 'inline', inline: true, atom: true, selectable: true, draggable: true,
   addAttributes() { return { occurrenceId: { default: '' }, characterId: { default: '' }, label: { default: '' }, emotion: { default: '' }, delivery: { default: '' } }; },
   parseHTML() { return [{ tag: 'span[data-character-reference]' }]; },
   renderHTML({ node, HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes, { 'data-character-reference': '', class: 'character-chip story-block block-character' }), [node.attrs.label, node.attrs.emotion && `Emotion: ${node.attrs.emotion}`, node.attrs.delivery && `Delivery: ${node.attrs.delivery}`].filter(Boolean).join(' · ')]; },
   renderText({ node }) { return node.attrs.label || 'Character'; }, addNodeView() { return ReactNodeViewRenderer(CharacterChip); },
 });
 export const EmotionReference = Node.create({
-  name: 'emotionReference', group: 'inline', inline: true, atom: true, selectable: true,
+  name: 'emotionReference', group: 'inline', inline: true, atom: true, selectable: true, draggable: true,
   addAttributes() { return { emotionId: { default: '' }, label: { default: '' }, targetOccurrenceId: { default: '' } }; },
   parseHTML() { return [{ tag: 'span[data-emotion-reference]' }]; },
   renderHTML({ node, HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes, { 'data-emotion-reference': '', class: 'story-block block-emotion' }), `Emotion: ${node.attrs.label}`]; },
   renderText({ node }) { return `[Emotion: ${node.attrs.label}]`; }, addNodeView() { return ReactNodeViewRenderer(EmotionChip); },
 });
 export const ToneReference = Node.create({
-  name: 'toneReference', group: 'inline', inline: true, atom: true, selectable: true,
+  name: 'toneReference', group: 'inline', inline: true, atom: true, selectable: true, draggable: true,
   addAttributes() { return { toneId: { default: '' }, label: { default: '' } }; },
   parseHTML() { return [{ tag: 'span[data-tone-reference]' }]; },
   renderHTML({ node, HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes, { 'data-tone-reference': '', class: 'story-block block-tone' }), `Beat tone: ${node.attrs.label}`]; },
@@ -166,7 +249,7 @@ const BlockIntegrity = Extension.create({
             const nodes: PMNode[] = [];
             fragment.forEach(node => {
               if (node.type.name === 'emotionReference' && !ids.has(node.attrs.targetOccurrenceId)) return;
-              const attrs = node.type.name === 'characterReference' ? { ...node.attrs, occurrenceId: ids.get(node.attrs.occurrenceId) ?? newOccurrenceId() } : node.type.name === 'emotionReference' ? { ...node.attrs, targetOccurrenceId: ids.get(node.attrs.targetOccurrenceId) } : node.attrs;
+              const attrs = node.type.name === 'characterReference' ? { ...node.attrs, occurrenceId: node.attrs.occurrenceId ? ids.get(node.attrs.occurrenceId) ?? newOccurrenceId() : newOccurrenceId() } : node.type.name === 'emotionReference' ? { ...node.attrs, targetOccurrenceId: ids.get(node.attrs.targetOccurrenceId) } : node.attrs;
               nodes.push(node.isText ? node : node.type.create(attrs, node.content.size ? transform(node.content) : undefined, node.marks));
             }); return Fragment.fromArray(nodes);
           }; return new Slice(transform(slice.content), slice.openStart, slice.openEnd);
@@ -180,40 +263,70 @@ interface Props {
   beat: Beat; index: number; characters: Character[]; tones?: Preset[]; emotions?: Preset[];
   onChange: (document: Beat['document'], text: string) => void; onFocus: (editor: Editor) => void; onSelection: (editor: Editor) => void;
   register: (id: string, editor: Editor | null) => void; editable?: boolean; notify?: (message: string) => void;
+  ariaLabel?: string; placeholder?: string; scope?: BoardScope; wrapperClassName?: string;
 }
-export default function BeatEditor({ beat, index, characters, tones = [], emotions = [], onChange, onFocus, onSelection, register, editable = true, notify }: Props) {
-  const callbacks = useRef({ onChange, onFocus, onSelection, notify, characters, tones, emotions }); callbacks.current = { onChange, onFocus, onSelection, notify, characters, tones, emotions };
+export default function BeatEditor({ beat, index, characters, tones = [], emotions = [], onChange, onFocus, onSelection, register, editable = true, notify, ariaLabel, placeholder, scope = 'beat', wrapperClassName }: Props) {
+  const callbacks = useRef({ onChange, onFocus, onSelection, notify, characters, tones, emotions, scope }); callbacks.current = { onChange, onFocus, onSelection, notify, characters, tones, emotions, scope };
+  const handleBoardDrop = (view: EditorView, event: DragEvent) => {
+    clearDropFeedback(view);
+    if (handleInlineReferenceDrop(view, event, message => callbacks.current.notify?.(message))) return true;
+    if (handleCharacterReferenceDrop(view, event, callbacks.current.characters)) return true;
+    const payload = event.dataTransfer?.getData(PRESET_REFERENCE_MIME); if (!payload) return false;
+    event.preventDefault(); event.stopPropagation(); if (!view.editable) return true;
+    try {
+      const value = JSON.parse(payload) as { kind?: string; id?: string };
+      if (value.kind === 'tone') {
+        const preset = callbacks.current.tones.find(p => p.id === value.id && !p.archived);
+        if (preset && applyTone(view, preset, dropPosition(view, event))) callbacks.current.notify?.(callbacks.current.scope === 'summary' ? `${preset.name} is the default tone for this scene.` : `${preset.name} applies to this beat only.`);
+        else callbacks.current.notify?.('This tone is unavailable. Choose an active tone from Story blocks.');
+      } else if (value.kind === 'emotion') {
+        const preset = callbacks.current.emotions.find(p => p.id === value.id && !p.archived), target = (event.target as Element | null)?.closest?.('[data-occurrence-id]'), id = target?.getAttribute('data-occurrence-id');
+        let pos = -1; view.state.doc.descendants((node, at) => { if (node.type.name === 'characterReference' && id && node.attrs.occurrenceId === id) pos = at; });
+        if (preset && pos >= 0) { applyEmotion(view, preset, { pos, occurrenceId: id! }); callbacks.current.notify?.(`${preset.name} applies to this character occurrence only.`); }
+        else callbacks.current.notify?.('Drop an emotion directly onto the character block it should affect.');
+      } else callbacks.current.notify?.('Choose a character, emotion, or tone from Story blocks.');
+    } catch { callbacks.current.notify?.('This block could not be inserted. Choose a block from Story blocks.'); }
+    return true;
+  };
   const editor = useEditor({
     extensions: [StarterKit, CharacterReference, EmotionReference, ToneReference, BlockIntegrity.configure({ notify: (message: string) => callbacks.current.notify?.(message) })], content: beat.document, editable,
     editorProps: {
-      attributes: { role: 'textbox', 'aria-label': `Freeform text for beat ${index + 1}`, 'aria-multiline': 'true', 'data-placeholder': 'Write anything that happens here…', spellcheck: 'true' },
+      attributes: { role: 'textbox', 'aria-label': ariaLabel ?? `Freeform text for beat ${index + 1}`, 'aria-multiline': 'true', 'data-placeholder': placeholder ?? 'Write anything that happens here…', spellcheck: 'true', 'data-board-scope': scope },
       handleDOMEvents: {
+        dragstart(view, event) {
+          const drag = event as DragEvent, target = (event.target as Element | null)?.closest?.('[data-story-reference]');
+          if (!view.editable || !target || !drag.dataTransfer) return false;
+          // A node can shift after typing before it without rerendering its
+          // React view. Resolve its current DOM position instead of a stale attr.
+          let position: number;
+          try { position = view.posAtDOM(target, 0); }
+          catch { position = Number(target.getAttribute('data-reference-position')); }
+          const node = view.state.doc.nodeAt(position);
+          if (!node || !['characterReference', 'emotionReference', 'toneReference'].includes(node.type.name)) return false;
+          const token = newOccurrenceId();
+          inlineDrag = { token, source: view, node, pos: position, document: view.state.doc };
+          drag.dataTransfer.setData(INLINE_REFERENCE_MIME, token);
+          drag.dataTransfer.setData('text/plain', node.textContent || node.attrs.label || 'Story block');
+          drag.dataTransfer.effectAllowed = 'copyMove';
+          // ProseMirror's built-in handler clears DataTransfer. Own this drag so
+          // linked emotion blocks travel with the character instead of orphaning.
+          return true;
+        },
+        dragend(view) { clearDropFeedback(view); inlineDrag = null; return false; },
         dragover(view, event) {
           const drag = event as DragEvent;
-          if (!view.editable || !drag.dataTransfer?.types.some(t => t === CHARACTER_REFERENCE_MIME || t === PRESET_REFERENCE_MIME)) return false;
-          event.preventDefault(); const target = (event.target as Element | null)?.closest?.('[data-occurrence-id]');
+          if (!view.editable || !Array.from(drag.dataTransfer?.types ?? []).some(t => t === CHARACTER_REFERENCE_MIME || t === PRESET_REFERENCE_MIME || t === INLINE_REFERENCE_MIME)) return false;
+          event.preventDefault(); drag.dataTransfer!.dropEffect = inlineDrag && !drag.ctrlKey && !drag.altKey ? 'move' : 'copy';
+          view.dom.classList.add('board-drop-active');
+          const target = (event.target as Element | null)?.closest?.('[data-occurrence-id]');
           view.dom.querySelectorAll('.block-drop-target').forEach(item => item.classList.remove('block-drop-target')); target?.classList.add('block-drop-target'); return true;
         },
-        dragleave(view) { view.dom.querySelectorAll('.block-drop-target').forEach(item => item.classList.remove('block-drop-target')); return false; },
+        dragleave(view, event) { if (!(event.relatedTarget instanceof globalThis.Node) || !view.dom.contains(event.relatedTarget)) clearDropFeedback(view); return false; },
+        // Handle app drops before ProseMirror's text-position hit test: its
+        // built-in path rejects whitespace outside the last rendered paragraph.
+        drop(view, event) { return handleBoardDrop(view, event as DragEvent); },
       },
-      handleDrop(view, event) {
-        view.dom.querySelectorAll('.block-drop-target').forEach(item => item.classList.remove('block-drop-target'));
-        if (handleCharacterReferenceDrop(view, event, callbacks.current.characters)) return true;
-        const payload = event.dataTransfer?.getData(PRESET_REFERENCE_MIME); if (!payload) return false;
-        event.preventDefault(); event.stopPropagation(); if (!view.editable) return true;
-        try {
-          const value = JSON.parse(payload) as { kind?: string; id?: string };
-          if (value.kind === 'tone') {
-            const preset = callbacks.current.tones.find(p => p.id === value.id && !p.archived), point = view.posAtCoords({ left: event.clientX, top: event.clientY });
-            if (preset && point && applyTone(view, preset, point.pos)) callbacks.current.notify?.(`${preset.name} applies to this beat only.`);
-          } else if (value.kind === 'emotion') {
-            const preset = callbacks.current.emotions.find(p => p.id === value.id && !p.archived), target = (event.target as Element | null)?.closest?.('[data-occurrence-id]'), id = target?.getAttribute('data-occurrence-id');
-            let pos = -1; view.state.doc.descendants((node, at) => { if (node.type.name === 'characterReference' && id && node.attrs.occurrenceId === id) pos = at; });
-            if (preset && pos >= 0) { applyEmotion(view, preset, { pos, occurrenceId: id! }); callbacks.current.notify?.(`${preset.name} applies to this character occurrence only.`); }
-            else callbacks.current.notify?.('Drop an emotion directly onto the character block it should affect.');
-          }
-        } catch { callbacks.current.notify?.('This block could not be inserted. Choose a block from Story blocks.'); } return true;
-      },
+      handleDrop: handleBoardDrop,
       handleClickOn(view, pos, node) {
         if (!['characterReference', 'emotionReference', 'toneReference'].includes(node.type.name)) return false;
         view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos))); return true;
@@ -225,5 +338,5 @@ export default function BeatEditor({ beat, index, characters, tones = [], emotio
   useEffect(() => { if (editor) register(beat.id, editor); return () => register(beat.id, null); }, [editor, beat.id, register]);
   useEffect(() => { if (!editor) return; const incoming = editor.schema.nodeFromJSON(beat.document); if (!editor.state.doc.eq(incoming)) editor.commands.setContent(beat.document, { emitUpdate: false }); }, [beat.document, editor]);
   useEffect(() => { editor?.setEditable(editable, false); }, [editable, editor]);
-  return <Definitions.Provider value={{ characters, tones, emotions }}><EditorContent editor={editor} className="beat-prose" /></Definitions.Provider>;
+  return <Definitions.Provider value={{ characters, tones, emotions, scope }}><EditorContent editor={editor} className={['beat-prose', wrapperClassName].filter(Boolean).join(' ')} /></Definitions.Provider>;
 }

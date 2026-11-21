@@ -3,6 +3,11 @@
 .story-block.block-emotion { background:var(--block-emotion-bg,#EADFF4); color:var(--block-emotion-ink,#543769); }
 .story-block.block-tone { background:var(--block-tone-bg,#FFE0B8); color:var(--block-tone-ink,#6A3A12); }
 .story-block.block-selected,.story-block.ProseMirror-selectednode { outline:2px solid var(--focus,#435058); outline-offset:2px; }
+.beat-prose .story-block[data-drag-handle] { cursor:grab; user-select:none; }
+.beat-prose .story-block[data-drag-handle]:active { cursor:grabbing; }
+.beat-prose .tiptap.board-drop-active { outline:2px dashed var(--focus,#435058); outline-offset:5px; background:var(--soft); }
+.summary-board .tiptap { min-height:145px; }
+.summary-board .tiptap:focus-visible { outline:1px solid var(--focus,#435058); outline-offset:5px; }
 .block-drop-target { outline:2px solid var(--focus,#435058)!important; outline-offset:3px; }
 .block-collection { display:flex; flex-wrap:wrap; align-items:flex-start; gap:7px; }
 .block-collection .story-block { min-height:32px; text-align:left; cursor:grab; }

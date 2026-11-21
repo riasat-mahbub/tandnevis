@@ -55,7 +55,6 @@
 .generation-panel .generation-discard { color: var(--generation-danger-ink); }
 
 .generation-panel-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
-.generation-panel-eyebrow { color: var(--generation-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .generation-panel-header h2 { margin: 3px 0 0; font: 500 19px/1.25 Georgia, serif; }
 .generation-panel-state { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--generation-line); border-radius: 99px; background: var(--generation-raised); color: var(--generation-muted); font-size: 10px; }
 .generation-state-completed,.generation-state-accepted { border-color: var(--generation-orange); color: var(--generation-ink); }
@@ -79,6 +78,10 @@
 .generation-draft-wrap { margin: 13px 0; }
 .generation-draft-label { display: block; margin-bottom: 6px; color: var(--generation-muted); font-size: 10px; font-weight: 650; }
 .generation-draft { max-height: 440px; margin: 0; padding: 14px 15px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--generation-line); border-radius: 5px; background: var(--generation-raised); color: var(--generation-ink); font: 15px/1.8 Georgia, serif; }
+.generation-beat-proposals { margin: 0; padding: 0 0 0 26px; max-height: 440px; overflow: auto; color: var(--generation-ink); font: 15px/1.75 Georgia, serif; }
+.generation-beat-proposals li { padding: 8px 10px; border-bottom: 1px solid var(--generation-line); }
+.generation-beat-proposals li::marker { color: var(--generation-muted); font: 600 12px 'Segoe UI', system-ui, sans-serif; }
+.generation-beat-proposals p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .generation-empty-draft { margin: 0; padding: 12px; border: 1px dashed var(--generation-line); color: var(--generation-muted); font-size: 11px; }
 .generation-actions { margin-top: 10px; }
 

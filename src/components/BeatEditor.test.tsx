@@ -1,11 +1,98 @@
 import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor, JSONContent } from '@tiptap/core';
-import BeatEditor, { CHARACTER_REFERENCE_MIME, handleCharacterReferenceDrop, updateCharacterReference, characterTargets, insertEmotionReference, insertToneReference, removeSelectedReference } from './BeatEditor';
+import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, INLINE_REFERENCE_MIME, handleCharacterReferenceDrop, updateCharacterReference, characterTargets, insertEmotionReference, insertToneReference, removeSelectedReference } from './BeatEditor';
 import { project } from '../test/fixtures';
 
 afterEach(cleanup);
+
+function dataTransfer() {
+  const values = new Map<string, string>();
+  return {
+    get types() { return [...values.keys()]; },
+    getData: (type: string) => values.get(type) ?? '',
+    setData: (type: string, value: string) => { values.set(type, value); },
+    clearData: () => { values.clear(); },
+    setDragImage: vi.fn(), files: [], effectAllowed: 'all', dropEffect: 'none',
+  } as unknown as DataTransfer;
+}
+
+it('accepts characters and scene tone on the empty summary board even when a browser text hit test misses', async () => {
+  const p = project(), preset = { id: 'tender', name: 'Tender', meaning: '', guidance: 'Warmth.', example: '', archived: false, revision: 0 };
+  let editor!: Editor;
+  render(<BeatEditor beat={{ id: 'summary', document: { type: 'doc', content: [{ type: 'paragraph' }] }, text: '' }} index={0} ariaLabel="Scene summary" placeholder="Describe the scene or drop blocks here" scope="summary" wrapperClassName="summary-board" characters={p.characters} tones={[preset]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  const board = await screen.findByRole('textbox', { name: 'Scene summary' });
+  vi.spyOn(editor.view, 'posAtCoords').mockReturnValue(null);
+  const transfer = dataTransfer(); transfer.setData(CHARACTER_REFERENCE_MIME, 'character-1');
+  fireEvent.dragOver(board, { dataTransfer: transfer });
+  expect(board).toHaveClass('board-drop-active');
+  fireEvent.drop(board, { dataTransfer: transfer, clientX: 200, clientY: 120 });
+  expect(board).not.toHaveClass('board-drop-active');
+  expect(characterTargets(editor)).toHaveLength(1);
+  const toneTransfer = dataTransfer(); toneTransfer.setData(PRESET_REFERENCE_MIME, JSON.stringify({ kind: 'tone', id: 'tender' }));
+  fireEvent.drop(board, { dataTransfer: toneTransfer, clientX: 200, clientY: 180 });
+  await waitFor(() => expect(board).toHaveTextContent('Scene tone: Tender'));
+  expect(board).toHaveAttribute('data-board-scope', 'summary');
+  expect(board).toHaveAttribute('data-placeholder', 'Describe the scene or drop blocks here');
+});
+
+it('moves a dragged inline character and its linked emotion from the summary to a beat with fresh occurrence identity', async () => {
+  const p = project(), emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 };
+  const sourceBeat = { id: 'summary', text: 'Maya waits.', document: { type: 'doc', content: [{ type: 'paragraph', content: [
+    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'summary-maya', label: 'Maya' } },
+    { type: 'emotionReference', attrs: { emotionId: 'awe', label: 'Awe', targetOccurrenceId: 'summary-maya' } },
+    { type: 'text', text: ' waits.' },
+  ] }] } };
+  const editors = new Map<string, Editor>();
+  const register = (id: string, value: Editor | null) => { if (value) editors.set(id, value); };
+  render(<><BeatEditor beat={sourceBeat} index={0} scope="summary" ariaLabel="Scene summary" characters={p.characters} emotions={[emotion]} register={register} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/><BeatEditor beat={p.scenes[0].beats[0]} index={0} characters={p.characters} emotions={[emotion]} register={register} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/></>);
+  await waitFor(() => expect(editors.size).toBe(2));
+  const source = editors.get('summary')!, target = editors.get(p.scenes[0].beats[0].id)!;
+  const chip = source.view.dom.querySelector('[data-occurrence-id]')!;
+  expect(chip).toHaveAttribute('draggable', 'true');
+  expect(chip).toHaveAttribute('data-drag-handle');
+  const transfer = dataTransfer();
+  vi.spyOn(source.view, 'posAtCoords').mockReturnValue({ pos: 1, inside: 1 });
+  fireEvent.mouseDown(chip, { button: 0 });
+  fireEvent.dragStart(chip, { dataTransfer: transfer });
+  expect(transfer.getData(INLINE_REFERENCE_MIME)).not.toBe('');
+  vi.spyOn(target.view, 'posAtCoords').mockReturnValue(null);
+  fireEvent.drop(target.view.dom, { dataTransfer: transfer, clientX: 90, clientY: 80 });
+  expect(characterTargets(source)).toHaveLength(0);
+  expect(source.getText()).toBe(' waits.');
+  expect(characterTargets(target)).toHaveLength(1);
+  const occurrence = characterTargets(target)[0].occurrenceId;
+  expect(occurrence).not.toBe('summary-maya');
+  let targetId: string | undefined;
+  target.state.doc.descendants(node => { if (node.type.name === 'emotionReference') targetId = node.attrs.targetOccurrenceId; });
+  expect(targetId).toBe(occurrence);
+  expect(target.getText()).toContain('The door opens.');
+  fireEvent.dragEnd(chip, { dataTransfer: transfer });
+});
+
+it('Ctrl-drags a character within a board as a new occurrence while preserving the original', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'original', label: 'Maya' } }, { type: 'text', text: ' waits.' }] }] };
+  let editor!: Editor;
+  render(<BeatEditor beat={beat} index={0} characters={p.characters} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  await waitFor(() => expect(editor).toBeDefined());
+  act(() => { editor.commands.insertContentAt(1, 'Before '); });
+  const chip = editor.view.dom.querySelector('[data-occurrence-id]')!;
+  const transfer = dataTransfer();
+  const hitTest = vi.spyOn(editor.view, 'posAtCoords').mockReturnValue({ pos: characterTargets(editor)[0].pos, inside: 1 });
+  fireEvent.mouseDown(chip, { button: 0 });
+  fireEvent.dragStart(chip, { dataTransfer: transfer });
+  hitTest.mockReturnValue(null);
+  const drop = new Event('drop', { bubbles: true, cancelable: true });
+  Object.assign(drop, { dataTransfer: transfer, ctrlKey: true, clientX: 30, clientY: 40 });
+  fireEvent(editor.view.dom, drop);
+  const targets = characterTargets(editor);
+  expect(targets).toHaveLength(2);
+  expect(targets[0].occurrenceId).toBe('original');
+  expect(targets[1].occurrenceId).not.toBe('original');
+  fireEvent.dragEnd(chip, { dataTransfer: transfer });
+});
 it('targets one repeated character occurrence with a separate emotion and removes linked blocks undoably', async () => {
   const p = project(), beat = p.scenes[0].beats[0];
   beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [

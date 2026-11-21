@@ -52,6 +52,75 @@ describe('GenerationSession', () => {
     expect(gateway.list).toHaveBeenCalledOnce();
   });
 
+  it('recovers beat and legacy prose drafts independently for the same scene', async () => {
+    const prose = job();
+    const beats = job({ id: 'beat-job', draftText: '{"beats":[]}', requestSnapshot: { ...prose.requestSnapshot, purpose: 'beats' } });
+    const gateway = fakeGateway({ list: vi.fn(async () => [beats, prose]) });
+    const session = new GenerationSession(gateway);
+    const proseListener = vi.fn(), beatsListener = vi.fn();
+    session.subscribe('session-1', 'scene-1', proseListener);
+    session.subscribe('session-1', 'scene-1', beatsListener, 'beats');
+
+    await session.load('session-1', 'scene-1', 'beats');
+    expect(session.getState('session-1', 'scene-1', 'beats').job?.id).toBe('beat-job');
+    expect(session.getState('session-1', 'scene-1').status).toBe('idle');
+    expect(proseListener).not.toHaveBeenCalled();
+    expect(beatsListener).toHaveBeenCalledOnce();
+
+    await session.load('session-1', 'scene-1');
+    expect(session.getState('session-1', 'scene-1').job?.id).toBe(prose.id);
+    session.markAccepted('session-1', 'scene-1', 'beats');
+    expect(session.getState('session-1', 'scene-1', 'beats').status).toBe('accepted');
+    expect(session.getState('session-1', 'scene-1').status).toBe('completed');
+  });
+
+  it('routes early beat events and stops that mode when switching projects', async () => {
+    let sendEvent!: (event: GenerationEvent) => void;
+    const beatJob = job({ status: 'streaming', requestSnapshot: { ...job().requestSnapshot, purpose: 'beats' } });
+    const gateway = fakeGateway({
+      start: vi.fn(async (_sessionId, _sceneId, _model, _guidance, onEvent) => {
+        sendEvent = onEvent;
+        onEvent({ type: 'textDelta', binding, delta: '{', draftText: '{' });
+        return beatJob;
+      }),
+      stop: vi.fn(async () => ({ ...beatJob, status: 'stopped' as const })),
+    });
+    const session = new GenerationSession(gateway);
+    await session.start('session-1', 'scene-1', 'gpt-test', '', 'beats');
+
+    expect(gateway.start).toHaveBeenCalledWith('session-1', 'scene-1', 'gpt-test', '', expect.any(Function), 'beats');
+    expect(session.getState('session-1', 'scene-1', 'beats').draftText).toBe('{');
+    expect(session.getState('session-1', 'scene-1').status).toBe('idle');
+    await expect(session.start('session-1', 'scene-1', 'gpt-test', '')).rejects.toThrow('already generating');
+    sendEvent({ type: 'checkpoint', binding, job: beatJob });
+    await session.stopSession('session-1');
+    expect(gateway.stop).toHaveBeenCalledWith('session-1', beatJob.id);
+    expect(session.getState('session-1', 'scene-1', 'beats').status).toBe('stopped');
+    expect(session.hasActiveSession('session-1')).toBe(false);
+  });
+
+  it('keeps late beat events out of a newer prose request and passes prose as the default', async () => {
+    const callbacks: ((event: GenerationEvent) => void)[] = [];
+    const beatJob = job({ id: 'beat-job', status: 'streaming', requestSnapshot: { ...job().requestSnapshot, purpose: 'beats' } });
+    const proseJob = job({ id: 'prose-job', status: 'streaming', draftText: 'Prose begins.' });
+    const gateway = fakeGateway({ start: vi.fn(async (_sessionId, _sceneId, _model, _guidance, onEvent, purpose) => {
+      callbacks.push(onEvent);
+      return purpose === 'beats' ? beatJob : proseJob;
+    }) });
+    const session = new GenerationSession(gateway);
+    await session.start('session-1', 'scene-1', 'gpt-test', '', 'beats');
+    const beatBinding = { ...binding, jobId: beatJob.id };
+    callbacks[0]({ type: 'completed', binding: beatBinding, job: { ...beatJob, status: 'completed' } });
+    session.markAccepted('session-1', 'scene-1', 'beats');
+    await session.start('session-1', 'scene-1', 'gpt-test', '');
+
+    expect(gateway.start).toHaveBeenLastCalledWith('session-1', 'scene-1', 'gpt-test', '', expect.any(Function), 'prose');
+    callbacks[0]({ type: 'textDelta', binding: beatBinding, delta: 'late', draftText: 'late' });
+    callbacks[0]({ type: 'checkpoint', binding: beatBinding, job: beatJob });
+    expect(session.getState('session-1', 'scene-1', 'beats').status).toBe('accepted');
+    expect(session.getState('session-1', 'scene-1')).toMatchObject({ status: 'streaming', draftText: 'Prose begins.', job: proseJob });
+  });
+
   it('keeps the native channel state when events arrive before start resolves', async () => {
     let sendEvent!: (event: GenerationEvent) => void;
     const streaming = job({ status: 'streaming', draftText: 'Maya begins.' });

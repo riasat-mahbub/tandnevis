@@ -2,9 +2,12 @@ import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import type { ProjectSnapshot } from './project';
 
 export type GenerationJobStatus = 'pending' | 'streaming' | 'completed' | 'stopped' | 'failed' | 'interrupted' | 'accepted' | 'discarded';
+export type GenerationPurpose = 'prose' | 'beats';
 
 export interface GenerationRequestSnapshot {
   schemaVersion: number;
+  /** Older saved requests are prose drafts. */
+  purpose?: GenerationPurpose;
   connectionId: string;
   model: string;
   defaultGuidance: string;
@@ -45,7 +48,7 @@ export type GenerationEvent =
 
 export interface GenerationGateway {
   desktop: boolean;
-  start(sessionId: string, sceneId: string, model: string, defaultGuidance: string, onEvent: (event: GenerationEvent) => void): Promise<GenerationJob>;
+  start(sessionId: string, sceneId: string, model: string, defaultGuidance: string, onEvent: (event: GenerationEvent) => void, purpose?: GenerationPurpose): Promise<GenerationJob>;
   stop(sessionId: string, jobId: string): Promise<GenerationJob>;
   list(sessionId: string, sceneId: string): Promise<GenerationJob[]>;
   accept(sessionId: string, sceneId: string, jobId: string, expectedProjectRevision: number, model: string, connectionId: string, acknowledgeOutdated: boolean): Promise<ProjectSnapshot>;
@@ -54,9 +57,9 @@ export interface GenerationGateway {
 
 export const desktopGenerationGateway: GenerationGateway = {
   desktop: isTauri(),
-  start(sessionId, sceneId, model, defaultGuidance, onEvent) {
+  start(sessionId, sceneId, model, defaultGuidance, onEvent, purpose = 'prose') {
     const onEventChannel = new Channel<GenerationEvent>(onEvent);
-    return invoke('start_scene_generation', { sessionId, sceneId, model, defaultGuidance, onEvent: onEventChannel });
+    return invoke('start_scene_generation', { sessionId, sceneId, model, defaultGuidance, purpose, onEvent: onEventChannel });
   },
   stop: (sessionId, jobId) => invoke('stop_scene_generation', { sessionId, jobId }),
   list: (sessionId, sceneId) => invoke('scene_generation_jobs', { sessionId, sceneId }),
