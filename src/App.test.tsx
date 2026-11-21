@@ -43,6 +43,36 @@ describe('connected writing views', () => {
     expect(summary).toHaveTextContent('Keep my place.');
     expect(g.save).not.toHaveBeenCalled();
   });
+  it('keeps an uncommitted character draft and the scene editor when moving between destinations', async () => {
+    const initial = project(), g = gateway(initial), created = structuredClone(initial);
+    created.revision = 1;
+    vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
+      if (operation.type !== 'createCharacter') throw new Error('Unexpected write');
+      created.characters.push({ id: 'character-new', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', archived: false, defaultToneId: '', defaultEmotionId: '' });
+      return structuredClone(created);
+    });
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Start from a template' }), { target: { value: 'charming-liar' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Sable' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Baseline voice' }), { target: { value: 'Careful, warm, and specific.' } });
+    expect(g.apply).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    expect(screen.getByRole('textbox', { name: 'Character name' })).toHaveValue('Sable');
+    expect(screen.getByRole('textbox', { name: 'Baseline voice' })).toHaveValue('Careful, warm, and specific.');
+    fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+    await waitFor(() => expect(g.apply).toHaveBeenCalledTimes(1));
+    expect(g.apply).toHaveBeenCalledWith('session-1', 0, expect.objectContaining({ type: 'createCharacter', name: 'Sable', voice: 'Careful, warm, and specific.' }));
+    expect(g.save).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+  });
   it('creates a tone in its full library and keeps it unsaved until project Save', async () => {
     const g = gateway(), created = project(); created.revision = 1;
     created.tones.push({ id: 'tone-new', name: 'Quiet', meaning: '', guidance: '', example: '', archived: false, revision: 0 });

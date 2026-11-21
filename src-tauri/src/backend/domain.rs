@@ -398,7 +398,9 @@ pub(super) fn refresh_occurrences(document: &mut Value) {
                 .unwrap_or_default()
                 .to_owned();
             let next = new_id();
-            ids.insert(old, next.clone());
+            if !old.is_empty() {
+                ids.insert(old, next.clone());
+            }
             node["attrs"]["occurrenceId"] = json!(next);
         }
     });
@@ -407,8 +409,10 @@ pub(super) fn refresh_occurrences(document: &mut Value) {
             let old = node["attrs"]["targetOccurrenceId"]
                 .as_str()
                 .unwrap_or_default();
-            if let Some(next) = ids.get(old) {
-                node["attrs"]["targetOccurrenceId"] = json!(next);
+            if !old.is_empty() {
+                if let Some(next) = ids.get(old) {
+                    node["attrs"]["targetOccurrenceId"] = json!(next);
+                }
             }
         }
     });
@@ -581,7 +585,7 @@ pub(super) fn document_text(
                     return Err("Reusable references cannot contain nodes.".into());
                 }
                 let (entries, key, label) = if kind == "toneReference" {
-                    (tones, "toneId", "Beat tone")
+                    (tones, "toneId", "Tone")
                 } else {
                     (emotions, "emotionId", "Emotion")
                 };
@@ -651,8 +655,6 @@ pub(super) fn document_text(
         return Err("Beat document root must be type doc.".into());
     }
     let mut occurrences = HashSet::new();
-    let mut targets = HashSet::new();
-    let mut tone_count = 0;
     let mut invalid = false;
     walk_nodes(document, &mut |value| match value["type"].as_str() {
         Some("characterReference") => {
@@ -666,22 +668,20 @@ pub(super) fn document_text(
             }
         }
         Some("emotionReference") => {
-            if let Some(id) = value["attrs"]["targetOccurrenceId"]
-                .as_str()
-                .filter(|v| !v.is_empty())
-            {
-                if !targets.insert(id.to_owned()) {
-                    invalid = true;
-                }
-            } else {
+            // Older documents may retain an explicit occurrence target. New
+            // emotion references are freeform tokens and need no target.
+            if value["attrs"].as_object().is_none_or(|attrs| {
+                attrs
+                    .get("targetOccurrenceId")
+                    .is_some_and(|target| !target.as_str().is_some_and(|id| id.len() <= 256))
+            }) {
                 invalid = true;
             }
         }
-        Some("toneReference") => tone_count += 1,
         _ => {}
     });
-    if invalid || tone_count > 1 || targets.iter().any(|id| !occurrences.contains(id)) {
-        return Err("Blocks need unique character occurrences, valid same-beat emotion targets, and at most one beat tone.".into());
+    if invalid {
+        return Err("Character occurrence IDs must be unique, and legacy emotion targets must be short strings.".into());
     }
     node(document, characters, tones, emotions, 0, &mut 0)
 }
@@ -1299,8 +1299,7 @@ impl ProjectSnapshot {
             if let Some(document) = &mut scene.summary_document {
                 normalize_occurrences(document, &format!("{}:summary", scene.id));
                 scene.summary =
-                    document_text(document, &self.characters, &self.tones, &self.emotions)?
-                        .replace("[Beat tone:", "[Scene tone:");
+                    document_text(document, &self.characters, &self.tones, &self.emotions)?;
             }
             for beat in &mut scene.beats {
                 normalize_occurrences(&mut beat.document, &beat.id);

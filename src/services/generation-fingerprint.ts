@@ -14,6 +14,7 @@ function stableJson(value: unknown): string {
  */
 export function generationInputFingerprint(context: DeepReadonly<SceneGenerationContext>, defaultGuidance: string, purpose: 'prose' | 'beats' = 'prose'): string {
   const input = {
+    schemaVersion: context.schemaVersion,
     scene: context.scene,
     summaryBoard: context.summaryBoard,
     beats: context.beats,

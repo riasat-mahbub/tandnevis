@@ -4,10 +4,13 @@ import type { Character, Operation, Preset, PresetKind, ProjectSnapshot } from '
 import type { Workspace } from '../services/workspace';
 import { TitleField } from './Fields';
 import { summaryBoard } from '../services/summary-board';
+import { stockCharacterTemplates } from '../content/stock-characters';
 
 export type LibraryKind = 'characters' | 'tones' | 'emotions';
 type Definition = Character | Preset;
 interface Usage { key: string; label: string; sceneId?: string; beatId?: string; occurrenceId?: string; characterId?: string }
+interface CharacterDraft { templateId: string; name: string; background: string; personality: string; voice: string }
+const emptyCharacterDraft = (): CharacterDraft => ({ templateId: '', name: '', background: '', personality: '', voice: '' });
 const titles = { characters: 'Characters', tones: 'Tones', emotions: 'Emotions' };
 const singulars = { characters: 'character', tones: 'tone', emotions: 'emotion' };
 
@@ -70,9 +73,13 @@ export default function LibraryView({ kind, project, workspace, locked, selected
   const [search, setSearch] = useState('');
   const [archived, setArchived] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [newName, setNewName] = useState('');
+  const [characterDraft, setCharacterDraft] = useState<CharacterDraft>(emptyCharacterDraft);
   const [detailOpen, setDetailOpen] = useState(false);
   const createInput = useRef<HTMLInputElement>(null);
+  const newDefinitionButton = useRef<HTMLButtonElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const definitions: Definition[] = kind === 'characters' ? project.characters : kind === 'tones' ? project.tones : project.emotions;
   const filtered = definitions.filter(item => item.archived === archived && item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
@@ -85,7 +92,7 @@ export default function LibraryView({ kind, project, workspace, locked, selected
   useEffect(() => {
     if (!selectedId || !definitions.some(item => item.id === selectedId)) { const next = filtered[0]?.id ?? null; if (next !== selectedId) onSelect(next); }
   }, [selectedId, definitions, filtered, onSelect]);
-  useEffect(() => { if (createRequest) { setCreating(true); setDetailOpen(false); } }, [createRequest]);
+  useEffect(() => { if (createRequest) beginCreate(); }, [createRequest]);
   useEffect(() => { if (creating) createInput.current?.focus(); }, [creating]);
 
   const edit = (operation: Operation) => { void workspace.dispatch(operation).catch(() => {}); };
@@ -94,13 +101,54 @@ export default function LibraryView({ kind, project, workspace, locked, selected
     if (kind === 'characters') edit({ type: 'updateCharacter', characterId: selected.id, ...fields });
     else edit({ type: 'updatePreset', kind: presetKind!, presetId: selected.id, ...fields });
   }
+  function beginCreate() {
+    if (kind === 'characters' && creating) { setDetailOpen(true); requestAnimationFrame(() => createInput.current?.focus()); return; }
+    const hasCharacterDraft = !!(characterDraft.templateId || characterDraft.name.trim() || characterDraft.background.trim() || characterDraft.personality.trim() || characterDraft.voice.trim());
+    setCreating(true); setDetailOpen(kind === 'characters'); setNewName('');
+    if (kind !== 'characters' || !hasCharacterDraft) setCharacterDraft(emptyCharacterDraft());
+    setSearch(''); setArchived(false);
+  }
+  function cancelCreate() {
+    setCreating(false); setDetailOpen(false); setNewName(''); setCharacterDraft(emptyCharacterDraft());
+    requestAnimationFrame(() => newDefinitionButton.current?.focus({ preventScroll: true }));
+  }
+  function selectCharacterTemplate(templateId: string) {
+    const template = stockCharacterTemplates.find(item => item.id === templateId);
+    setCharacterDraft(current => ({
+      ...current,
+      templateId,
+      background: template?.background ?? '',
+      personality: template?.personality ?? '',
+      voice: template?.voice ?? '',
+    }));
+  }
+  function updateCharacterDraft(field: 'name' | 'background' | 'personality' | 'voice', value: string) {
+    setCharacterDraft(current => ({ ...current, [field]: value }));
+  }
+  const characterDraftForm = <form className="library-create library-create-character" onSubmit={event => { event.preventDefault(); if (characterDraft.name.trim()) run(create); }}>
+    <label>Start from a template (optional)<select aria-label="Start from a template" value={characterDraft.templateId} disabled={locked || submitting} onChange={event => selectCharacterTemplate(event.target.value)}><option value="">Blank character</option>{stockCharacterTemplates.map(template => <option key={template.id} value={template.id}>{template.title}</option>)}</select></label>
+    <p className="character-template-hint">A template fills background, personality, and voice; it never supplies the name. Changing templates replaces those fields.</p>
+    <label>Character name<input ref={createInput} value={characterDraft.name} maxLength={250} autoComplete="off" disabled={locked || submitting} onChange={event => updateCharacterDraft('name', event.target.value)} /></label>
+    <label>Background<textarea rows={4} value={characterDraft.background} disabled={locked || submitting} onChange={event => updateCharacterDraft('background', event.target.value)} /></label>
+    <label>Personality<textarea rows={3} value={characterDraft.personality} disabled={locked || submitting} onChange={event => updateCharacterDraft('personality', event.target.value)} /></label>
+    <label>Baseline voice<textarea rows={3} value={characterDraft.voice} disabled={locked || submitting} onChange={event => updateCharacterDraft('voice', event.target.value)} placeholder="How does this character usually sound?" /></label>
+    <div className="button-row"><button className="primary" disabled={locked || submitting || !characterDraft.name.trim()}>Create character</button><button type="button" disabled={submitting} onClick={cancelCreate}>Cancel</button></div>
+  </form>;
   async function create() {
+    if (submittingRef.current) return;
+    submittingRef.current = true; setSubmitting(true);
     const before = new Set(definitions.map(item => item.id));
-    const snapshot = await workspace.dispatch(kind === 'characters' ? { type: 'createCharacter', name: newName.trim() } : { type: 'createPreset', kind: presetKind!, name: newName.trim() });
-    const items = kind === 'characters' ? snapshot.characters : kind === 'tones' ? snapshot.tones : snapshot.emotions;
-    const created = items.find(item => !before.has(item.id));
-    onSelect(created?.id ?? null); setNewName(''); setSearch(''); setArchived(false); setCreating(false); setDetailOpen(true);
-    requestAnimationFrame(() => { const input = detailRef.current?.querySelector<HTMLInputElement>('input'); input?.focus(); input?.select(); });
+    try {
+      const snapshot = await workspace.dispatch(kind === 'characters'
+        ? { type: 'createCharacter', name: characterDraft.name.trim(), background: characterDraft.background, personality: characterDraft.personality, voice: characterDraft.voice }
+        : { type: 'createPreset', kind: presetKind!, name: newName.trim() });
+      const items = kind === 'characters' ? snapshot.characters : kind === 'tones' ? snapshot.tones : snapshot.emotions;
+      const created = items.find(item => !before.has(item.id));
+      onSelect(created?.id ?? null); setNewName(''); setCharacterDraft(emptyCharacterDraft()); setSearch(''); setArchived(false); setCreating(false); setDetailOpen(true);
+      requestAnimationFrame(() => { const input = detailRef.current?.querySelector<HTMLInputElement>('input'); input?.focus(); input?.select(); });
+    } finally {
+      submittingRef.current = false; setSubmitting(false);
+    }
   }
   async function duplicate() {
     if (!selected) return;
@@ -115,26 +163,26 @@ export default function LibraryView({ kind, project, workspace, locked, selected
     await workspace.dispatch(kind === 'characters' ? { type: 'deleteCharacter', characterId: selected.id } : { type: 'deletePreset', kind: presetKind!, presetId: selected.id });
     onSelect(null); setDetailOpen(false); notify(`${selected.name} moved to Trash. Undo or Restore brings it back.`);
   }
-  const description = kind === 'characters' ? 'Build profiles once. Use their blocks in every scene.' : kind === 'tones' ? 'Define reusable writing guidance for a scene or a freeform beat.' : 'Define reusable feelings to attach to a character in a beat.';
+  const description = kind === 'characters' ? 'Build profiles once. Use their blocks in any scene.' : kind === 'tones' ? 'Define reusable guidance you can reference in scene text.' : 'Define reusable emotional guidance you can reference in scene text.';
 
   return <main className={`global-library global-library-${singular} ${detailOpen ? 'library-detail-open' : ''}`} aria-labelledby={`${kind}-heading`}>
-    <div className="global-library-heading"><div><h1 id={`${kind}-heading`}>{titles[kind]}</h1><p>{description}</p></div><div className="library-heading-actions"><button className="primary" disabled={locked} onClick={() => { setCreating(true); setDetailOpen(false); }}><Plus size={16}/>New {singular}</button></div></div>
+    <div className="global-library-heading"><div><h1 id={`${kind}-heading`}>{titles[kind]}</h1><p>{description}</p></div><div className="library-heading-actions"><button ref={newDefinitionButton} className="primary" disabled={locked} onClick={beginCreate}><Plus size={16}/>New {singular}</button></div></div>
     <div className="library-master-detail">
       <aside className="definition-list" aria-label={`${titles[kind]} library`}>
         <label className="library-search"><span className="sr-only">Search {kind}</span><Search size={15} aria-hidden="true"/><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${kind}`} /></label>
         <div className="library-filter" aria-label={`${titles[kind]} status`}><button aria-pressed={!archived} onClick={() => { setArchived(false); setDetailOpen(false); }}>Active</button><button aria-pressed={archived} onClick={() => { setArchived(true); setDetailOpen(false); }}>Archived</button></div>
-        {creating && <form className="library-create" onSubmit={event => { event.preventDefault(); if (newName.trim()) run(create); }}><label>{`New ${singular} name`}<input ref={createInput} value={newName} maxLength={250} onChange={event => setNewName(event.target.value)} /></label><div className="button-row"><button className="primary" disabled={locked || !newName.trim()}>Create {singular}</button><button type="button" onClick={() => setCreating(false)}>Cancel</button></div></form>}
-        {filtered.length ? <ul className="definition-rows">{filtered.map(item => <li key={item.id}><button className={item.id === selectedId ? 'definition-selected' : ''} aria-pressed={item.id === selectedId} onClick={() => { onSelect(item.id); setDetailOpen(true); }}><span><Icon size={14}/><strong>{item.name}</strong></span><small>{kind === 'characters' ? (item as Character).voice || (item as Character).personality || 'Character profile' : (item as Preset).meaning || (item as Preset).guidance || 'Reusable guidance'}</small>{item.archived && <span className="definition-archived">Archived</span>}</button></li>)}</ul> : <div className="library-empty"><p>{search ? `No ${kind} match “${search}”.` : archived ? `No archived ${kind}.` : `No ${kind} yet.`}</p>{search ? <button onClick={() => setSearch('')}>Clear search</button> : !archived && <p>{kind === 'characters' ? 'Start with a name. Add background and voice when you need them.' : `Create a ${singular} to add to this project.`}</p>}</div>}
+        {creating && kind !== 'characters' && <form className="library-create" onSubmit={event => { event.preventDefault(); if (newName.trim()) run(create); }}><label>{`New ${singular} name`}<input ref={createInput} value={newName} maxLength={250} disabled={locked || submitting} onChange={event => setNewName(event.target.value)} /></label><div className="button-row"><button className="primary" disabled={locked || submitting || !newName.trim()}>Create {singular}</button><button type="button" disabled={submitting} onClick={cancelCreate}>Cancel</button></div></form>}
+        {filtered.length ? <ul className="definition-rows">{filtered.map(item => <li key={item.id}><button className={item.id === selectedId ? 'definition-selected' : ''} aria-pressed={item.id === selectedId} onClick={() => { onSelect(item.id); setCreating(false); setNewName(''); setDetailOpen(true); }}><span><Icon size={14}/><strong>{item.name}</strong></span><small>{kind === 'characters' ? (item as Character).voice || (item as Character).personality || 'Character profile' : (item as Preset).meaning || (item as Preset).guidance || 'Reusable guidance'}</small>{item.archived && <span className="definition-archived">Archived</span>}</button></li>)}</ul> : <div className="library-empty"><p>{search ? `No ${kind} match “${search}”.` : archived ? `No archived ${kind}.` : `No ${kind} yet.`}</p>{search ? <button onClick={() => setSearch('')}>Clear search</button> : !archived && <p>{kind === 'characters' ? 'Start with a name, then add background, personality, and voice.' : `Create a ${singular} to add to this project.`}</p>}</div>}
       </aside>
       <div className="definition-detail" ref={detailRef}>
-        {selected ? <><button className="quiet library-back-list" onClick={() => setDetailOpen(false)}><ArrowLeft size={15}/>Back to {kind}</button><div className="definition-heading"><div><span className={`block-preview block-${singular}`}><Icon size={14}/>{singular[0].toUpperCase() + singular.slice(1)}: {selected.name}</span><p className="shared-definition">Shared across this project</p></div><div className="definition-actions"><button disabled={locked} onClick={() => run(duplicate)}><Copy size={14}/>Duplicate</button><button disabled={locked} onClick={() => { update({ archived: !selected.archived }); notify(selected.archived ? `${selected.name} restored to the insertion library.` : `${selected.name} archived. Existing references are preserved.`); }}><Archive size={14}/>{selected.archived ? 'Restore' : 'Archive'}</button><button className="danger" disabled={locked || usages.length > 0} title={usages.length ? 'This definition is in use. Archive it to preserve its references.' : 'Move this unused definition to Trash'} onClick={() => run(remove)}><Trash2 size={14}/>Delete</button></div></div>
+        {creating && kind === 'characters' ? <><button className="quiet library-back-list" onClick={() => setDetailOpen(false)}><ArrowLeft size={15}/>Back to characters</button><div className="character-draft-heading"><h2>New character</h2><p className="muted">Review this draft, then create it once for use across the project.</p></div>{characterDraftForm}</> : selected ? <><button className="quiet library-back-list" onClick={() => setDetailOpen(false)}><ArrowLeft size={15}/>Back to {kind}</button><div className="definition-heading"><div><span className={`block-preview block-${singular}`}><Icon size={14}/>{singular[0].toUpperCase() + singular.slice(1)}: {selected.name}</span><p className="shared-definition">Shared across this project</p></div><div className="definition-actions"><button disabled={locked} onClick={() => run(duplicate)}><Copy size={14}/>Duplicate</button><button disabled={locked} onClick={() => { update({ archived: !selected.archived }); notify(selected.archived ? `${selected.name} restored to the insertion library.` : `${selected.name} archived. Existing references are preserved.`); }}><Archive size={14}/>{selected.archived ? 'Restore' : 'Archive'}</button><button className="danger" disabled={locked || usages.length > 0} title={usages.length ? 'This definition is in use. Archive it to preserve its references.' : 'Move this unused definition to Trash'} onClick={() => run(remove)}><Trash2 size={14}/>Delete</button></div></div>
           <TitleField key={selected.id} label={`${singular[0].toUpperCase() + singular.slice(1)} name`} value={selected.name} disabled={locked} large onSave={name => update({ name })}/>
           {kind === 'characters' ? <>
             {(['background', 'personality', 'voice'] as const).map(field => <label key={field}>{field === 'voice' ? 'Baseline voice' : field[0].toUpperCase() + field.slice(1)}<textarea rows={field === 'background' ? 5 : 3} value={(selected as Character)[field]} disabled={locked} placeholder={field === 'voice' ? 'How does this character usually sound?' : undefined} onChange={event => update({ [field]: event.target.value })}/></label>)}
-            <section className="character-defaults"><h2>Default direction</h2><p className="muted">Used when a character occurrence has no local override.</p>{(['tone', 'emotion'] as const).map(type => { const character = selected as Character; const value = type === 'tone' ? character.defaultToneId : character.defaultEmotionId; const options = type === 'tone' ? project.tones : project.emotions; return <label key={type}>Default {type}<select value={value} disabled={locked} onChange={event => update({ [type === 'tone' ? 'defaultToneId' : 'defaultEmotionId']: event.target.value })}><option value="">None</option>{options.filter(item => !item.archived || item.id === value).map(item => <option key={item.id} value={item.id}>{item.name}{item.archived ? ' (archived)' : ''}</option>)}</select>{value && <small>{options.find(item => item.id === value)?.guidance}</small>}</label>; })}</section>
-          </> : <>{(['meaning', 'guidance', 'example'] as const).map(field => <label key={field}>{field === 'guidance' ? kind === 'tones' ? 'Writing guidance' : 'Expression guidance' : field === 'example' ? 'Example (optional)' : 'Meaning'}<textarea disabled={locked} rows={field === 'guidance' ? 5 : 3} value={(selected as Preset)[field]} onChange={event => update({ [field]: event.target.value })}/></label>)}<p className="definition-instruction">{kind === 'tones' ? 'Use this block for a whole scene or an individual beat.' : 'Drop this block onto a character in a beat.'}</p></>}
+            <section className="character-defaults"><h2>Default guidance</h2><p className="muted">Optional tone and emotion references included when this character is used.</p>{(['tone', 'emotion'] as const).map(type => { const character = selected as Character; const value = type === 'tone' ? character.defaultToneId : character.defaultEmotionId; const options = type === 'tone' ? project.tones : project.emotions; return <label key={type}>Default {type}<select value={value} disabled={locked} onChange={event => update({ [type === 'tone' ? 'defaultToneId' : 'defaultEmotionId']: event.target.value })}><option value="">None</option>{options.filter(item => !item.archived || item.id === value).map(item => <option key={item.id} value={item.id}>{item.name}{item.archived ? ' (archived)' : ''}</option>)}</select>{value && <small>{options.find(item => item.id === value)?.guidance}</small>}</label>; })}</section>
+          </> : <>{(['meaning', 'guidance', 'example'] as const).map(field => <label key={field}>{field === 'guidance' ? kind === 'tones' ? 'Writing guidance' : 'Expression guidance' : field === 'example' ? 'Example (optional)' : 'Meaning'}<textarea disabled={locked} rows={field === 'guidance' ? 5 : 3} value={(selected as Preset)[field]} onChange={event => update({ [field]: event.target.value })}/></label>)}<p className="definition-instruction">Reference this guidance in scene text when it helps.</p></>}
           <section className="definition-usages"><h2>Used in</h2><p className="muted">Edits affect future generation wherever this definition is referenced. Written prose stays unchanged.</p>{usages.length ? <ul>{usages.map(usage => <li key={usage.key}>{usage.sceneId ? <button className="quiet" onClick={() => onOpenUsage(usage.sceneId!, usage.beatId, usage.occurrenceId)}>{usage.label}</button> : usage.characterId ? <button className="quiet" onClick={() => onOpenCharacter(usage.characterId!)}>{usage.label}</button> : <span>{usage.label}</span>}</li>)}</ul> : <p className="empty-inline">Not used in any scene or character default yet.</p>}</section>
-        </> : <div className="definition-empty"><Icon size={30}/><h2>{definitions.length ? `Choose a ${singular}` : `Create your first ${singular}`}</h2><p>{definitions.length ? 'Select a definition from the library to edit its shared guidance.' : description}</p><button disabled={locked} onClick={() => { setCreating(true); setDetailOpen(false); }}>New {singular}</button></div>}
+        </> : <div className="definition-empty"><Icon size={30}/><h2>{definitions.length ? `Choose a ${singular}` : `Create your first ${singular}`}</h2><p>{definitions.length ? 'Select a definition from the library to edit its shared guidance.' : description}</p><button disabled={locked} onClick={beginCreate}>New {singular}</button></div>}
       </div>
     </div>
   </main>;

@@ -71,7 +71,8 @@ describe('scene generation context', () => {
     expect(context.beats[5].references.map(reference => [reference.label, reference.emotion])).toEqual([
       ['Damian', 'awe'], ['Maya', 'embarrassed'],
     ]);
-    expect(context.readableContext).toContain('Scene tone: Tender with awkward humor');
+    expect(context.readableContext).toContain('Scene default tone: Tender with awkward humor');
+    expect(context.schemaVersion).toBe(2);
     expect(context.readableContext).toContain('Baseline voice: Blunt, guarded speech.');
     expect(context.readableContext).toContain('This profile is archived; it remains attached to an existing beat reference.');
     expect(context.readableContext).toContain('[Maya — emotion: serious]');
@@ -127,6 +128,57 @@ describe('scene generation context', () => {
     expect(context.beats[0].readableText).toContain('is stitching');
     expect(() => buildSceneGenerationContext(project, 'deleted-scene')).toThrow('selected scene');
   });
+});
+
+it('keeps emotion and tone references freeform, ordered, and independent of legacy defaults', () => {
+  const project = sampleProject();
+  const preset = (id: string, name: string) => ({ id, name, meaning: `${name} meaning`, guidance: `${name} guidance`, example: '', archived: false, revision: 0 });
+  project.tones = [preset('scene-default', 'Scene default'), preset('tone-a', 'Tender'), preset('tone-b', 'Tense')];
+  project.emotions = [preset('emotion-default', 'Serious'), preset('emotion-a', 'Awe'), preset('emotion-b', 'Embarrassed')];
+  project.scenes[0].toneId = 'scene-default';
+  project.scenes[0].summaryDocument = sceneDocument(paragraph(
+    { type: 'characterReference', attrs: { characterId: 'maya-id', occurrenceId: 'maya-old', label: 'Maya' } },
+    { type: 'emotionReference', attrs: { emotionId: 'emotion-a', label: 'Old Awe', targetOccurrenceId: 'maya-old' } },
+    ' considers it. ',
+    { type: 'emotionReference', attrs: { emotionId: 'emotion-b', label: 'Embarrassed' } },
+    ' ',
+    { type: 'toneReference', attrs: { toneId: 'tone-a', label: 'Tender' } },
+    ' then ',
+    { type: 'toneReference', attrs: { toneId: 'tone-b', label: 'Tense' } },
+  ));
+  project.scenes[0].beats = [{
+    id: 'freeform-beat',
+    document: sceneDocument(paragraph(
+      { type: 'toneReference', attrs: { toneId: 'tone-b', label: 'Tense' } },
+      ' First cue. ',
+      { type: 'emotionReference', attrs: { emotionId: 'emotion-a', label: 'Awe' } },
+      ' ',
+      { type: 'toneReference', attrs: { toneId: 'tone-a', label: 'Tender' } },
+    )),
+    text: 'First cue.',
+  }];
+  project.characters[0].defaultEmotionId = 'emotion-default';
+
+  const context = buildSceneGenerationContext(project, 'scene-1');
+  const summaryNodes = context.summaryBoard.document.content?.[0].content;
+  expect(summaryNodes?.[1]?.attrs?.targetOccurrenceId).toBe('maya-old');
+  expect(context.summaryBoard.readableText).toContain('[Emotion: Awe → Maya]');
+  expect(context.summaryBoard.readableText).toContain('[Emotion: Embarrassed]');
+  expect(context.summaryBoard.readableText).toContain('[Tone: Tender] then [Tone: Tense]');
+  expect(context.beats[0].readableText).toBe('[Tone: Tense] First cue. [Emotion: Awe] [Tone: Tender]');
+  expect(context.scene).toMatchObject({ tone: 'Scene default', toneId: 'scene-default' });
+  expect(context.readableContext).toContain('Scene default tone: Scene default');
+  expect(context.readableContext).not.toContain('inherited scene');
+  expect(context.referencedPresets.map(item => item.id)).toEqual([
+    'emotion-a', 'emotion-b', 'tone-a', 'tone-b', 'scene-default', 'emotion-default',
+  ]);
+
+  const unresolvedLegacy = structuredClone(project);
+  const emotion = unresolvedLegacy.scenes[0].summaryDocument!.content![0].content![1];
+  emotion.attrs!.targetOccurrenceId = 'removed-occurrence';
+  const unresolved = buildSceneGenerationContext(unresolvedLegacy, 'scene-1');
+  expect(unresolved.summaryBoard.document.content?.[0].content?.[1].attrs?.targetOccurrenceId).toBe('removed-occurrence');
+  expect(unresolved.summaryBoard.readableText).toContain('[Emotion: Awe → character reference unavailable]');
 });
 
 it('keeps a list and the paragraph after it separated in one beat', () => {

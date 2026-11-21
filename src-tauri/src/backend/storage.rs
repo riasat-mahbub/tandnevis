@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 4;
+const SCHEMA_VERSION: i32 = 5;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
@@ -744,7 +744,16 @@ fn migrate(connection: &mut Connection, version: i32) -> Result<()> {
         }
         3 => {
             // No table rewrite: the existing extension row now owns rich summaries.
-            // The version gate prevents old apps from discarding those documents.
+            // Version 4 is the schema with rich summaries, tone/emotion libraries,
+            // and defaults in the extension row.
+            connection
+                .pragma_update(None, "user_version", 4)
+                .map_err(sql)?;
+            migrate(connection, 4)
+        }
+        4 => {
+            // Freeform inline references do not require a table rewrite. Bumping the
+            // gate prevents older binaries from reinterpreting the new document rules.
             connection
                 .pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(sql)?;
@@ -1073,8 +1082,7 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
             &project.characters,
             &project.tones,
             &project.emotions,
-        )?
-        .replace("[Beat tone:", "[Scene tone:");
+        )?;
         s.summary_document = Some(document);
         for b in &mut s.beats {
             normalize_occurrences(&mut b.document, &b.id);

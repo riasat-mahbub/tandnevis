@@ -267,7 +267,7 @@ fn rich_summary_board_persists_shared_links_and_remaps_duplicates() {
         &mut db,
         json!({"type":"updateScene","sceneId":sid,"summaryDocument":document,"toneId":"","tone":""}),
     );
-    assert!(p.scenes[0].summary.contains("[Scene tone: Tender]"));
+    assert!(p.scenes[0].summary.contains("[Tone: Tender]"));
     assert!(db
         .apply(
             p.revision,
@@ -313,6 +313,150 @@ fn rich_summary_board_persists_shared_links_and_remaps_duplicates() {
         .all(|s| !s.summary.contains("Maya Vale")));
     let after = apply(&mut reopened, Redo);
     assert!(after.scenes.iter().all(|s| s.summary.contains("Maya Vale")));
+}
+
+#[test]
+fn freeform_emotion_and_tone_references_persist_without_reassignment() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let tone_a = p
+        .tones
+        .iter()
+        .find(|preset| preset.name == "Tender")
+        .unwrap()
+        .id
+        .clone();
+    let tone_b = p
+        .tones
+        .iter()
+        .find(|preset| preset.name == "Tense")
+        .unwrap()
+        .id
+        .clone();
+    let emotion = p
+        .emotions
+        .iter()
+        .find(|preset| preset.name == "Awe")
+        .unwrap()
+        .id
+        .clone();
+    let summary = json!({"type":"doc","content":[{"type":"paragraph","content":[
+        {"type":"toneReference","attrs":{"toneId":tone_a,"label":"Tender"}},
+        {"type":"text","text":" first "},
+        {"type":"emotionReference","attrs":{"emotionId":emotion,"label":"Awe"}},
+        {"type":"text","text":" then "},
+        {"type":"toneReference","attrs":{"toneId":tone_b,"label":"Tense"}}
+    ]}]});
+    apply_json(
+        &mut db,
+        json!({
+            "type":"updateScene", "sceneId":scene_id.clone(), "summaryDocument":summary,
+            "title":null, "summary":null, "tone":null, "toneId":"", "prose":null, "narration":null
+        }),
+    );
+    let beat_document = json!({"type":"doc","content":[{"type":"paragraph","content":[
+        {"type":"emotionReference","attrs":{"emotionId":emotion,"label":"Awe"}},
+        {"type":"text","text":" and "},
+        {"type":"toneReference","attrs":{"toneId":tone_a,"label":"Tender"}},
+        {"type":"text","text":" then "},
+        {"type":"toneReference","attrs":{"toneId":tone_b,"label":"Tense"}}
+    ]}]});
+    let saved = apply_json(
+        &mut db,
+        json!({
+            "type":"createBeat", "sceneId":scene_id, "document":beat_document, "text":""
+        }),
+    );
+    assert!(saved.scenes[0].summary.contains("[Tone: Tender]"));
+    assert!(saved.scenes[0].beats[0].text.contains("[Emotion: Awe]"));
+    let summary_before = saved.scenes[0].summary_document.clone().unwrap();
+    let beat_before = saved.scenes[0].beats[0].document.clone();
+    assert!(summary_before["content"][0]["content"][2]["attrs"]["targetOccurrenceId"].is_null());
+    assert_eq!(
+        summary_before["content"][0]["content"][0]["attrs"]["toneId"],
+        tone_a
+    );
+    assert_eq!(
+        summary_before["content"][0]["content"][4]["attrs"]["toneId"],
+        tone_b
+    );
+    db.save().unwrap();
+    drop(db);
+    let mut reopened = Database::open(file.path()).unwrap();
+    let loaded = reopened.read().unwrap();
+    assert_eq!(
+        loaded.scenes[0].summary_document.as_ref().unwrap(),
+        &summary_before
+    );
+    assert_eq!(loaded.scenes[0].beats[0].document, beat_before);
+    assert_eq!(
+        loaded.scenes[0].beats[0].text,
+        saved.scenes[0].beats[0].text
+    );
+}
+
+#[test]
+fn duplicating_a_legacy_character_without_an_occurrence_id_keeps_unbound_emotion_unbound() {
+    let mut project = ProjectSnapshot::empty("Synthetic project".into()).unwrap();
+    project.initialize_starters(None);
+    project
+        .apply(CreateChapter {
+            title: "Chapter".into(),
+        })
+        .unwrap();
+    let chapter_id = project.chapters[0].id.clone();
+    project
+        .apply(CreateScene {
+            chapter_id,
+            title: "Scene".into(),
+        })
+        .unwrap();
+    project
+        .apply(CreateCharacter {
+            name: "Maya".into(),
+            background: None,
+            personality: None,
+            voice: None,
+            default_tone_id: None,
+            default_emotion_id: None,
+        })
+        .unwrap();
+    let character_id = project.characters[0].id.clone();
+    let emotion_id = project
+        .emotions
+        .iter()
+        .find(|preset| preset.name == "Awe")
+        .unwrap()
+        .id
+        .clone();
+    let document = json!({"type":"doc","content":[{"type":"paragraph","content":[
+        {"type":"characterReference","attrs":{"characterId":character_id,"label":"Maya"}},
+        {"type":"text","text":" "},
+        {"type":"emotionReference","attrs":{"emotionId":emotion_id,"label":"Awe"}}
+    ]}]});
+    let text = domain::document_text(
+        &document,
+        &project.characters,
+        &project.tones,
+        &project.emotions,
+    )
+    .unwrap();
+    let beat_id = new_id();
+    project.scenes[0].beats.push(domain::Beat {
+        id: beat_id.clone(),
+        document,
+        text,
+    });
+    project.validate().unwrap();
+
+    project.apply(DuplicateBeat { beat_id }).unwrap();
+    let copied = &project.scenes[0].beats[1].document["content"][0]["content"];
+    assert!(copied[0]["attrs"]["occurrenceId"]
+        .as_str()
+        .is_some_and(|id| !id.is_empty()));
+    assert!(copied[2]["attrs"]["targetOccurrenceId"].is_null());
 }
 
 #[test]
@@ -1204,7 +1348,7 @@ fn full_save_detects_external_writes_even_without_a_revision_change() {
 }
 
 #[test]
-fn schema_v1_migrates_to_v4_without_losing_story_or_undo_history() {
+fn schema_v1_migrates_to_v5_without_losing_story_or_undo_history() {
     let file = ProjectFile::new();
     let mut db = file.create();
     let p = scene(&mut db);
@@ -1251,7 +1395,7 @@ fn schema_v1_migrates_to_v4_without_losing_story_or_undo_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 4);
+    assert_eq!(version, 5);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
@@ -1259,6 +1403,73 @@ fn schema_v1_migrates_to_v4_without_losing_story_or_undo_history() {
             .unwrap(),
         ""
     );
+}
+
+#[test]
+fn schema_v4_migrates_to_v5_without_rewriting_project_extensions() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let initial = scene(&mut db);
+    let p = beat(&mut db, &initial.scenes[0].id, "A saved beat.");
+    let mut old_job = generation_job(&p.scenes[0].id, p.revision, 101);
+    old_job.request_snapshot["schemaVersion"] = json!(1);
+    old_job.request_snapshot["context"] =
+        json!({"schemaVersion":1,"readableContext":"old snapshot"});
+    db.create_generation_job(&old_job).unwrap();
+    db.checkpoint_generation_job(
+        &old_job.id,
+        domain::GenerationJobStatus::Streaming,
+        "Saved v1 draft".into(),
+        None,
+        102,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &old_job.id,
+        domain::GenerationJobStatus::Completed,
+        "Saved v1 draft".into(),
+        None,
+        103,
+    )
+    .unwrap();
+    let old_job = db.generation_job(&old_job.id).unwrap().unwrap();
+    db.save().unwrap();
+    drop(db);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let before: String = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    connection.pragma_update(None, "user_version", 4).unwrap();
+    drop(connection);
+
+    let mut migrated = Database::open(file.path()).unwrap();
+    assert_eq!(
+        migrated.read().unwrap().scenes[0].beats[0].text,
+        "A saved beat."
+    );
+    assert_eq!(
+        migrated.generation_job(&old_job.id).unwrap().unwrap(),
+        old_job
+    );
+    drop(migrated);
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let after: String = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let version: i32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 5);
+    assert_eq!(after, before);
 }
 
 fn generation_job(

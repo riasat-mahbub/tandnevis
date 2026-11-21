@@ -12,23 +12,31 @@ describe('scene generation input fingerprint', () => {
     expect(context.referencedCharacters.map(character => character.name)).toEqual(['Maya', 'Damian']);
     expect(context.referencedPresets.map(preset => preset.id)).toEqual(['serious', 'tender']);
     expect(context.summaryBoard.readableText).toContain('[Maya][Emotion: Serious → Maya] stitches [Damian]');
-    expect(context.summaryBoard.readableText).toContain('[Scene tone: Tender]');
+    expect(context.summaryBoard.readableText).toContain('[Tone: Tender]');
     expect(context.readableContext).not.toContain('MUST NOT LEAK');
     expect(context.beats).toEqual([]);
-    expect(generationInputFingerprint(context, '', 'prose')).toBe('8202f5d7b8870fd9');
-    expect(generationInputFingerprint(context, '', 'beats')).toBe('71f34330f03469e6');
+    expect(generationInputFingerprint(context, '', 'prose')).toBe('ee4ac54030b293e5');
+    expect(generationInputFingerprint(context, '', 'beats')).toBe('7d03989edc06ed20');
     expect(generationInputFingerprint(context, '', 'beats')).not.toBe(generationInputFingerprint(context, '', 'prose'));
+    const oldContract = { ...context, schemaVersion: 1 } as unknown as typeof context;
+    expect(generationInputFingerprint(oldContract, '', 'prose')).not.toBe(generationInputFingerprint(context, '', 'prose'));
     const unrelatedEdit = structuredClone(summaryBlocks); unrelatedEdit.characters[2].background = 'Changed unrelated background';
     expect(generationInputFingerprint(buildSceneGenerationContext(unrelatedEdit, 'scene'), '', 'beats')).toBe(generationInputFingerprint(context, '', 'beats'));
   });
 
-  it('matches Rust for scene and beat tone, targeted emotion, defaults and Unicode', () => {
+  it('matches Rust for scene and inline references, defaults and Unicode', () => {
     const context = buildSceneGenerationContext(sharedBlocks, 'scene');
-    expect(context.beats.map(b => [b.tone, b.toneSource])).toEqual([['Tense', 'beat'], ['Tender', 'scene']]);
+    expect(context.scene).toMatchObject({ tone: 'Tender', toneId: 'tender' });
+    expect(context.beats[0].readableText).toContain('[Tone: Tense]');
+    expect(context.beats[1].readableText).toBe('Rain falls.');
+    expect(context.readableContext).toContain('Scene default tone: Tender');
+    expect(context.readableContext).toContain('Default tone: Tender');
+    expect(context.readableContext).toContain('Default emotion: Serious');
+    expect(context.readableContext).not.toContain('inherited scene');
     expect(context.readableContext).toContain('[Emotion: Awe → Maya]');
     expect(context.readableContext).not.toContain('Must not leak');
     expect(context.referencedPresets.map(p => p.id)).toEqual(['tender', 'tense', 'awe', 'serious']);
-    expect(generationInputFingerprint(context, '')).toBe('80bd2eb1e85a8048');
+    expect(generationInputFingerprint(context, '')).toBe('5d9e08ad4bfe1a11');
   });
   it('ignores project revision but changes with scene input or default guidance', () => {
     const original = project();
@@ -67,6 +75,6 @@ describe('scene generation input fingerprint', () => {
       { id: 'unreferenced', name: 'Unrelated private profile', background: 'Secret profile facts.', voice: '', personality: '', archived: false, defaultToneId: '', defaultEmotionId: '' },
     ];
 
-    expect(generationInputFingerprint(buildSceneGenerationContext(sample, 'scene-a'), '')).toBe('51f2bbee86850c70');
+    expect(generationInputFingerprint(buildSceneGenerationContext(sample, 'scene-a'), '')).toBe('7c9879bcbe77e141');
   });
 });

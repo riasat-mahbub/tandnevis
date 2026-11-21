@@ -243,7 +243,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       }
       return confirmLeaving();
     });
-    if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setLastSceneId(null); setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); destinationScroll.current = {}; setNotice(''); }
+    if (workspace.getSnapshot().session?.sessionId !== previous) { setSceneId(null); setLastSceneId(null); setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice(''); }
   }
   function closeProjectMenu() { if (projectMenu.current) projectMenu.current.open = false; }
   async function interchange(mode: 'import' | 'export') {

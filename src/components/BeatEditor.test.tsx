@@ -2,10 +2,11 @@ import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor, JSONContent } from '@tiptap/core';
-import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, INLINE_REFERENCE_MIME, handleCharacterReferenceDrop, updateCharacterReference, characterTargets, insertEmotionReference, insertToneReference, removeSelectedReference } from './BeatEditor';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, INLINE_REFERENCE_MIME, characterTargets, insertCharacterReference, insertEmotionReference, insertInlineReference, insertToneReference, removeSelectedReference, updateCharacterReference } from './BeatEditor';
 import { project } from '../test/fixtures';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); document.body.innerHTML = ''; });
 
 function dataTransfer() {
   const values = new Map<string, string>();
@@ -18,215 +19,251 @@ function dataTransfer() {
   } as unknown as DataTransfer;
 }
 
-it('accepts characters and scene tone on the empty summary board even when a browser text hit test misses', async () => {
-  const p = project(), preset = { id: 'tender', name: 'Tender', meaning: '', guidance: 'Warmth.', example: '', archived: false, revision: 0 };
+function referenceTransfer(kind: 'tone' | 'emotion', id: string) {
+  const transfer = dataTransfer();
+  transfer.setData(PRESET_REFERENCE_MIME, JSON.stringify({ kind, id }));
+  return transfer;
+}
+
+function drop(target: Element, transfer: DataTransfer, clientX: number, clientY: number, modifiers: { ctrlKey?: boolean; altKey?: boolean } = {}) {
+  const event = new Event('drop', { bubbles: true, cancelable: true });
+  Object.assign(event, { dataTransfer: transfer, clientX, clientY, ...modifiers });
+  fireEvent(target, event);
+}
+
+function documentWith(content: JSONContent[]) {
+  return { type: 'doc', content: [{ type: 'paragraph', content }] };
+}
+
+function inlineNodes(editor: Editor) {
+  const paragraph = editor.state.doc.firstChild;
+  return paragraph ? paragraph.content.content : [];
+}
+
+function renderCard(beat: ReturnType<typeof project>['scenes'][number]['beats'][number], options: { summary?: boolean; characters?: ReturnType<typeof project>['characters']; tones?: any[]; emotions?: any[] } = {}) {
   let editor!: Editor;
-  render(<BeatEditor beat={{ id: 'summary', document: { type: 'doc', content: [{ type: 'paragraph' }] }, text: '' }} index={0} ariaLabel="Scene summary" placeholder="Describe the scene or drop blocks here" scope="summary" wrapperClassName="summary-board" characters={p.characters} tones={[preset]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
-  const board = await screen.findByRole('textbox', { name: 'Scene summary' });
-  vi.spyOn(editor.view, 'posAtCoords').mockReturnValue(null);
-  const transfer = dataTransfer(); transfer.setData(CHARACTER_REFERENCE_MIME, 'character-1');
-  fireEvent.dragOver(board, { dataTransfer: transfer });
+  const card = options.summary
+    ? <section className="summary-note" data-reference-drop-board data-board-id={beat.id}><h2>Scene summary</h2><BeatEditor beat={beat} index={-1} scope="summary" ariaLabel="Scene summary" characters={options.characters ?? []} tones={options.tones ?? []} emotions={options.emotions ?? []} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/></section>
+    : <article className="note-card"><div className="card-actions">Card actions</div><div className="beat-content" data-reference-drop-board data-board-id={beat.id}><span className="beat-label">Beat 1</span><BeatEditor beat={beat} index={0} characters={options.characters ?? []} tones={options.tones ?? []} emotions={options.emotions ?? []} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/></div></article>;
+  return { ...render(card), get editor() { return editor; } };
+}
+
+it('drops characters, emotions, and tones anywhere in a summary board', async () => {
+  const p = project();
+  const tone = { id: 'tender', name: 'Tender', meaning: '', guidance: '', example: '', archived: false, revision: 0 };
+  const emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 };
+  const beat = { id: 'summary', text: '', document: { type: 'doc', content: [{ type: 'paragraph' }] } };
+  const view = renderCard(beat, { summary: true, characters: p.characters, tones: [tone], emotions: [emotion] });
+  const board = screen.getByRole('textbox', { name: 'Scene summary' }).closest('[data-reference-drop-board]')!;
+  vi.spyOn(view.editor.view, 'posAtCoords').mockReturnValue(null);
+  vi.spyOn(view.editor.view.dom, 'getBoundingClientRect').mockReturnValue({ top: 60, bottom: 120 } as DOMRect);
+
+  const character = dataTransfer(); character.setData(CHARACTER_REFERENCE_MIME, 'character-1');
+  fireEvent.dragOver(board, { dataTransfer: character, clientX: 20, clientY: 80 });
   expect(board).toHaveClass('board-drop-active');
-  fireEvent.drop(board, { dataTransfer: transfer, clientX: 200, clientY: 120 });
+  fireEvent.drop(board, { dataTransfer: character, clientX: 20, clientY: 80 });
+  fireEvent.drop(board, { dataTransfer: referenceTransfer('emotion', 'awe'), clientX: 30, clientY: 100 });
+  fireEvent.drop(board, { dataTransfer: referenceTransfer('tone', 'tender'), clientX: 40, clientY: 110 });
+
+  await waitFor(() => expect(inlineNodes(view.editor).filter(node => ['characterReference', 'emotionReference', 'toneReference'].includes(node.type.name))).toHaveLength(3));
+  expect(inlineNodes(view.editor).map(node => node.type.name).filter(name => name !== 'text')).toEqual(['characterReference', 'emotionReference', 'toneReference']);
   expect(board).not.toHaveClass('board-drop-active');
-  expect(characterTargets(editor)).toHaveLength(1);
-  const toneTransfer = dataTransfer(); toneTransfer.setData(PRESET_REFERENCE_MIME, JSON.stringify({ kind: 'tone', id: 'tender' }));
-  fireEvent.drop(board, { dataTransfer: toneTransfer, clientX: 200, clientY: 180 });
-  await waitFor(() => expect(board).toHaveTextContent('Scene tone: Tender'));
-  expect(board).toHaveAttribute('data-board-scope', 'summary');
-  expect(board).toHaveAttribute('data-placeholder', 'Describe the scene or drop blocks here');
 });
 
-it('moves a dragged inline character and its linked emotion from the summary to a beat with fresh occurrence identity', async () => {
-  const p = project(), emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 };
-  const sourceBeat = { id: 'summary', text: 'Maya waits.', document: { type: 'doc', content: [{ type: 'paragraph', content: [
-    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'summary-maya', label: 'Maya' } },
-    { type: 'emotionReference', attrs: { emotionId: 'awe', label: 'Awe', targetOccurrenceId: 'summary-maya' } },
-    { type: 'text', text: ' waits.' },
-  ] }] } };
+it('uses real drops on the full card, placing heading drops at the start and lower padding drops at the end', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = documentWith([{ type: 'text', text: 'middle' }]);
+  const view = renderCard(beat, { characters: p.characters, emotions: [{ id: 'awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 }], tones: [{ id: 'tender', name: 'Tender', meaning: '', guidance: '', example: '', archived: false, revision: 0 }] });
+  const card = view.container.querySelector('.note-card')!;
+  vi.spyOn(view.editor.view, 'posAtCoords').mockReturnValue(null);
+  vi.spyOn(view.editor.view.dom, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 180 } as DOMRect);
+
+  const emotion = referenceTransfer('emotion', 'awe');
+  fireEvent.dragOver(card.querySelector('.beat-label')!, { dataTransfer: emotion, clientX: 20, clientY: 60 });
+  expect(card).toHaveClass('board-drop-active');
+  drop(card.querySelector('.beat-label')!, emotion, 20, 60);
+  drop(card, referenceTransfer('tone', 'tender'), 40, 240);
+
+  await waitFor(() => expect(inlineNodes(view.editor).filter(node => ['emotionReference', 'toneReference'].includes(node.type.name))).toHaveLength(2));
+  const nodes = inlineNodes(view.editor);
+  expect(nodes.map(node => node.type.name)).toEqual(['emotionReference', 'text', 'toneReference', 'text']);
+  expect(nodes.findIndex(node => node.type.name === 'toneReference')).toBeGreaterThan(nodes.findIndex(node => node.type.name === 'text'));
+  expect(nodes.filter(node => node.isText).map(node => node.text).join('')).toContain('middle');
+  expect(card).not.toHaveClass('board-drop-active');
+});
+
+it('moves an inline character across boards by itself and preserves legacy emotion data without orphan cleanup', async () => {
+  const p = project(), sourceBeat = p.scenes[0].beats[0];
+  sourceBeat.document = documentWith([
+    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'old-maya', label: 'Maya', emotion: '', delivery: '' } },
+    { type: 'text', text: ' waits. ' },
+    { type: 'emotionReference', attrs: { emotionId: 'awe', label: 'Awe', targetOccurrenceId: 'old-maya' } },
+  ]);
+  const targetBeat = { ...p.scenes[0].beats[1], document: documentWith([{ type: 'text', text: 'Door opens.' }]) };
+  const tone = { id: 'tender', name: 'Tender', meaning: '', guidance: '', example: '', archived: false, revision: 0 };
   const editors = new Map<string, Editor>();
   const register = (id: string, value: Editor | null) => { if (value) editors.set(id, value); };
-  render(<><BeatEditor beat={sourceBeat} index={0} scope="summary" ariaLabel="Scene summary" characters={p.characters} emotions={[emotion]} register={register} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/><BeatEditor beat={p.scenes[0].beats[0]} index={0} characters={p.characters} emotions={[emotion]} register={register} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/></>);
+  const view = render(<><article className="note-card"><div data-reference-drop-board><BeatEditor beat={sourceBeat} index={0} characters={p.characters} register={register} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/></div></article><article className="note-card"><div data-reference-drop-board><BeatEditor beat={targetBeat} index={1} characters={p.characters} tones={[tone]} register={register} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/></div></article></>);
   await waitFor(() => expect(editors.size).toBe(2));
-  const source = editors.get('summary')!, target = editors.get(p.scenes[0].beats[0].id)!;
+  const source = editors.get(sourceBeat.id)!, target = editors.get(targetBeat.id)!;
   const chip = source.view.dom.querySelector('[data-occurrence-id]')!;
-  expect(chip).toHaveAttribute('draggable', 'true');
-  expect(chip).toHaveAttribute('data-drag-handle');
   const transfer = dataTransfer();
-  vi.spyOn(source.view, 'posAtCoords').mockReturnValue({ pos: 1, inside: 1 });
+  vi.spyOn(source.view, 'posAtCoords').mockReturnValue(null);
+  vi.spyOn(target.view, 'posAtCoords').mockReturnValue(null);
   fireEvent.mouseDown(chip, { button: 0 });
   fireEvent.dragStart(chip, { dataTransfer: transfer });
   expect(transfer.getData(INLINE_REFERENCE_MIME)).not.toBe('');
-  vi.spyOn(target.view, 'posAtCoords').mockReturnValue(null);
-  fireEvent.drop(target.view.dom, { dataTransfer: transfer, clientX: 90, clientY: 80 });
+  const targetCard = view.container.querySelectorAll('.note-card')[1];
+  fireEvent.drop(targetCard, { dataTransfer: transfer, clientX: 30, clientY: 80 });
+
   expect(characterTargets(source)).toHaveLength(0);
-  expect(source.getText()).toBe(' waits.');
-  expect(characterTargets(target)).toHaveLength(1);
-  const occurrence = characterTargets(target)[0].occurrenceId;
-  expect(occurrence).not.toBe('summary-maya');
-  let targetId: string | undefined;
-  target.state.doc.descendants(node => { if (node.type.name === 'emotionReference') targetId = node.attrs.targetOccurrenceId; });
-  expect(targetId).toBe(occurrence);
-  expect(target.getText()).toContain('The door opens.');
-  fireEvent.dragEnd(chip, { dataTransfer: transfer });
+  const moved = characterTargets(target);
+  expect(moved).toHaveLength(1);
+  expect(moved[0].occurrenceId).not.toBe('old-maya');
+  const legacyEmotion = inlineNodes(source).find(node => node.type.name === 'emotionReference');
+  expect(legacyEmotion?.attrs).toMatchObject({ emotionId: 'awe', targetOccurrenceId: 'old-maya' });
+  expect(view.container.querySelector('.block-emotion')).toHaveTextContent('Emotion: Awe');
+
+  const nextShelfDrag = referenceTransfer('tone', 'tender');
+  fireEvent.dragOver(view.container.querySelectorAll('.note-card')[1], { dataTransfer: nextShelfDrag });
+  expect(nextShelfDrag.dropEffect).toBe('copy');
+  drop(view.container.querySelectorAll('.note-card')[1], nextShelfDrag, 40, 100);
+  expect(inlineNodes(target).filter(node => node.type.name === 'toneReference')).toHaveLength(1);
+
+  act(() => { source.commands.undo(); });
+  expect(characterTargets(source)).toHaveLength(1);
+  expect(inlineNodes(source).find(node => node.type.name === 'emotionReference')?.attrs.targetOccurrenceId).toBe('old-maya');
+  act(() => { target.commands.undo(); target.commands.undo(); });
+  expect(characterTargets(target)).toHaveLength(0);
+  fireEvent.dragEnd(document, { dataTransfer: transfer });
 });
 
-it('Ctrl-drags a character within a board as a new occurrence while preserving the original', async () => {
+it('Ctrl-drag copies an inline reference and gives the copy a fresh character occurrence ID', async () => {
   const p = project(), beat = p.scenes[0].beats[0];
-  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'original', label: 'Maya' } }, { type: 'text', text: ' waits.' }] }] };
-  let editor!: Editor;
-  render(<BeatEditor beat={beat} index={0} characters={p.characters} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
-  await waitFor(() => expect(editor).toBeDefined());
-  act(() => { editor.commands.insertContentAt(1, 'Before '); });
-  const chip = editor.view.dom.querySelector('[data-occurrence-id]')!;
+  beat.document = documentWith([{ type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'original', label: 'Maya' } }, { type: 'text', text: ' waits.' }]);
+  const view = renderCard(beat, { characters: p.characters });
+  await waitFor(() => expect(view.editor).toBeDefined());
+  const chip = view.editor.view.dom.querySelector('[data-occurrence-id]')!;
   const transfer = dataTransfer();
-  const hitTest = vi.spyOn(editor.view, 'posAtCoords').mockReturnValue({ pos: characterTargets(editor)[0].pos, inside: 1 });
+  vi.spyOn(view.editor.view, 'posAtCoords').mockReturnValue(null);
   fireEvent.mouseDown(chip, { button: 0 });
   fireEvent.dragStart(chip, { dataTransfer: transfer });
-  hitTest.mockReturnValue(null);
-  const drop = new Event('drop', { bubbles: true, cancelable: true });
-  Object.assign(drop, { dataTransfer: transfer, ctrlKey: true, clientX: 30, clientY: 40 });
-  fireEvent(editor.view.dom, drop);
-  const targets = characterTargets(editor);
+  const copyDrop = new Event('drop', { bubbles: true, cancelable: true });
+  Object.assign(copyDrop, { dataTransfer: transfer, ctrlKey: true, clientX: 60, clientY: 140 });
+  fireEvent(view.container.querySelector('.note-card')!, copyDrop);
+  const targets = characterTargets(view.editor);
   expect(targets).toHaveLength(2);
   expect(targets[0].occurrenceId).toBe('original');
   expect(targets[1].occurrenceId).not.toBe('original');
-  fireEvent.dragEnd(chip, { dataTransfer: transfer });
+  fireEvent.dragEnd(document, { dataTransfer: transfer });
 });
-it('targets one repeated character occurrence with a separate emotion and removes linked blocks undoably', async () => {
+
+it('inserts unbound emotions at the caret, allows multiples, and keeps legacy targets after character removal', async () => {
   const p = project(), beat = p.scenes[0].beats[0];
-  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [
-    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'one', label: 'Maya' } },
-    { type: 'text', text: ' then ' },
-    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'two', label: 'Maya' } },
-  ] }] };
-  const emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: 'Admiration', example: '', archived: false, revision: 1 };
+  beat.document = documentWith([
+    { type: 'characterReference', attrs: { characterId: 'character-1', occurrenceId: 'target', label: 'Maya' } },
+    { type: 'emotionReference', attrs: { emotionId: 'legacy', label: 'Legacy', targetOccurrenceId: 'target' } },
+  ]);
+  const emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 };
   let editor!: Editor;
   render(<BeatEditor beat={beat} index={0} characters={p.characters} emotions={[emotion]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
   await waitFor(() => expect(editor).toBeDefined());
-  act(() => { expect(insertEmotionReference(editor, emotion, characterTargets(editor)[1])).toBe(true); });
-  await waitFor(() => expect(document.querySelector('.block-emotion')).toHaveTextContent('Emotion: Awe'));
-  const content = (editor.getJSON() as JSONContent).content![0].content!;
-  expect(content.filter(n => n.type === 'emotionReference')).toHaveLength(1);
-  expect(content.find(n => n.type === 'emotionReference')!.attrs!.targetOccurrenceId).toBe('two');
-  act(() => { editor.commands.setNodeSelection(characterTargets(editor)[1].pos); removeSelectedReference(editor); });
-  expect((editor.getJSON() as JSONContent).content![0].content!.some(n => n.type === 'emotionReference')).toBe(false);
-  act(() => { editor.commands.undo(); });
-  expect((editor.getJSON() as JSONContent).content![0].content!.find(n => n.type === 'emotionReference')!.attrs!.targetOccurrenceId).toBe('two');
+
+  act(() => { expect(insertEmotionReference(editor, emotion)).toBe(true); expect(insertInlineReference(editor, 'emotion', emotion)).toBe(true); });
+  expect(inlineNodes(editor).filter(node => node.type.name === 'emotionReference')).toHaveLength(3);
+  const unboundEmotions = inlineNodes(editor).filter(node => node.type.name === 'emotionReference' && node.attrs.emotionId === 'awe');
+  expect(unboundEmotions).toHaveLength(2);
+  expect(unboundEmotions.every(node => !node.attrs.targetOccurrenceId)).toBe(true);
+  act(() => { editor.commands.setNodeSelection(characterTargets(editor)[0].pos); expect(removeSelectedReference(editor)).toBe(true); });
+  expect(characterTargets(editor)).toHaveLength(0);
+  expect(inlineNodes(editor).filter(node => node.type.name === 'emotionReference')).toHaveLength(3);
+  expect(inlineNodes(editor).find(node => node.attrs.emotionId === 'legacy')?.attrs.targetOccurrenceId).toBe('target');
 });
-it('adds and replaces a whole-beat tone in a character-free beat', async () => {
-  const p = project(), preset = { id: 'tense', name: 'Tense', meaning: '', guidance: 'Pressure.', example: '', archived: false, revision: 0 };
-  let editor!: Editor;
-  render(<BeatEditor beat={p.scenes[0].beats[0]} index={0} characters={[]} tones={[preset]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
-  await waitFor(() => expect(editor).toBeDefined());
-  act(() => { insertToneReference(editor, preset); insertToneReference(editor, { ...preset, id: 'tender', name: 'Tender' }); });
-  const nodes = (editor.getJSON() as JSONContent).content![0].content!;
-  expect(nodes.filter(n => n.type === 'toneReference')).toHaveLength(1);
-  expect(nodes.find(n => n.type === 'toneReference')!.attrs!.toneId).toBe('tender');
-  expect(editor.getText()).toContain('The door opens.');
-});
-it('renders renamed character profiles without changing documents, saving, or consuming redo', async () => {
-  const p = project(); const beat = p.scenes[0].beats[0];
-  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'characterReference', attrs: { characterId: 'character-1', label: 'Old label', emotion: '', delivery: '' } }] }] };
-  const onChange = vi.fn(), register = vi.fn();
-  const props = { beat, index: 0, characters: p.characters, onChange, onFocus: vi.fn(), onSelection: vi.fn(), register };
-  const view = render(<BeatEditor {...props}/>);
-  await screen.findByText('Maya');
-  expect(onChange).not.toHaveBeenCalled();
-  const editor = register.mock.calls.find(c => c[1])![1] as Editor;
-  act(() => { editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' is here'); });
-  act(() => { editor.commands.undo(); });
-  expect(editor.can().redo()).toBe(true);
-  onChange.mockClear();
-  view.rerender(<BeatEditor {...props} characters={[{ ...p.characters[0], name: 'Mara' }]}/>);
-  await screen.findByText('Mara');
-  expect(onChange).not.toHaveBeenCalled(); expect(editor.can().redo()).toBe(true);
-  expect((editor.getJSON() as JSONContent).content![0].content![0].attrs!.label).toBe('Old label');
-});
-it('keeps local direction on the selected reference and locks only during project switching', async () => {
+
+it('keeps multiple tone references in order instead of replacing earlier tones', async () => {
   const p = project(), beat = p.scenes[0].beats[0];
-  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [
+  const first = { id: 'tense', name: 'Tense', meaning: '', guidance: 'Pressure.', example: '', archived: false, revision: 0 };
+  const second = { id: 'tender', name: 'Tender', meaning: '', guidance: 'Care.', example: '', archived: false, revision: 0 };
+  let editor!: Editor;
+  render(<BeatEditor beat={beat} index={0} characters={[]} tones={[first, second]} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  await waitFor(() => expect(editor).toBeDefined());
+  act(() => { expect(insertToneReference(editor, first)).toBe(true); expect(insertToneReference(editor, second)).toBe(true); });
+  expect(inlineNodes(editor).filter(node => node.type.name === 'toneReference').map(node => node.attrs.toneId)).toEqual(['tense', 'tender']);
+  act(() => { editor.commands.undo(); });
+  expect(inlineNodes(editor).filter(node => node.type.name === 'toneReference').map(node => node.attrs.toneId)).toEqual(['tense']);
+});
+
+it('remaps legacy character targets on pasted paired references and preserves unpaired legacy data', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  let editor!: Editor;
+  render(<BeatEditor beat={beat} index={0} characters={p.characters} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  await waitFor(() => expect(editor).toBeDefined());
+  const paragraph = editor.schema.nodes.paragraph.create(null, [
+    editor.schema.nodes.characterReference.create({ characterId: 'character-1', occurrenceId: 'paste-id', label: 'Maya' }),
+    editor.schema.nodes.emotionReference.create({ emotionId: 'legacy', label: 'Legacy', targetOccurrenceId: 'paste-id' }),
+    editor.schema.nodes.emotionReference.create({ emotionId: 'alone', label: 'Alone', targetOccurrenceId: 'missing-id' }),
+    editor.schema.nodes.emotionReference.create({ emotionId: 'unbound', label: 'Unbound', targetOccurrenceId: '' }),
+  ]);
+  const transform = editor.view.someProp('transformPasted', handler => handler(new Slice(Fragment.from(paragraph), 0, 0), editor.view, false)) as Slice | undefined;
+  expect(transform).toBeInstanceOf(Slice);
+  const pasted = transform!.content.firstChild!.content.content;
+  const newOccurrenceId = pasted.find(node => node.type.name === 'characterReference')!.attrs.occurrenceId;
+  expect(newOccurrenceId).not.toBe('paste-id');
+  expect(pasted.find(node => node.attrs.emotionId === 'legacy')?.attrs.targetOccurrenceId).toBe(newOccurrenceId);
+  expect(pasted.find(node => node.attrs.emotionId === 'alone')?.attrs.targetOccurrenceId).toBe('missing-id');
+  expect(pasted.find(node => node.attrs.emotionId === 'unbound')?.attrs.targetOccurrenceId).toBe('');
+});
+
+it('preserves character-local legacy guidance and blocks only while the project is switching', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = documentWith([
     { type: 'characterReference', attrs: { characterId: 'character-1', label: 'Maya', emotion: '', delivery: '' } },
     { type: 'text', text: ' and ' },
     { type: 'characterReference', attrs: { characterId: 'character-1', label: 'Maya', emotion: '', delivery: '' } },
-  ] }] };
+  ]);
   let editor: Editor | null = null;
-  const register = (_id: string, value: Editor | null) => { editor = value; };
-  const props = { beat, index: 0, characters: p.characters, onChange: vi.fn(), onFocus: vi.fn(), onSelection: vi.fn(), register };
+  const props = { beat, index: 0, characters: p.characters, onChange: vi.fn(), onFocus: vi.fn(), onSelection: vi.fn(), register: (_id: string, value: Editor | null) => { editor = value; } };
   const view = render(<BeatEditor {...props}/>);
   await waitFor(() => expect(editor).not.toBeNull());
   act(() => { editor!.commands.setNodeSelection(1); updateCharacterReference(editor!, { emotion: 'Relieved' }); });
-  const content = (editor!.getJSON() as JSONContent).content![0].content!;
-  expect(content[0].attrs!.emotion).toBe('Relieved'); expect(content[2].attrs!.emotion).toBe(''); expect(p.characters[0]).not.toHaveProperty('emotion');
+  const content = inlineNodes(editor!);
+  expect(content[0].attrs.emotion).toBe('Relieved'); expect(content[2].attrs.emotion).toBe(''); expect(p.characters[0]).not.toHaveProperty('emotion');
   view.rerender(<BeatEditor {...props} editable={false}/>);
   expect(screen.getByRole('textbox', { name: 'Freeform text for beat 1' })).toHaveAttribute('contenteditable', 'false');
   view.rerender(<BeatEditor {...props} editable/>);
   expect(screen.getByRole('textbox', { name: 'Freeform text for beat 1' })).toHaveAttribute('contenteditable', 'true');
 });
-it('preserves the selected character reference when a save acknowledgement changes only JSON key order', async () => {
+
+it('renders renamed profiles without rewriting references or creating a save', async () => {
   const p = project(), beat = p.scenes[0].beats[0];
-  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'characterReference', attrs: { characterId: 'character-1', label: 'Maya', emotion: '', delivery: '' } }] }] };
-  let editor: Editor | null = null;
-  const register = (_id: string, value: Editor | null) => { editor = value; };
-  const onChange = vi.fn();
-  const props = { beat, index: 0, characters: p.characters, onChange, onFocus: vi.fn(), onSelection: vi.fn(), register };
-  const view = render(<BeatEditor {...props}/>);
-  await waitFor(() => expect(editor).not.toBeNull());
-  act(() => { editor!.commands.setNodeSelection(1); updateCharacterReference(editor!, { emotion: 'Relieved' }); });
-  const before = editor!.state.selection;
-  const acknowledgement = { content: [{ content: [{ attrs: { delivery: '', emotion: 'Relieved', label: 'Maya', characterId: 'character-1' }, type: 'characterReference' }], type: 'paragraph' }], type: 'doc' };
-  expect(JSON.stringify(acknowledgement)).not.toBe(JSON.stringify(editor!.getJSON()));
-  onChange.mockClear();
-  view.rerender(<BeatEditor {...props} beat={{ ...beat, document: acknowledgement }}/>);
-  expect(editor!.state.selection.eq(before)).toBe(true);
-  expect('node' in editor!.state.selection).toBe(true);
+  beat.document = documentWith([{ type: 'characterReference', attrs: { characterId: 'character-1', label: 'Old label', emotion: '', delivery: '' } }]);
+  const onChange = vi.fn(), register = vi.fn();
+  const props = { beat, index: 0, onChange, onFocus: vi.fn(), onSelection: vi.fn(), register };
+  const view = render(<BeatEditor {...props} characters={p.characters}/>);
+  await screen.findByText('Maya');
   expect(onChange).not.toHaveBeenCalled();
-  act(() => { expect(updateCharacterReference(editor!, { delivery: 'Quietly' })).toBe(true); });
-  expect((editor!.getJSON() as JSONContent).content![0].content![0].attrs).toMatchObject({ emotion: 'Relieved', delivery: 'Quietly' });
+  const editor = register.mock.calls.find(c => c[1])![1] as Editor;
+  act(() => { editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' is here'); editor.commands.undo(); });
+  expect(editor.can().redo()).toBe(true);
+  onChange.mockClear();
+  view.rerender(<BeatEditor {...props} characters={[{ ...p.characters[0], name: 'Mara' }]}/>);
+  await screen.findByText('Mara');
+  expect(onChange).not.toHaveBeenCalled(); expect(editor.can().redo()).toBe(true);
+  expect(inlineNodes(editor)[0].attrs.label).toBe('Old label');
 });
 
-it('drops a character profile at the pointer position and keeps direction local to the new reference', async () => {
-  const p = project(), beat = p.scenes[0].beats[0];
-  beat.document = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello world' }] }] };
-  let editor: Editor | null = null;
-  const register = (_id: string, value: Editor | null) => { editor = value; };
-  const props = { beat, index: 0, characters: p.characters, onChange: vi.fn(), onFocus: vi.fn(), onSelection: vi.fn(), register };
-  render(<BeatEditor {...props}/>);
-  await waitFor(() => expect(editor).not.toBeNull());
-
-  vi.spyOn(editor!.view, 'posAtCoords').mockReturnValue({ pos: 7, inside: 1 });
-  const dataTransfer = { getData: (format: string) => format === CHARACTER_REFERENCE_MIME ? 'character-1' : '' } as DataTransfer;
-  const event = { dataTransfer, clientX: 50, clientY: 40, preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as DragEvent;
-  act(() => { expect(handleCharacterReferenceDrop(editor!.view, event, p.characters)).toBe(true); });
-
-  expect(event.preventDefault).toHaveBeenCalledOnce();
-  expect(event.stopPropagation).toHaveBeenCalledOnce();
-  expect(editor!.getText()).toBe('Hello Maya world');
-  const inserted = (editor!.getJSON() as JSONContent).content![0].content!.find(node => node.type === 'characterReference');
-  expect(inserted?.attrs).toMatchObject({ characterId: 'character-1', label: 'Maya', emotion: '', delivery: '' });
-});
-
-it('drops a profile into an empty beat and consumes stale Shorthand drags without inserting text', async () => {
+it('keeps keyboard click-to-insert available and consumes stale shelf drops', async () => {
   const p = project(), beat = p.scenes[0].beats[0];
   beat.document = { type: 'doc', content: [{ type: 'paragraph' }] };
-  let editor: Editor | null = null;
-  const register = (_id: string, value: Editor | null) => { editor = value; };
-  const props = { beat, index: 0, characters: p.characters, onChange: vi.fn(), onFocus: vi.fn(), onSelection: vi.fn(), register };
-  render(<BeatEditor {...props}/>);
-  await waitFor(() => expect(editor).not.toBeNull());
-  vi.spyOn(editor!.view, 'posAtCoords').mockReturnValue({ pos: 1, inside: 1 });
-
-  const eventFor = (id: string) => ({
-    dataTransfer: { getData: (format: string) => format === CHARACTER_REFERENCE_MIME ? id : '' } as DataTransfer,
-    clientX: 20, clientY: 20, preventDefault: vi.fn(), stopPropagation: vi.fn(),
-  } as unknown as DragEvent);
-  const firstDrop = eventFor('character-1');
-  act(() => { expect(handleCharacterReferenceDrop(editor!.view, firstDrop, p.characters)).toBe(true); });
-  expect((editor!.getJSON() as JSONContent).content![0].content![0].attrs).toMatchObject({ characterId: 'character-1', emotion: '', delivery: '' });
-
-  const staleDrop = eventFor('deleted-character');
-  const before = editor!.getJSON();
-  act(() => { expect(handleCharacterReferenceDrop(editor!.view, staleDrop, p.characters)).toBe(true); });
-  expect(staleDrop.preventDefault).toHaveBeenCalledOnce();
-  expect(editor!.getJSON()).toEqual(before);
+  let editor!: Editor;
+  render(<BeatEditor beat={beat} index={0} characters={p.characters} register={(_, value) => { if (value) editor = value; }} onChange={vi.fn()} onFocus={vi.fn()} onSelection={vi.fn()}/>);
+  await waitFor(() => expect(editor).toBeDefined());
+  act(() => { expect(insertCharacterReference(editor, p.characters[0])).toBe(true); });
+  expect(characterTargets(editor)).toHaveLength(1);
+  const stale = dataTransfer(); stale.setData(CHARACTER_REFERENCE_MIME, 'deleted-character');
+  const event = new Event('drop', { bubbles: true, cancelable: true });
+  Object.assign(event, { dataTransfer: stale, clientX: 20, clientY: 20 });
+  fireEvent(editor.view.dom, event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(characterTargets(editor)).toHaveLength(1);
 });

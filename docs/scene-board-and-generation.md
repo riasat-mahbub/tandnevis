@@ -6,12 +6,12 @@ This revision supersedes the separate Scene tone row and plain summary textarea 
 
 - A compact top-left action row contains **Generate scene** and **Generate prose**. Both explain their disabled state until ChatGPT is configured in Settings.
 - The editable scene title is followed directly by the **Scene summary** board. No tone selector or generation preview separates them.
-- The summary accepts ordinary freeform text and the same draggable Character, Emotion, and Tone blocks as a beat.
+- The summary accepts ordinary freeform text and optional Character, Emotion, and Tone references at any position, including blank board space. The beat cards accept the same references.
 - The ordered beat timeline follows the summary. Beat count belongs beside the beats heading. Existing Duplicate/Delete, drag handles, and keyboard move controls remain.
 - Context preview and draft/prose review sit after the beat timeline.
-- The shelf and local inspector remain supporting tools. Characters, Tones, and Emotions continue as full global library destinations.
+- The Scene sidebar shows one Characters, Emotions, or Tones tab at a time, with category-scoped search, one matching Manage link, and New character in Characters. The left shelf and deliberately opened Scene details panel can collapse to narrow rails on desktop. Characters, Tones, and Emotions continue as full global library destinations.
 
-There is no separate Scene tone control. A Tone block on the summary board supplies scene guidance; a Tone block in a beat overrides it for that beat. An Emotion block targets a character occurrence within its own board. Every board can have zero, one, or many characters. Old plain summaries and custom tone guidance remain editable after migration.
+There is no separate Scene tone control or beat tone override. Character, Emotion, and Tone blocks are independent inline references that can be dragged to any board position or inserted at the last focused editor caret. Emotion references do not require a character target, and the editor does not infer a cast. Legacy occurrence-target attributes remain readable when old documents contain them. When a legacy scene tone is first edited as a rich summary, its visible guidance moves into the summary document and the legacy tone fields clear in that same operation; removing the resulting Tone reference removes that direction from later generation input. Old plain summaries remain editable after migration.
 
 ## Generation actions
 
@@ -19,12 +19,12 @@ There is no separate Scene tone control. A Tone block on the summary board suppl
 
 **Generate prose** writes connected narration and dialogue from the summary and ordered beats. It may start from a nonempty summary without beats. The prose draft remains separate until accepted into Scene prose. Existing streaming, Stop, Copy, Discard, recovery, and stale-direction review remain available. One request runs at a time across both modes.
 
-Only globals referenced in the selected scene's summary or beats, plus referenced character defaults, enter the request. Plain text names do not automatically attach profiles. A stored request snapshot preserves what was sent; later global edits do not rewrite that request or existing prose.
+Only globals referenced in the selected scene's summary or beats, plus referenced character defaults, enter the request. Plain text names do not automatically attach profiles. The generation context represents inline references in authored order and has no derived scene-tone or beat-tone field. A stored request snapshot preserves what was sent; later global edits do not rewrite that request or existing prose.
 
 ## Drag behavior and persistence
 
-Shelf blocks must begin a native browser drag without cancelling pointer-down. Entire editable boards, including blank space, accept supported drops with feedback. Inline blocks also have drag handles. Moving a character carries its linked emotion; copying creates fresh occurrence identities. Orphan emotions are never silently reassigned.
+Shelf blocks begin a native browser drag without cancelling pointer-down. The full summary and beat card accept supported drops with destination feedback, including blank space. Clicking a sidebar block inserts it at the last focused editor caret. Inline references can also move or copy between boards; copying a character reference creates a fresh occurrence identity. Emotion references are standalone and never get silently assigned to a character.
 
-SQLite schema 4 stores rich summaries in the project extension data and refuses older writers that could discard them. Manual Save remains the default; optional autosave and Save/Discard/Cancel close behavior apply to the summary, all beats, libraries, history, and drafts together.
+SQLite schema 4 introduced rich summaries in the project extension data; schema 5 adds the freeform-reference compatibility gate and refuses older writers that could discard newer project content. Manual Save remains the default; optional autosave and Save/Discard/Cancel close behavior apply to the summary, all beats, libraries, history, and drafts together.
 
-The Scene sidebar includes a persistent New character action and optional Stock characters buttons. The app automatically supplies 18 tones and 24 emotions, with full definitions available in the libraries and local inspector. Back is the far-left header control. See [starter content](starter-content-ideas.md) for the full catalog and stock profiles. Live model output still requires account verification; offline tests verify context construction, structured response acceptance, and data safety.
+The Scene sidebar provides New character within the Characters tab. The form starts blank or from a static archetype template, keeps the name/background/personality/voice editable, and creates one project character only after Create. These templates are repeatable starting points, not saved project records; existing characters from the former stock list remain unchanged. The app automatically supplies 18 tones and 24 emotions, with full definitions available in the libraries. Back is the far-left header control. See [starter content](starter-content-ideas.md) for the current catalog. Live model output still requires account verification; offline tests verify context construction, structured response acceptance, and data safety.

@@ -190,8 +190,6 @@ struct GenerationBeat {
     document: Value,
     readable_text: String,
     references: Vec<CharacterOccurrence>,
-    tone: String,
-    tone_source: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -467,8 +465,7 @@ fn block_document(
     project: &ProjectSnapshot,
     document: &Value,
     referenced: &mut Vec<GenerationPreset>,
-    summary: bool,
-) -> Result<(Value, Option<domain::Preset>)> {
+) -> Result<Value> {
     let mut owners = HashMap::new();
     domain::walk_nodes(document, &mut |node| {
         if node["type"] == "characterReference" {
@@ -487,14 +484,9 @@ fn block_document(
         node: &Value,
         owners: &HashMap<String, String>,
         referenced: &mut Vec<GenerationPreset>,
-        tone: &mut Option<domain::Preset>,
-        summary: bool,
     ) -> Result<Value> {
         let kind = node["type"].as_str().unwrap_or_default();
         if kind == "toneReference" {
-            if tone.is_some() {
-                return Err("A beat can contain only one tone block.".into());
-            }
             let p = add_preset(
                 project,
                 domain::PresetKind::Tone,
@@ -502,13 +494,7 @@ fn block_document(
                 referenced,
             )?
             .ok_or("A beat tone reference is missing its definition.")?;
-            let text = format!(
-                "[{} tone: {}]",
-                if summary { "Scene" } else { "Beat" },
-                p.name
-            );
-            *tone = Some(p);
-            return Ok(json!({"type":"text","text":text}));
+            return Ok(json!({"type":"text","text":format!("[Tone: {}]",p.name)}));
         }
         if kind == "emotionReference" {
             let p = add_preset(
@@ -519,28 +505,32 @@ fn block_document(
             )?
             .ok_or("An emotion reference is missing its definition.")?;
             let target = attr_string(node, "targetOccurrenceId");
-            let name = owners
-                .get(&target)
-                .filter(|_| !target.is_empty())
-                .ok_or("An emotion block needs a character occurrence in the same beat.")?;
-            return Ok(
-                json!({"type":"text","text":format!("[Emotion: {} \u{2192} {}]",p.name,name)}),
+            let owner = owners.get(&target).filter(|_| !target.is_empty());
+            let target_label = owner.map_or_else(
+                || {
+                    if target.is_empty() {
+                        String::new()
+                    } else {
+                        " \u{2192} character reference unavailable".into()
+                    }
+                },
+                |name| format!(" \u{2192} {}", name),
             );
+            let text = format!("[Emotion: {}{}]", p.name, target_label);
+            return Ok(json!({"type":"text","text":text}));
         }
         let mut result = node.clone();
         if let Some(nodes) = node["content"].as_array() {
             result["content"] = Value::Array(
                 nodes
                     .iter()
-                    .map(|n| transform(project, n, owners, referenced, tone, summary))
+                    .map(|n| transform(project, n, owners, referenced))
                     .collect::<Result<Vec<_>>>()?,
             );
         }
         Ok(result)
     }
-    let mut tone = None;
-    let result = transform(project, document, &owners, referenced, &mut tone, summary)?;
-    Ok((result, tone))
+    transform(project, document, &owners, referenced)
 }
 
 fn format_preset(p: &GenerationPreset) -> String {
@@ -584,20 +574,17 @@ fn build_scene_context(
     let summary_id = format!("{}:summary", scene.id);
     let mut summary_document = domain::summary_document(scene, &project.tones);
     domain::normalize_occurrences(&mut summary_document, &summary_id);
-    let (summary_display, summary_tone) =
-        block_document(project, &summary_document, &mut referenced_presets, true)?;
-    let scene_tone = if let Some(tone) = &summary_tone {
-        tone.name.clone()
-    } else {
-        add_preset(
-            project,
-            domain::PresetKind::Tone,
-            &scene.tone_id,
-            &mut referenced_presets,
-        )?
-        .map(|p| p.name)
-        .unwrap_or_else(|| scene.tone.clone())
-    };
+    let summary_display = block_document(project, &summary_document, &mut referenced_presets)?;
+    // Preserve the pre-inline scene default as a separate authored field.
+    // Inline tone tokens remain ordered cues and do not replace it.
+    let scene_tone = add_preset(
+        project,
+        domain::PresetKind::Tone,
+        &scene.tone_id,
+        &mut referenced_presets,
+    )?
+    .map(|p| p.name)
+    .unwrap_or_else(|| scene.tone.clone());
     let mut summary_references = Vec::new();
     collect_references(
         &summary_document,
@@ -615,18 +602,10 @@ fn build_scene_context(
         document: summary_document.clone(),
         readable_text: clean_block(render_node(&summary_display, &characters)),
         references: summary_references,
-        tone: scene_tone.clone(),
-        tone_source: if scene_tone.is_empty() {
-            "none"
-        } else {
-            "scene"
-        }
-        .into(),
     };
 
     for (index, beat) in scene.beats.iter().enumerate() {
-        let (display_document, beat_tone) =
-            block_document(project, &beat.document, &mut referenced_presets, false)?;
+        let display_document = block_document(project, &beat.document, &mut referenced_presets)?;
         let mut references = Vec::new();
         collect_references(
             &beat.document,
@@ -644,18 +623,6 @@ fn build_scene_context(
             document: beat.document.clone(),
             readable_text: clean_block(render_node(&display_document, &characters)),
             references,
-            tone: beat_tone
-                .as_ref()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| scene_tone.clone()),
-            tone_source: if beat_tone.is_some() {
-                "beat"
-            } else if !scene_tone.is_empty() {
-                "scene"
-            } else {
-                "none"
-            }
-            .into(),
         });
     }
 
@@ -694,9 +661,7 @@ fn build_scene_context(
         summary: scene.summary.clone(),
         summary_document,
         tone: scene_tone,
-        tone_id: summary_tone
-            .map(|p| p.id)
-            .unwrap_or_else(|| scene.tone_id.clone()),
+        tone_id: scene.tone_id.clone(),
         narration: scene.narration.clone(),
     };
     let mut blocks = vec![format!("Scene: {}", direction.title)];
@@ -707,7 +672,7 @@ fn build_scene_context(
         ));
     }
     if !direction.tone.trim().is_empty() {
-        blocks.push(format!("Scene tone: {}", direction.tone.trim()));
+        blocks.push(format!("Scene default tone: {}", direction.tone.trim()));
     }
     if !direction.narration.point_of_view.trim().is_empty() {
         blocks.push(format!(
@@ -751,21 +716,8 @@ fn build_scene_context(
         beats
             .iter()
             .map(|beat| format!(
-                "{}:\n{}",
-                if beat.tone.is_empty() {
-                    format!("Beat {}", beat.order)
-                } else {
-                    format!(
-                        "Beat {} (tone: {}; {})",
-                        beat.order,
-                        beat.tone,
-                        if beat.tone_source == "beat" {
-                            "beat override"
-                        } else {
-                            "inherited scene"
-                        }
-                    )
-                },
+                "Beat {}:\n{}",
+                beat.order,
                 if beat.readable_text.is_empty() {
                     "(empty)"
                 } else {
@@ -790,7 +742,7 @@ fn build_scene_context(
     }
     let readable_context = blocks.join("\n\n");
     Ok(SceneGenerationContext {
-        schema_version: 1,
+        schema_version: 2,
         project_revision: project.revision,
         scene: direction,
         summary_board,
@@ -813,6 +765,7 @@ fn fingerprint_for_purpose(
     purpose: GenerationPurpose,
 ) -> Result<String> {
     let mut value = json!({
+        "schemaVersion": context.schema_version,
         "scene": context.scene,
         "summaryBoard": context.summary_board,
         "beats": context.beats,
@@ -915,9 +868,9 @@ fn make_request_for_purpose(
     purpose: GenerationPurpose,
 ) -> ResponsesRequest {
     let mut instructions = String::from(if purpose == GenerationPurpose::Prose {
-        "Write polished story prose for one scene from its summary board, using every beat in order when beats are present. Treat character references as instructions for the named character at that moment; local emotion and delivery override the character's baseline profile only for that occurrence. A tone on the summary board supplies the scene tone. An explicit beat tone overrides the scene tone for that beat only; other beats inherit the scene tone. Character voice remains independent. Use the narration guidance. Preserve the causal sequence and intent of the summary and beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction."
+        "Write polished story prose for one scene from its summary board, using every beat in order when beats are present. Treat the summary and beats as freeform ordered guidance. Interpret character, emotion, and tone references from their position and surrounding text, using the supplied definitions. References may appear anywhere and repeat; do not apply automatic tone replacement or inheritance. Honor the supplied scene and character defaults and explicitly named character directions. Use the narration guidance. Preserve the causal sequence and intent of the summary and beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction."
     } else {
-        "Turn the summary board into a short sequence of 1 to 12 new editable story beats. These beats will be appended after any existing beats; do not repeat their events. Return ONLY a JSON object in this exact shape: {\"beats\":[{\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Describe one story moment.\"}]}]}}]}. Each beat is freeform shorthand, not finished prose. Use text and optionally characterReference, emotionReference, and toneReference inline nodes. Character attrs: {characterId:<existing id>,occurrenceId:<unique local id>,label:<name>,emotion:\"\",delivery:\"\"}. Emotion attrs: {emotionId:<existing id>,label:<name>,targetOccurrenceId:<character occurrence in THIS beat>}. Tone attrs: {toneId:<existing id>,label:<name>}; at most one tone per beat. Use ONLY IDs in referencedCharacters/referencedPresets from the supplied context. Never invent a shared ID or apply emotion to a different occurrence. Beats may have no characters. Preserve character voice, the author's intent, and the causal sequence. No Markdown fences, explanation, title, or prose outside the JSON object."
+        "Turn the summary board into a short sequence of 1 to 12 new editable story beats. These beats will be appended after any existing beats; do not repeat their events. Return ONLY a JSON object in this exact shape: {\"beats\":[{\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Describe one story moment.\"}]}]}}]}. Each beat is freeform shorthand, not finished prose. Use text and optionally characterReference, emotionReference, and toneReference inline nodes anywhere and in any order; any number of each is allowed. Character attrs: {characterId:<existing id>,occurrenceId:<unique local id>,label:<name>,emotion:\"\",delivery:\"\"}. Emotion attrs: {emotionId:<existing id>,label:<name>}. Tone attrs: {toneId:<existing id>,label:<name>}. Do not impose tone replacement, override, or inheritance rules; interpret token order and the supplied definitions. Use ONLY IDs in referencedCharacters/referencedPresets from the supplied context. Preserve character voice, the author's intent, and the causal sequence. No Markdown fences, explanation, title, or prose outside the JSON object."
     });
     if !guidance.is_empty() {
         instructions.push_str("\n\nAdditional author guidance:\n");
@@ -950,7 +903,7 @@ fn make_request_snapshot(
     purpose: GenerationPurpose,
 ) -> Result<Value> {
     serde_json::to_value(json!({
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "connectionId": connection_id,
         "model": request.model,
         "defaultGuidance": guidance,
@@ -1674,8 +1627,15 @@ mod tests {
         let context = build_scene_context(&project, "scene").unwrap();
         let prose = fingerprint_for_purpose(&context, "", GenerationPurpose::Prose).unwrap();
         let beats = fingerprint_for_purpose(&context, "", GenerationPurpose::Beats).unwrap();
-        assert_eq!(prose, "8202f5d7b8870fd9");
-        assert_eq!(beats, "71f34330f03469e6");
+        assert_eq!(context.schema_version, 2);
+        assert_eq!(prose, "ee4ac54030b293e5");
+        assert_eq!(beats, "7d03989edc06ed20");
+        let mut old_context = context.clone();
+        old_context.schema_version = 1;
+        assert_ne!(
+            fingerprint_for_purpose(&old_context, "", GenerationPurpose::Prose).unwrap(),
+            prose
+        );
         assert_eq!(context.referenced_characters.len(), 2);
         assert!(context
             .referenced_characters
@@ -1694,17 +1654,25 @@ mod tests {
                 {"type":"toneReference","attrs":{"toneId":"tense","label":"Old tone"}},
                 {"type":"characterReference","attrs":{"characterId":"maya","occurrenceId":"summary-maya","label":"Old name","emotion":"","delivery":"softly"}},
                 {"type":"emotionReference","attrs":{"emotionId":"awe","label":"Old emotion","targetOccurrenceId":"summary-maya"}},
-                {"type":"text","text":" tends the wounds."}
+                {"type":"text","text":" tends the wounds."},
+                {"type":"emotionReference","attrs":{"emotionId":"awe","label":"Old emotion","targetOccurrenceId":"removed-occurrence"}}
             ]}]}),
         );
         let context = build_scene_context(&project, "scene").unwrap();
         assert_eq!(context.summary_board.id, "scene:summary");
-        assert_eq!(context.summary_board.tone, "Tense");
-        assert_eq!(context.scene.tone_id, "tense");
+        assert_eq!(context.scene.tone, "Tender");
+        assert_eq!(context.scene.tone_id, "tender");
         assert!(context
             .summary_board
             .readable_text
-            .contains("[Scene tone: Tense]"));
+            .contains("character reference unavailable"));
+        assert!(context
+            .summary_board
+            .readable_text
+            .contains("[Tone: Tense]"));
+        assert!(context
+            .readable_context
+            .contains("Scene default tone: Tender"));
         assert!(context
             .summary_board
             .readable_text
@@ -1731,7 +1699,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_beats_validate_supplied_ids_and_remap_local_targets() {
+    fn generated_beats_validate_supplied_ids_and_preserve_optional_legacy_targets() {
         let project: ProjectSnapshot =
             serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
                 .unwrap();
@@ -1752,12 +1720,46 @@ mod tests {
                 .unwrap_err()
                 .contains("not supplied")
         );
-        let mut invalid: Value = serde_json::from_str(&draft).unwrap();
-        invalid["beats"][0]["document"]["content"][0]["content"][3]["attrs"]
+        let mut legacy_target: Value = serde_json::from_str(&draft).unwrap();
+        legacy_target["beats"][0]["document"]["content"][0]["content"][3]["attrs"]
             ["targetOccurrenceId"] = json!("different-occurrence");
-        assert!(parse_generated_beats(&invalid.to_string(), &project, &context).is_err());
+        let accepted =
+            parse_generated_beats(&legacy_target.to_string(), &project, &context).unwrap();
+        assert_eq!(
+            accepted[0]["content"][0]["content"][3]["attrs"]["targetOccurrenceId"],
+            "different-occurrence"
+        );
         assert!(parse_generated_beats("{\"beats\":[", &project, &context).is_err());
         assert!(parse_generated_beats("{\"beats\":[]}", &project, &context).is_err());
+    }
+    #[test]
+    fn generated_beats_accept_unbound_emotions_and_repeated_tones_in_order() {
+        let project: ProjectSnapshot =
+            serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
+                .unwrap();
+        let context =
+            serde_json::to_value(build_scene_context(&project, "scene").unwrap()).unwrap();
+        let document = json!({"type":"doc","content":[{"type":"paragraph","content":[
+            {"type":"toneReference","attrs":{"toneId":"tense","label":"Tense"}},
+            {"type":"characterReference","attrs":{"characterId":"maya","label":"Maya"}},
+            {"type":"text","text":" then "},
+            {"type":"emotionReference","attrs":{"emotionId":"awe","label":"Awe"}},
+            {"type":"text","text":" then "},
+            {"type":"toneReference","attrs":{"toneId":"tender","label":"Tender"}},
+            {"type":"emotionReference","attrs":{"emotionId":"serious","label":"Serious"}}
+        ]}]});
+        let draft = json!({"beats":[{"document":document}]}).to_string();
+        let parsed = parse_generated_beats(&draft, &project, &context).unwrap();
+        let nodes = &parsed[0]["content"][0]["content"];
+        assert_eq!(nodes[0]["type"], "toneReference");
+        assert_eq!(nodes[1]["type"], "characterReference");
+        assert!(nodes[1]["attrs"]["occurrenceId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()));
+        assert_eq!(nodes[3]["type"], "emotionReference");
+        assert!(nodes[3]["attrs"]["targetOccurrenceId"].is_null());
+        assert_eq!(nodes[5]["type"], "toneReference");
+        assert_eq!(nodes[6]["type"], "emotionReference");
     }
     #[test]
     fn missing_character_reference_blocks_sending_incomplete_context() {
@@ -1778,11 +1780,19 @@ mod tests {
             serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
                 .unwrap();
         let context = build_scene_context(&project, "scene").unwrap();
-        assert_eq!(context.beats[0].tone, "Tense");
-        assert_eq!(context.beats[1].tone, "Tender");
+        assert!(context.beats[0].readable_text.contains("[Tone: Tense]"));
+        assert_eq!(context.beats[1].readable_text, "Rain falls.");
+        assert!(context
+            .readable_context
+            .contains("Scene default tone: Tender"));
+        assert!(context.readable_context.contains("Default tone: Tender"));
+        assert!(context
+            .readable_context
+            .contains("Default emotion: Serious"));
+        assert!(!context.readable_context.contains("inherited scene"));
         assert!(context.readable_context.contains("[Emotion: Awe → Maya]"));
         assert!(!context.readable_context.contains("Must not leak"));
-        assert_eq!(fingerprint(&context, "").unwrap(), "80bd2eb1e85a8048");
+        assert_eq!(fingerprint(&context, "").unwrap(), "5d9e08ad4bfe1a11");
     }
     use super::*;
     use domain::{Beat, Chapter, Narration, Scene};
@@ -1905,7 +1915,7 @@ mod tests {
         let original = fingerprint(&context, "").unwrap();
         // Same canonical JSON/FNV vector as the frontend helper, including a
         // non-ASCII em dash in the rendered character reference.
-        assert_eq!(original, "51f2bbee86850c70");
+        assert_eq!(original, "7c9879bcbe77e141");
         let mut unrelated_edit = project.clone();
         unrelated_edit.revision += 1;
         unrelated_edit.title = "A renamed project".into();
