@@ -206,10 +206,16 @@ struct GenerationCharacter {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct GenerationPreset {
     kind: String,
-    #[serde(flatten)]
-    preset: domain::Preset,
+    id: String,
+    name: String,
+    meaning: String,
+    guidance: String,
+    example: String,
+    archived: bool,
+    revision: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -451,11 +457,17 @@ fn add_preset(
         )?;
     if !referenced
         .iter()
-        .any(|p| p.kind == kind.as_str() && p.preset.id == id)
+        .any(|p| p.kind == kind.as_str() && p.id == id)
     {
         referenced.push(GenerationPreset {
             kind: kind.as_str().into(),
-            preset: preset.clone(),
+            id: preset.id.clone(),
+            name: preset.name.clone(),
+            meaning: preset.meaning.clone(),
+            guidance: preset.guidance.clone(),
+            example: preset.example.clone(),
+            archived: preset.archived,
+            revision: preset.revision,
         });
     }
     Ok(Some(preset.clone()))
@@ -536,9 +548,9 @@ fn block_document(
 fn format_preset(p: &GenerationPreset) -> String {
     let mut facts = Vec::new();
     for (label, value) in [
-        ("Meaning", &p.preset.meaning),
-        ("Guidance", &p.preset.guidance),
-        ("Example", &p.preset.example),
+        ("Meaning", &p.meaning),
+        ("Guidance", &p.guidance),
+        ("Example", &p.example),
     ] {
         if !value.trim().is_empty() {
             facts.push(format!("{label}: {}", value.trim()));
@@ -546,9 +558,9 @@ fn format_preset(p: &GenerationPreset) -> String {
     }
     let label = if p.kind == "tone" { "Tone" } else { "Emotion" };
     if facts.is_empty() {
-        format!("- {label}: {}", p.preset.name)
+        format!("- {label}: {}", p.name)
     } else {
-        format!("- {label}: {}\n  {}", p.preset.name, facts.join("\n  "))
+        format!("- {label}: {}\n  {}", p.name, facts.join("\n  "))
     }
 }
 
@@ -1776,9 +1788,12 @@ mod tests {
     }
     #[test]
     fn shared_global_blocks_match_frontend_fingerprint() {
-        let project: ProjectSnapshot =
+        let mut project: ProjectSnapshot =
             serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
                 .unwrap();
+        for preset in project.tones.iter_mut().chain(&mut project.emotions) {
+            preset.color = "#1A2B3C".into();
+        }
         let context = build_scene_context(&project, "scene").unwrap();
         assert!(context.beats[0].readable_text.contains("[Tone: Tense]"));
         assert_eq!(context.beats[1].readable_text, "Rain falls.");
@@ -1793,6 +1808,17 @@ mod tests {
         assert!(context.readable_context.contains("[Emotion: Awe → Maya]"));
         assert!(!context.readable_context.contains("Must not leak"));
         assert_eq!(fingerprint(&context, "").unwrap(), "5d9e08ad4bfe1a11");
+        assert!(!serde_json::to_value(&context)
+            .unwrap()
+            .to_string()
+            .contains("\"color\""));
+
+        let mut recolored = project.clone();
+        for preset in recolored.tones.iter_mut().chain(&mut recolored.emotions) {
+            preset.color = "#D4E5F6".into();
+        }
+        let recolored_context = build_scene_context(&recolored, "scene").unwrap();
+        assert_eq!(fingerprint(&recolored_context, "").unwrap(), "5d9e08ad4bfe1a11");
     }
     use super::*;
     use domain::{Beat, Chapter, Narration, Scene};

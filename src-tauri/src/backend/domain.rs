@@ -155,8 +155,29 @@ pub struct Preset {
     pub meaning: String,
     pub guidance: String,
     pub example: String,
+    #[serde(default, deserialize_with = "deserialize_preset_color", skip_serializing_if = "String::is_empty")]
+    pub color: String,
     pub archived: bool,
     pub revision: u64,
+}
+
+fn normalize_preset_color(value: &str) -> Result<String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    let bytes = value.as_bytes();
+    if bytes.len() != 7 || bytes[0] != b'#' || !bytes[1..].iter().all(u8::is_ascii_hexdigit) {
+        return Err("Reusable block color must be empty or a #RRGGBB hex value.".into());
+    }
+    Ok(value.to_ascii_uppercase())
+}
+
+fn deserialize_preset_color<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    normalize_preset_color(&value).map_err(serde::de::Error::custom)
 }
 
 #[derive(Deserialize)]
@@ -171,6 +192,8 @@ struct StarterPreset {
     meaning: String,
     guidance: String,
     example: String,
+    #[serde(default)]
+    color: String,
 }
 fn starter_catalog() -> &'static StarterCatalog {
     static CATALOG: std::sync::OnceLock<StarterCatalog> = std::sync::OnceLock::new();
@@ -318,6 +341,8 @@ pub enum Operation {
     CreatePreset {
         kind: PresetKind,
         name: String,
+        #[serde(default)]
+        color: Option<String>,
     },
     UpdatePreset {
         kind: PresetKind,
@@ -327,6 +352,8 @@ pub enum Operation {
         guidance: Option<String>,
         example: Option<String>,
         archived: Option<bool>,
+        #[serde(default)]
+        color: Option<String>,
     },
     DuplicatePreset {
         kind: PresetKind,
@@ -785,6 +812,8 @@ impl ProjectSnapshot {
                 meaning: starter.meaning.clone(),
                 guidance: starter.guidance.clone(),
                 example: starter.example.clone(),
+                color: normalize_preset_color(&starter.color)
+                    .expect("The bundled starter catalog has valid preset colors"),
                 archived: false,
                 revision: 0,
             });
@@ -1210,14 +1239,20 @@ impl ProjectSnapshot {
                     json!({"character": c,"position":position}),
                 );
             }
-            Operation::CreatePreset { kind, name } => {
+            Operation::CreatePreset { kind, name, color } => {
                 title(&name)?;
+                let color = color
+                    .as_deref()
+                    .map(normalize_preset_color)
+                    .transpose()?
+                    .unwrap_or_default();
                 self.presets_mut(kind).push(Preset {
                     id: new_id(),
                     name,
                     meaning: String::new(),
                     guidance: String::new(),
                     example: String::new(),
+                    color,
                     archived: false,
                     revision: 0,
                 });
@@ -1230,10 +1265,20 @@ impl ProjectSnapshot {
                 guidance,
                 example,
                 archived,
+                color,
             } => {
                 if let Some(ref value) = name {
                     title(value)?;
                 }
+                let color = color
+                    .as_deref()
+                    .map(normalize_preset_color)
+                    .transpose()?;
+                let semantic_change = name.is_some()
+                    || meaning.is_some()
+                    || guidance.is_some()
+                    || example.is_some()
+                    || archived.is_some();
                 let p = self
                     .presets_mut(kind)
                     .iter_mut()
@@ -1254,10 +1299,15 @@ impl ProjectSnapshot {
                 if let Some(v) = archived {
                     p.archived = v;
                 }
-                p.revision = p
-                    .revision
-                    .checked_add(1)
-                    .ok_or("Reusable block revision overflow.")?;
+                if let Some(v) = color {
+                    p.color = v;
+                }
+                if semantic_change {
+                    p.revision = p
+                        .revision
+                        .checked_add(1)
+                        .ok_or("Reusable block revision overflow.")?;
+                }
             }
             Operation::DuplicatePreset { kind, preset_id } => {
                 let mut p = self
@@ -1408,6 +1458,9 @@ impl ProjectSnapshot {
                 || p.revision > i64::MAX as u64
             {
                 return Err("Reusable block guidance exceeds the supported limits.".into());
+            }
+            if normalize_preset_color(&p.color)? != p.color {
+                return Err("Reusable block color is not normalized.".into());
             }
         }
         if self.starter_types.iter().any(|k| {

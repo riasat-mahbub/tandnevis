@@ -132,7 +132,7 @@ describe('scene generation context', () => {
 
 it('keeps emotion and tone references freeform, ordered, and independent of legacy defaults', () => {
   const project = sampleProject();
-  const preset = (id: string, name: string) => ({ id, name, meaning: `${name} meaning`, guidance: `${name} guidance`, example: '', archived: false, revision: 0 });
+  const preset = (id: string, name: string) => ({ id, name, meaning: `${name} meaning`, guidance: `${name} guidance`, example: '', color: '#1A2B3C', archived: false, revision: 0 });
   project.tones = [preset('scene-default', 'Scene default'), preset('tone-a', 'Tender'), preset('tone-b', 'Tense')];
   project.emotions = [preset('emotion-default', 'Serious'), preset('emotion-a', 'Awe'), preset('emotion-b', 'Embarrassed')];
   project.scenes[0].toneId = 'scene-default';
@@ -172,6 +172,7 @@ it('keeps emotion and tone references freeform, ordered, and independent of lega
   expect(context.referencedPresets.map(item => item.id)).toEqual([
     'emotion-a', 'emotion-b', 'tone-a', 'tone-b', 'scene-default', 'emotion-default',
   ]);
+  expect(context.referencedPresets.every(preset => !('color' in preset))).toBe(true);
 
   const unresolvedLegacy = structuredClone(project);
   const emotion = unresolvedLegacy.scenes[0].summaryDocument!.content![0].content![1];

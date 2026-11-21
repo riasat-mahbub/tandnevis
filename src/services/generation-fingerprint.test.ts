@@ -6,6 +6,19 @@ import sharedBlocks from '../test/global-block-context.json';
 import summaryBlocks from '../test/summary-board-context.json';
 
 describe('scene generation input fingerprint', () => {
+  it('keeps display-only preset colors out of the v2 context and fingerprint', () => {
+    const baseline = buildSceneGenerationContext(sharedBlocks, 'scene');
+    const colored = structuredClone(sharedBlocks);
+    colored.tones = colored.tones.map(preset => ({ ...preset, color: '#1A2B3C' }));
+    colored.emotions = colored.emotions.map(preset => ({ ...preset, color: '#D4E5F6' }));
+    const context = buildSceneGenerationContext(colored, 'scene');
+
+    expect(context.schemaVersion).toBe(2);
+    expect(context).toEqual(baseline);
+    expect(JSON.stringify(context)).not.toContain('"color"');
+    expect(generationInputFingerprint(context, '')).toBe('5d9e08ad4bfe1a11');
+  });
+
   it('resolves structured summary blocks while omitting an unrelated character and emotion both named Joy', () => {
     const context = buildSceneGenerationContext(summaryBlocks, 'scene');
     expect(context.summaryBoard.references.map(reference => reference.characterId)).toEqual(['maya', 'damian']);

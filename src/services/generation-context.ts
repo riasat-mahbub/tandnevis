@@ -43,7 +43,7 @@ export interface GenerationCharacter {
   defaultToneId: string;
   defaultEmotionId: string;
 }
-export interface GenerationPreset extends Preset { kind: PresetKind }
+export interface GenerationPreset extends Omit<Preset, 'color'> { kind: PresetKind }
 
 /**
  * Immutable, scene-scoped generation input. It deliberately has no project-wide
@@ -199,7 +199,16 @@ export function buildSceneGenerationContext(
     if (!id) return undefined;
     const preset = (kind === 'tone' ? project.tones : project.emotions).find(p => p.id === id);
     if (!preset) throw new Error('A reusable block definition is missing. Repair its reference before generating.');
-    if (!referencedPresets.some(p => p.kind === kind && p.id === id)) referencedPresets.push({ kind, ...cloneJson(preset) });
+    if (!referencedPresets.some(p => p.kind === kind && p.id === id)) referencedPresets.push({
+      kind,
+      id: preset.id,
+      name: preset.name,
+      meaning: preset.meaning,
+      guidance: preset.guidance,
+      example: preset.example,
+      archived: preset.archived,
+      revision: preset.revision,
+    });
     return preset;
   };
   const summary = summaryBoard(scene, project.tones);

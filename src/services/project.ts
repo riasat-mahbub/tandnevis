@@ -8,7 +8,7 @@ export interface Scene { id: string; chapterId: string; title: string; summary: 
 export interface Chapter { id: string; title: string; sceneIds: string[] }
 export interface Character { id: string; name: string; background: string; voice: string; personality: string; archived: boolean; defaultToneId: string; defaultEmotionId: string }
 export type PresetKind = 'tone' | 'emotion';
-export interface Preset { id: string; name: string; meaning: string; guidance: string; example: string; archived: boolean; revision: number }
+export interface Preset { id: string; name: string; meaning: string; guidance: string; example: string; color?: string; archived: boolean; revision: number }
 export interface TrashEntry { id: string; kind: string; title: string; deletedAtRevision: number; payload: unknown }
 export interface ImportedSource { id: string; markdown: string; importedAtRevision: number }
 export interface ProjectSnapshot { projectId: string; title: string; revision: number; chapters: Chapter[]; scenes: Scene[]; characters: Character[]; tones: Preset[]; emotions: Preset[]; starterTypes: string[]; trash: TrashEntry[]; importSources: ImportedSource[]; canUndo: boolean; canRedo: boolean }
@@ -31,8 +31,8 @@ export type Operation =
   | ({ type: 'createCharacter'; name: string } & Partial<Pick<Character, 'background' | 'personality' | 'voice' | 'defaultToneId' | 'defaultEmotionId'>>)
   | { type: 'duplicateCharacter' | 'deleteCharacter'; characterId: string }
   | ({ type: 'updateCharacter'; characterId: string } & Partial<Omit<Character, 'id'>>)
-  | { type: 'createPreset'; kind: PresetKind; name: string }
-  | ({ type: 'updatePreset'; kind: PresetKind; presetId: string } & Partial<Pick<Preset, 'name' | 'meaning' | 'guidance' | 'example' | 'archived'>>)
+  | { type: 'createPreset'; kind: PresetKind; name: string; color?: string }
+  | ({ type: 'updatePreset'; kind: PresetKind; presetId: string } & Partial<Pick<Preset, 'name' | 'meaning' | 'guidance' | 'example' | 'color' | 'archived'>>)
   | { type: 'duplicatePreset' | 'deletePreset'; kind: PresetKind; presetId: string }
   | { type: 'addStarterPresets'; kind: PresetKind }
   | { type: 'undo' | 'redo' };

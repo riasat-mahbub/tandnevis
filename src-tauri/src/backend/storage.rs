@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 5;
+const SCHEMA_VERSION: i32 = 6;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
@@ -754,6 +754,14 @@ fn migrate(connection: &mut Connection, version: i32) -> Result<()> {
         4 => {
             // Freeform inline references do not require a table rewrite. Bumping the
             // gate prevents older binaries from reinterpreting the new document rules.
+            connection
+                .pragma_update(None, "user_version", 5)
+                .map_err(sql)?;
+            migrate(connection, 5)
+        }
+        5 => {
+            // Preset colors live in project-extension JSON; no table rewrite is needed.
+            // This gate keeps older binaries from discarding the new optional field.
             connection
                 .pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(sql)?;

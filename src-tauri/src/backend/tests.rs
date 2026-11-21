@@ -51,8 +51,174 @@ fn new_projects_include_complete_general_starters_without_an_add_action() {
             "{} needs an example",
             preset.name
         );
+        assert!(
+            preset.color.is_empty()
+                || (preset.color.len() == 7
+                    && preset.color.starts_with('#')
+                    && preset.color[1..]
+                        .bytes()
+                        .all(|byte| byte.is_ascii_hexdigit())
+                    && preset.color == preset.color.to_ascii_uppercase()),
+            "{} needs a normalized #RRGGBB color",
+            preset.name
+        );
+    }
+    for (kind, name, expected) in [
+        (domain::PresetKind::Tone, "Tender", "#BE527A"),
+        (domain::PresetKind::Tone, "Intimate", "#BE527A"),
+        (domain::PresetKind::Tone, "Romantic", "#BE527A"),
+        (domain::PresetKind::Emotion, "Affectionate", "#BE527A"),
+        (domain::PresetKind::Emotion, "Longing", "#BE527A"),
+        (domain::PresetKind::Tone, "Playful", "#B98116"),
+        (domain::PresetKind::Tone, "Humorous", "#B98116"),
+        (domain::PresetKind::Tone, "Hopeful", "#B98116"),
+        (domain::PresetKind::Tone, "Triumphant", "#B98116"),
+        (domain::PresetKind::Tone, "Wry", "#B98116"),
+        (domain::PresetKind::Emotion, "Joyful", "#B98116"),
+        (domain::PresetKind::Emotion, "Relieved", "#B98116"),
+        (domain::PresetKind::Emotion, "Hopeful", "#B98116"),
+        (domain::PresetKind::Emotion, "Confident", "#B98116"),
+        (domain::PresetKind::Tone, "Tense", "#C85343"),
+        (domain::PresetKind::Tone, "Urgent", "#C85343"),
+        (domain::PresetKind::Emotion, "Angry", "#C85343"),
+        (domain::PresetKind::Emotion, "Frustrated", "#C85343"),
+        (domain::PresetKind::Emotion, "Resentful", "#C85343"),
+        (domain::PresetKind::Emotion, "Disgusted", "#C85343"),
+        (domain::PresetKind::Tone, "Foreboding", "#8260AD"),
+        (domain::PresetKind::Tone, "Eerie", "#8260AD"),
+        (domain::PresetKind::Tone, "Unsettling", "#8260AD"),
+        (domain::PresetKind::Emotion, "Afraid", "#8260AD"),
+        (domain::PresetKind::Emotion, "Anxious", "#8260AD"),
+        (domain::PresetKind::Emotion, "Suspicious", "#8260AD"),
+        (domain::PresetKind::Emotion, "Jealous", "#8260AD"),
+        (domain::PresetKind::Tone, "Melancholic", "#527FB0"),
+        (domain::PresetKind::Tone, "Bittersweet", "#527FB0"),
+        (domain::PresetKind::Emotion, "Grieving", "#527FB0"),
+        (domain::PresetKind::Emotion, "Lonely", "#527FB0"),
+        (domain::PresetKind::Emotion, "Disappointed", "#527FB0"),
+        (domain::PresetKind::Emotion, "Guilty", "#527FB0"),
+        (domain::PresetKind::Emotion, "Embarrassed", "#527FB0"),
+        (domain::PresetKind::Tone, "Wonderstruck", "#25877F"),
+        (domain::PresetKind::Emotion, "Awe", "#25877F"),
+        (domain::PresetKind::Emotion, "Curious", "#25877F"),
+        (domain::PresetKind::Emotion, "Surprised", "#25877F"),
+        (domain::PresetKind::Tone, "Reflective", "#657080"),
+        (domain::PresetKind::Tone, "Neutral", "#657080"),
+        (domain::PresetKind::Emotion, "Serious", "#657080"),
+        (domain::PresetKind::Emotion, "Determined", "#657080"),
+    ] {
+        let preset = match kind {
+            domain::PresetKind::Tone => &project.tones,
+            domain::PresetKind::Emotion => &project.emotions,
+        }
+        .iter()
+        .find(|preset| preset.name == name)
+        .unwrap();
+        assert_eq!(preset.color, expected, "{name}");
     }
     assert!(!db.has_unsaved_changes());
+}
+
+#[test]
+fn preset_colors_validate_normalize_and_survive_history_trash_duplication_and_reopen() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+
+    let legacy: domain::Preset = serde_json::from_value(json!({
+        "id":"legacy", "name":"Legacy", "meaning":"", "guidance":"", "example":"",
+        "archived":false, "revision":0
+    }))
+    .unwrap();
+    assert_eq!(legacy.color, "");
+    assert!(serde_json::to_value(&legacy).unwrap().get("color").is_none());
+
+    let created = apply_json(
+        &mut db,
+        json!({"type":"createPreset","kind":"tone","name":"Custom","color":"#a1b2c3"}),
+    );
+    let id = created.tones.last().unwrap().id.clone();
+    assert_eq!(created.tones.last().unwrap().color, "#A1B2C3");
+    assert_eq!(created.tones.last().unwrap().revision, 0);
+
+    let recolored = apply_json(
+        &mut db,
+        json!({"type":"updatePreset","kind":"tone","presetId":id,"color":"#123abc"}),
+    );
+    assert_eq!(recolored.tones.last().unwrap().color, "#123ABC");
+    assert_eq!(recolored.tones.last().unwrap().revision, 0);
+    let undone = apply(&mut db, Undo);
+    assert_eq!(undone.tones.last().unwrap().color, "#A1B2C3");
+    let redone = apply(&mut db, Redo);
+    assert_eq!(redone.tones.last().unwrap().color, "#123ABC");
+
+    let mixed = apply_json(
+        &mut db,
+        json!({"type":"updatePreset","kind":"tone","presetId":id,"color":"#654321","guidance":"Keep it quiet."}),
+    );
+    assert_eq!(mixed.tones.last().unwrap().color, "#654321");
+    assert_eq!(mixed.tones.last().unwrap().revision, 1);
+    let invalid_before = mixed.clone();
+    assert!(db
+        .apply(
+            mixed.revision,
+            serde_json::from_value(json!({"type":"updatePreset","kind":"tone","presetId":id,"color":"red"})).unwrap()
+        )
+        .is_err());
+    assert_eq!(db.read().unwrap(), invalid_before);
+
+    let cleared = apply_json(
+        &mut db,
+        json!({"type":"updatePreset","kind":"tone","presetId":id,"color":""}),
+    );
+    assert_eq!(cleared.tones.last().unwrap().color, "");
+    assert_eq!(cleared.tones.last().unwrap().revision, 1);
+    assert!(serde_json::to_value(cleared.tones.last().unwrap())
+        .unwrap()
+        .get("color")
+        .is_none());
+    let recolored = apply_json(
+        &mut db,
+        json!({"type":"updatePreset","kind":"tone","presetId":id,"color":"#654321"}),
+    );
+    assert_eq!(recolored.tones.last().unwrap().revision, 1);
+
+    let duplicated = apply_json(
+        &mut db,
+        json!({"type":"duplicatePreset","kind":"tone","presetId":id}),
+    );
+    let duplicate = duplicated.tones.last().unwrap();
+    let duplicate_id = duplicate.id.clone();
+    assert_eq!(duplicate.color, "#654321");
+    assert_eq!(duplicate.revision, 0);
+    let deleted = apply_json(
+        &mut db,
+        json!({"type":"deletePreset","kind":"tone","presetId":duplicate_id}),
+    );
+    assert_eq!(deleted.trash.last().unwrap().payload["preset"]["color"], "#654321");
+    let trash_id = deleted.trash.last().unwrap().id.clone();
+    let restored = apply_json(
+        &mut db,
+        json!({"type":"restoreTrash","trashId":trash_id}),
+    );
+    assert_eq!(restored.tones.last().unwrap().color, "#654321");
+
+    let archived = apply_json(
+        &mut db,
+        json!({"type":"updatePreset","kind":"tone","presetId":id,"color":"#0f0f0f","archived":true}),
+    );
+    let preset = archived.tones.iter().find(|preset| preset.id == id).unwrap();
+    assert_eq!(preset.color, "#0F0F0F");
+    assert_eq!(preset.revision, 2);
+    db.save().unwrap();
+    drop(db);
+
+    let reopened = Database::open(file.path()).unwrap().read().unwrap();
+    let preset = reopened.tones.iter().find(|preset| preset.id == id).unwrap();
+    assert_eq!(preset.color, "#0F0F0F");
+    assert_eq!(preset.revision, 2);
+    assert!(reopened.tones.iter().any(|preset| {
+        preset.name == "Custom (copy)" && preset.color == "#654321" && preset.revision == 0
+    }));
 }
 
 #[test]
@@ -1395,7 +1561,7 @@ fn schema_v1_migrates_to_v5_without_losing_story_or_undo_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
@@ -1406,7 +1572,7 @@ fn schema_v1_migrates_to_v5_without_losing_story_or_undo_history() {
 }
 
 #[test]
-fn schema_v4_migrates_to_v5_without_rewriting_project_extensions() {
+fn schema_v4_migrates_through_v5_to_v6_without_rewriting_project_extensions_or_history() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
     let initial = scene(&mut db);
@@ -1444,6 +1610,13 @@ fn schema_v4_migrates_to_v5_without_rewriting_project_extensions() {
             |row| row.get(0),
         )
         .unwrap();
+    let history_before: Vec<(i64, String, String)> = connection
+        .prepare("SELECT sequence,before_state,after_state FROM history ORDER BY sequence")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
     connection.pragma_update(None, "user_version", 4).unwrap();
     drop(connection);
 
@@ -1468,8 +1641,69 @@ fn schema_v4_migrates_to_v5_without_rewriting_project_extensions() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
     assert_eq!(after, before);
+    let history_after: Vec<(i64, String, String)> = connection
+        .prepare("SELECT sequence,before_state,after_state FROM history ORDER BY sequence")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+    assert_eq!(history_after, history_before);
+}
+
+#[test]
+fn schema_v5_migrates_to_v6_without_rewriting_extensions_or_history() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    apply_json(&mut db, json!({"type":"createChapter","title":"History stays"}));
+    db.save().unwrap();
+    drop(db);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let extensions_before: String = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let history_before: Vec<(i64, String, String)> = connection
+        .prepare("SELECT sequence,before_state,after_state FROM history ORDER BY sequence")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+    connection.pragma_update(None, "user_version", 5).unwrap();
+    drop(connection);
+
+    let mut migrated = Database::open(file.path()).unwrap();
+    assert_eq!(migrated.read().unwrap().chapters[0].title, "History stays");
+    drop(migrated);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let extensions_after: String = connection
+        .query_row(
+            "SELECT data FROM project_extensions WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let history_after: Vec<(i64, String, String)> = connection
+        .prepare("SELECT sequence,before_state,after_state FROM history ORDER BY sequence")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+    let version: i32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 6);
+    assert_eq!(extensions_after, extensions_before);
+    assert_eq!(history_after, history_before);
 }
 
 fn generation_job(
