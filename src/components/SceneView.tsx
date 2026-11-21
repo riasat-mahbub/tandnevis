@@ -10,6 +10,7 @@ import type { GenerationPurpose } from '../services/generation';
 import { summaryBoard } from '../services/summary-board';
 import { moved } from '../services/workspace';
 import type { Workspace } from '../services/workspace';
+import { effectiveColor, groupPresetsByColor, presetColorStyle } from '../services/preset-colors';
 import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, characterTargets, insertInlineReference } from './BeatEditor';
 import type { LibraryKind } from './LibraryView';
 import GenerationPanel from './GenerationPanel';
@@ -90,6 +91,8 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const filteredCharacters = project.characters.filter(character => !character.archived && matches(character.name));
   const filteredEmotions = emotions.filter(preset => !preset.archived && matches(preset.name));
   const filteredTones = tones.filter(preset => !preset.archived && matches(preset.name));
+  const emotionGroups = groupPresetsByColor('emotion', filteredEmotions);
+  const toneGroups = groupPresetsByColor('tone', filteredTones);
   const activateBlockTab = (kind: LibraryKind, focus = false) => {
     setActiveBlockTab(kind); setSearch('');
     if (focus) blockTabs.current[kind]?.focus();
@@ -116,8 +119,14 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
             <div className="block-collection" aria-label="Character blocks">{filteredCharacters.map(character => <button key={character.id} aria-label={`Character: ${character.name}`} className="character-chip story-block block-character" disabled={locked} draggable={!locked} title="Drag to add a character reference, or click to insert at the caret" onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData(CHARACTER_REFERENCE_MIME, character.id); event.dataTransfer.effectAllowed = 'copy'; }} onClick={() => insertReference('character', character)}>{character.name}<Plus size={12}/></button>)}</div>
             <button className="shelf-new-character" disabled={locked} onClick={() => manage('characters', 'new')}><Plus size={14}/>New character</button>
           </>}
-          {activeBlockTab === 'emotions' && <div className="block-collection" aria-label="Emotion blocks">{filteredEmotions.map(preset => <button key={preset.id} className="story-block block-emotion" aria-label={`Emotion: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add an emotion reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'emotion', preset)} onClick={() => insertReference('emotion', preset)}>{preset.name}<Plus size={12}/></button>)}</div>}
-          {activeBlockTab === 'tones' && <div className="block-collection" aria-label="Tone blocks">{filteredTones.map(preset => <button key={preset.id} className="story-block block-tone" aria-label={`Tone: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add a tone reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'tone', preset)} onClick={() => insertReference('tone', preset)}>{preset.name}<Plus size={12}/></button>)}</div>}
+          {activeBlockTab === 'emotions' && <div className="preset-color-groups" aria-label="Emotion blocks">{emotionGroups.map(group => <section key={group.id} className="preset-color-group" aria-label={group.name}>
+            <h4 className="preset-color-group-heading">{group.color && <span aria-hidden="true" style={{ backgroundColor: group.color }} />}{group.name}</h4>
+            <div className="block-collection" aria-label={`${group.name} emotions`}>{group.presets.map(preset => <button key={preset.id} className="story-block block-emotion preset-colored" style={presetColorStyle(effectiveColor('emotion', preset))} aria-label={`Emotion: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add an emotion reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'emotion', preset)} onClick={() => insertReference('emotion', preset)}>{preset.name}<Plus size={12}/></button>)}</div>
+          </section>)}</div>}
+          {activeBlockTab === 'tones' && <div className="preset-color-groups" aria-label="Tone blocks">{toneGroups.map(group => <section key={group.id} className="preset-color-group" aria-label={group.name}>
+            <h4 className="preset-color-group-heading">{group.color && <span aria-hidden="true" style={{ backgroundColor: group.color }} />}{group.name}</h4>
+            <div className="block-collection" aria-label={`${group.name} tones`}>{group.presets.map(preset => <button key={preset.id} className="story-block block-tone preset-colored" style={presetColorStyle(effectiveColor('tone', preset))} aria-label={`Tone: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add a tone reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'tone', preset)} onClick={() => insertReference('tone', preset)}>{preset.name}<Plus size={12}/></button>)}</div>
+          </section>)}</div>}
           {activeDefinitionsCount === 0 && <p className="muted block-empty">{search ? `No ${blockTabTitles[activeBlockTab].toLowerCase()} match “${search}”.` : `No ${blockTabTitles[activeBlockTab].toLowerCase()} yet.`}{search && <button className="quiet" onClick={() => setSearch('')}>Clear search</button>}</p>}
         </section>
       </div>

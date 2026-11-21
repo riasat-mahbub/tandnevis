@@ -2,7 +2,10 @@ import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor, JSONContent } from '@tiptap/core';
+import type { Preset } from '../services/project';
+import { NodeSelection } from '@tiptap/pm/state';
 import { Fragment, Slice } from '@tiptap/pm/model';
+import { presetColorStyle } from '../services/preset-colors';
 import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, INLINE_REFERENCE_MIME, characterTargets, insertCharacterReference, insertEmotionReference, insertInlineReference, insertToneReference, removeSelectedReference, updateCharacterReference } from './BeatEditor';
 import { project } from '../test/fixtures';
 
@@ -250,6 +253,46 @@ it('renders renamed profiles without rewriting references or creating a save', a
   await screen.findByText('Mara');
   expect(onChange).not.toHaveBeenCalled(); expect(editor.can().redo()).toBe(true);
   expect(inlineNodes(editor)[0].attrs.label).toBe('Old label');
+});
+
+it('updates inline emotion and tone colors from definitions without changing the document or creating a save', async () => {
+  const p = project(), beat = p.scenes[0].beats[0];
+  beat.document = documentWith([
+    { type: 'emotionReference', attrs: { emotionId: 'awe', label: 'Awe' } },
+    { type: 'text', text: ' then ' },
+    { type: 'toneReference', attrs: { toneId: 'tender', label: 'Tender' } },
+  ]);
+  const emotion = { id: 'awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 } as Preset;
+  const tone = { id: 'tender', name: 'Tender', meaning: '', guidance: '', example: '', archived: false, revision: 0 } as Preset;
+  const onChange = vi.fn(), register = vi.fn();
+  const props = { beat, index: 0, characters: [], onChange, onFocus: vi.fn(), onSelection: vi.fn(), register };
+  const view = render(<BeatEditor {...props} emotions={[emotion]} tones={[tone]}/>);
+  await screen.findByText('Emotion: Awe');
+  const editor = register.mock.calls.find(call => call[1])![1] as Editor;
+  act(() => {
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' draft');
+    editor.commands.undo();
+    editor.commands.setNodeSelection(1);
+  });
+  expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+  expect(editor.can().redo()).toBe(true);
+  const originalDocument = editor.getJSON();
+  onChange.mockClear();
+
+  view.rerender(<BeatEditor {...props} emotions={[{ ...emotion, color: '#000000' }]} tones={[{ ...tone, color: '#FF00AA' }]}/>);
+
+  await waitFor(() => {
+    const emotionChip = view.container.querySelector('.block-emotion') as HTMLElement;
+    const toneChip = view.container.querySelector('.block-tone') as HTMLElement;
+    expect(emotionChip.style.getPropertyValue('--preset-bg-light')).toBe((presetColorStyle('#000000') as Record<string, string>)['--preset-bg-light']);
+    expect(toneChip.style.getPropertyValue('--preset-bg-light')).toBe((presetColorStyle('#FF00AA') as Record<string, string>)['--preset-bg-light']);
+    expect(emotionChip.style.getPropertyValue('--preset-bg-dark')).not.toBe(toneChip.style.getPropertyValue('--preset-bg-dark'));
+  });
+  expect(editor.getJSON()).toEqual(originalDocument);
+  expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+  expect(editor.state.selection.from).toBe(1);
+  expect(editor.can().redo()).toBe(true);
+  expect(onChange).not.toHaveBeenCalled();
 });
 
 it('keeps keyboard click-to-insert available and consumes stale shelf drops', async () => {

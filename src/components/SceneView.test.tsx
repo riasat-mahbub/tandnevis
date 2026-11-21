@@ -1,6 +1,6 @@
 import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Workspace } from '../services/workspace';
 import type { Editor } from '@tiptap/core';
 import { CHARACTER_REFERENCE_MIME } from './BeatEditor';
@@ -51,6 +51,44 @@ it('shows only one category, scopes search, and keeps one dynamic manage link', 
   expect(screen.getByPlaceholderText('Search tones')).toHaveValue('');
   fireEvent.click(screen.getByRole('button', { name: 'Manage Tones' }));
   expect(manageLibrary).toHaveBeenCalledWith('tones', undefined);
+});
+
+it('groups preset shelf blocks by effective color and keeps custom colors last', () => {
+  const snapshot = project();
+  snapshot.emotions.push(
+    { id: 'emotion-awe', name: 'Awe', meaning: '', guidance: '', example: '', archived: false, revision: 0 },
+    { id: 'emotion-surprised', name: 'Surprised', meaning: '', guidance: '', example: '', color: '#25877F', archived: false, revision: 0 },
+    { id: 'emotion-custom', name: 'Custom', meaning: '', guidance: '', example: '', color: '#FF00AA', archived: false, revision: 0 },
+  );
+  snapshot.tones.push(
+    { id: 'tone-warm', name: 'Warm', meaning: '', guidance: '', example: '', color: '#B98116', archived: false, revision: 0 },
+    { id: 'tone-custom', name: 'Unlisted', meaning: '', guidance: '', example: '', color: '#FF00AA', archived: false, revision: 0 },
+  );
+  const workspace = new Workspace(gateway(snapshot)); workspace.attach(session(snapshot));
+  render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
+  const discovery = screen.getByRole('region', { name: 'Discovery' });
+  expect(within(discovery).getByRole('heading', { name: 'Discovery', level: 4 })).toBeVisible();
+  expect(within(discovery).getByRole('button', { name: 'Emotion: Awe' })).toHaveClass('preset-colored');
+  expect(within(discovery).getByRole('button', { name: 'Emotion: Surprised' })).toBeVisible();
+  const customEmotions = screen.getByRole('region', { name: 'Custom colors' });
+  expect(within(customEmotions).getByRole('button', { name: 'Emotion: Custom' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Emotion: Awe' })).toHaveAttribute('draggable', 'true');
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Characters' }));
+  expect(screen.getByRole('button', { name: 'Character: Maya' })).not.toHaveClass('preset-colored');
+  fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
+
+  fireEvent.change(screen.getByPlaceholderText('Search emotions'), { target: { value: 'awe' } });
+  expect(screen.getByRole('button', { name: 'Emotion: Awe' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Emotion: Surprised' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Custom colors' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Tones' }));
+  const positiveEnergy = screen.getByRole('region', { name: 'Positive energy' });
+  expect(within(positiveEnergy).getByRole('button', { name: 'Tone: Warm' })).toBeVisible();
+  expect(screen.getByRole('region', { name: 'Custom colors' })).toContainElement(screen.getByRole('button', { name: 'Tone: Unlisted' }));
 });
 
 it('collapses the desktop block shelf and keeps Scene details closed until deliberately opened', () => {

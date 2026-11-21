@@ -10,6 +10,7 @@ import { Fragment, Slice } from '@tiptap/pm/model';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Beat, Character, Preset } from '../services/project';
+import { effectiveColor, presetColorStyle } from '../services/preset-colors';
 import './StoryBlocks.css';
 
 export const CHARACTER_REFERENCE_MIME = 'application/x-shorthand-character-id';
@@ -211,11 +212,14 @@ function CharacterChip({ node, selected, getPos }: NodeViewProps) {
 function EmotionChip({ node, selected, getPos }: NodeViewProps) {
   const { emotions } = useContext(Definitions);
   const definition = emotions.find(p => p.id === node.attrs.emotionId);
-  return <NodeViewWrapper as="span" className={`story-block block-emotion ${selected ? 'block-selected' : ''}`} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Emotion · drag to move, Ctrl-drag to copy">Emotion: {definition?.name ?? node.attrs.label}</NodeViewWrapper>;
+  const color = effectiveColor('emotion', definition ?? { name: node.attrs.label });
+  return <NodeViewWrapper as="span" className={`story-block block-emotion preset-colored ${selected ? 'block-selected' : ''}`} style={presetColorStyle(color)} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Emotion · drag to move, Ctrl-drag to copy">Emotion: {definition?.name ?? node.attrs.label}</NodeViewWrapper>;
 }
 function ToneChip({ node, selected, getPos }: NodeViewProps) {
   const { tones } = useContext(Definitions);
-  return <NodeViewWrapper as="span" className={`story-block block-tone ${selected ? 'block-selected' : ''}`} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Tone · drag to move, Ctrl-drag to copy">Tone: {tones.find(p => p.id === node.attrs.toneId)?.name ?? node.attrs.label}</NodeViewWrapper>;
+  const definition = tones.find(p => p.id === node.attrs.toneId);
+  const color = effectiveColor('tone', definition ?? { name: node.attrs.label });
+  return <NodeViewWrapper as="span" className={`story-block block-tone preset-colored ${selected ? 'block-selected' : ''}`} style={presetColorStyle(color)} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Tone · drag to move, Ctrl-drag to copy">Tone: {definition?.name ?? node.attrs.label}</NodeViewWrapper>;
 }
 export const CharacterReference = Node.create({
   name: 'characterReference', group: 'inline', inline: true, atom: true, selectable: true, draggable: true,

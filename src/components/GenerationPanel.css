@@ -5,6 +5,9 @@
   --generation-muted: var(--muted, #435058);
   --generation-line: var(--line, #B3C0C2);
   --generation-orange: var(--accent, #FF7700);
+  --generation-primary: var(--action, #B94F00);
+  --generation-primary-hover: var(--action-hover, #A64700);
+  --generation-primary-active: var(--action-active, #933F00);
   --generation-danger: var(--danger, #853747);
   --generation-danger-bg: var(--danger-bg, #F6E4E6);
   --generation-danger-ink: var(--danger-ink, #68212F);
@@ -42,12 +45,13 @@
 .generation-panel input:focus-visible { outline: 2px solid var(--generation-ink); outline-offset: 3px; }
 .generation-panel button:disabled { background: var(--generation-disabled); color: var(--generation-disabled-ink); cursor: not-allowed; }
 .generation-panel .generation-primary {
-  border-color: var(--generation-orange);
-  background: var(--generation-orange);
-  color: #20282D;
+  border-color: var(--generation-primary);
+  background: var(--generation-primary);
+  color: #FFFFFF;
   font-weight: 650;
 }
-.generation-panel .generation-primary:hover:not(:disabled) { background: #E76800; }
+.generation-panel .generation-primary:hover:not(:disabled) { background: var(--generation-primary-hover); border-color: var(--generation-primary-hover); }
+.generation-panel .generation-primary:active:not(:disabled) { background: var(--generation-primary-active); border-color: var(--generation-primary-active); }
 .generation-panel .generation-primary:disabled { border-color: var(--generation-line); }
 .generation-panel .generation-settings-link { padding-inline: 3px; border-color: transparent; background: transparent; color: var(--generation-ink); text-decoration: underline; text-underline-offset: 3px; }
 .generation-panel .generation-settings-link:hover { background: transparent; }

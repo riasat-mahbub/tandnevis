@@ -1,7 +1,12 @@
 .story-block { display:inline-flex; align-items:center; gap:4px; max-width:100%; padding:3px 7px; border:1px solid transparent; border-radius:5px; font:12px/1.45 'Segoe UI',system-ui,sans-serif; vertical-align:baseline; overflow-wrap:anywhere; }
 .story-block.block-character { background:var(--block-character-bg,#DCEBDD); color:var(--block-character-ink,#274B35); }
-.story-block.block-emotion { background:var(--block-emotion-bg,#EADFF4); color:var(--block-emotion-ink,#543769); }
-.story-block.block-tone { background:var(--block-tone-bg,#FFE0B8); color:var(--block-tone-ink,#6A3A12); }
+.story-block.block-emotion:not(.preset-colored) { background:var(--block-emotion-bg,#EADFF4); color:var(--block-emotion-ink,#543769); }
+.story-block.block-tone:not(.preset-colored) { background:var(--block-tone-bg,#FFE0B8); color:var(--block-tone-ink,#6A3A12); }
+.story-block.preset-colored,.block-preview.preset-colored,.definition-rows>li>button.preset-colored { background-color:var(--preset-bg-light); color:var(--preset-ink-light); }
+.definition-rows>li>button.preset-colored small,.definition-rows>li>button.preset-colored .definition-archived { color:inherit; }
+.definition-rows>li>button.preset-colored.definition-selected { border-color:var(--focus); outline:1px solid var(--focus); outline-offset:1px; }
+.story-block.preset-colored:hover:not(:disabled),.definition-rows>li>button.preset-colored:hover:not(:disabled) { filter:brightness(.96); }
+.story-block.preset-colored:active:not(:disabled),.definition-rows>li>button.preset-colored:active:not(:disabled) { filter:brightness(.92); }
 .story-block.ProseMirror-selectednode { outline:1px solid var(--focus,#435058); outline-offset:2px; }
 .beat-prose .story-block[data-drag-handle] { cursor:grab; user-select:none; }
 .beat-prose .story-block[data-drag-handle]:active { cursor:grabbing; }
@@ -11,6 +16,11 @@
 .summary-board .tiptap:focus-visible { outline:1px solid var(--focus,#435058); outline-offset:5px; }
 .block-collection { display:flex; flex-wrap:wrap; align-items:flex-start; gap:7px; }
 .block-shelf .block-collection { max-height:160px; overflow-y:auto; padding:4px 5px 5px 4px; margin:-4px -5px -5px -4px; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.block-shelf .preset-color-groups { display:grid; gap:13px; max-height:260px; overflow:auto; padding:4px 5px 5px 4px; margin:-4px -5px -5px -4px; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.block-shelf .preset-color-groups .block-collection { max-height:none; overflow:visible; padding:0; margin:0; }
+.preset-color-group { display:grid; gap:6px; min-width:0; }
+.preset-color-group-heading { display:flex; align-items:center; gap:6px; margin:0; color:var(--muted); font-size:10px; font-weight:600; line-height:1.4; }
+.preset-color-group-heading>span { flex:0 0 7px; width:7px; height:7px; border:1px solid var(--line); border-radius:50%; }
 .block-collection .story-block { min-height:32px; text-align:left; cursor:grab; }
 .block-collection .story-block:active { cursor:grabbing; }
 .block-shelf-body>h2 { margin:3px 0 12px; }
@@ -54,3 +64,11 @@
   .block-inspector-collapsed .inspector-toggle { justify-content:flex-start; width:auto; padding:5px 7px; }
   .block-inspector-collapsed .inspector-toggle>span { display:inline; }
 }
+@media(prefers-color-scheme:dark) {
+  .app[data-theme="system"] .preset-colored { background-color:var(--preset-bg-dark); color:var(--preset-ink-dark); }
+  .app[data-theme="system"] .story-block.preset-colored:hover:not(:disabled),.app[data-theme="system"] .definition-rows>li>button.preset-colored:hover:not(:disabled) { filter:brightness(1.06); }
+  .app[data-theme="system"] .story-block.preset-colored:active:not(:disabled),.app[data-theme="system"] .definition-rows>li>button.preset-colored:active:not(:disabled) { filter:brightness(1.1); }
+}
+.app[data-theme="dark"] .preset-colored { background-color:var(--preset-bg-dark); color:var(--preset-ink-dark); }
+.app[data-theme="dark"] .story-block.preset-colored:hover:not(:disabled),.app[data-theme="dark"] .definition-rows>li>button.preset-colored:hover:not(:disabled) { filter:brightness(1.06); }
+.app[data-theme="dark"] .story-block.preset-colored:active:not(:disabled),.app[data-theme="dark"] .definition-rows>li>button.preset-colored:active:not(:disabled) { filter:brightness(1.1); }
