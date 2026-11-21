@@ -12,14 +12,16 @@ function stableJson(value: unknown): string {
  * UTF-16-code-unit FNV-1a 64-bit. Project revision and display-only state are
  * excluded so unrelated edits elsewhere in the story do not mark a draft stale.
  */
-export function generationInputFingerprint(context: DeepReadonly<SceneGenerationContext>, defaultGuidance: string): string {
+export function generationInputFingerprint(context: DeepReadonly<SceneGenerationContext>, defaultGuidance: string, purpose: 'prose' | 'beats' = 'prose'): string {
   const input = {
     scene: context.scene,
+    summaryBoard: context.summaryBoard,
     beats: context.beats,
     referencedCharacters: context.referencedCharacters,
     referencedPresets: context.referencedPresets,
     unresolvedReferences: context.unresolvedReferences,
     defaultGuidance,
+    ...(purpose === 'beats' ? { purpose } : {}),
   };
   let hash = 0xcbf29ce484222325n;
   const prime = 0x100000001b3n;

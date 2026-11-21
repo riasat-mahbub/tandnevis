@@ -29,6 +29,181 @@ fn apply_json(db: &mut Database, value: serde_json::Value) -> ProjectSnapshot {
 }
 
 #[test]
+fn rich_summary_board_persists_shared_links_and_remaps_duplicates() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let sid = p.scenes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"Maya"}));
+    let cid = p.characters[0].id.clone();
+    let emotion = p
+        .emotions
+        .iter()
+        .find(|p| p.name == "Awe")
+        .unwrap()
+        .id
+        .clone();
+    let tone = p
+        .tones
+        .iter()
+        .find(|p| p.name == "Tender")
+        .unwrap()
+        .id
+        .clone();
+    let document = json!({"type":"doc","content":[{"type":"paragraph","content":[
+        {"type":"toneReference","attrs":{"toneId":tone,"label":"Tender"}},
+        {"type":"characterReference","attrs":{"characterId":cid,"occurrenceId":"summary-maya","label":"Maya","emotion":"","delivery":"quietly"}},
+        {"type":"emotionReference","attrs":{"emotionId":emotion,"label":"Awe","targetOccurrenceId":"summary-maya"}},
+        {"type":"text","text":" tends the wounds."}
+    ]} ]});
+    let p = apply_json(
+        &mut db,
+        json!({"type":"updateScene","sceneId":sid,"summaryDocument":document,"toneId":"","tone":""}),
+    );
+    assert!(p.scenes[0].summary.contains("[Scene tone: Tender]"));
+    assert!(db
+        .apply(
+            p.revision,
+            serde_json::from_value(json!({"type":"deleteCharacter","characterId":cid})).unwrap()
+        )
+        .is_err());
+    assert!(db
+        .apply(
+            p.revision,
+            serde_json::from_value(
+                json!({"type":"deletePreset","kind":"emotion","presetId":emotion})
+            )
+            .unwrap()
+        )
+        .is_err());
+    let p = apply_json(&mut db, json!({"type":"duplicateScene","sceneId":sid}));
+    let copy_nodes = &p.scenes[1].summary_document.as_ref().unwrap()["content"][0]["content"];
+    assert_ne!(copy_nodes[1]["attrs"]["occurrenceId"], "summary-maya");
+    assert_eq!(
+        copy_nodes[1]["attrs"]["occurrenceId"],
+        copy_nodes[2]["attrs"]["targetOccurrenceId"]
+    );
+    let p = apply_json(
+        &mut db,
+        json!({"type":"updateCharacter","characterId":cid,"name":"Maya Vale","archived":true}),
+    );
+    assert!(p.scenes.iter().all(|s| s.summary.contains("Maya Vale")));
+    assert!(!Database::open(file.path())
+        .unwrap()
+        .read()
+        .unwrap()
+        .scenes
+        .iter()
+        .any(|s| s.id == sid));
+    db.save().unwrap();
+    drop(db);
+    let mut reopened = Database::open(file.path()).unwrap();
+    assert_eq!(reopened.read().unwrap(), p);
+    let before = apply(&mut reopened, Undo);
+    assert!(before
+        .scenes
+        .iter()
+        .all(|s| !s.summary.contains("Maya Vale")));
+    let after = apply(&mut reopened, Redo);
+    assert!(after.scenes.iter().all(|s| s.summary.contains("Maya Vale")));
+}
+
+#[test]
+fn generated_beats_accept_atomically_append_and_undo_without_changing_prose() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let sid = p.scenes[0].id.clone();
+    let p = beat(&mut db, &sid, "Existing beat remains.");
+    let mut job = generation_job(&sid, p.revision, 101);
+    job.request_snapshot["purpose"] = json!("beats");
+    db.create_generation_job(&job).unwrap();
+    let document = domain::plain_document("Maya closes the door.");
+    let draft = json!({"beats":[{"document":document}]}).to_string();
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Streaming,
+        draft.clone(),
+        None,
+        102,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &job.id,
+        domain::GenerationJobStatus::Completed,
+        draft,
+        None,
+        103,
+    )
+    .unwrap();
+    assert!(db
+        .accept_generated_beats(
+            p.revision,
+            &job.id,
+            &sid,
+            vec![document.clone(), json!({"type":"unknown"})],
+            104
+        )
+        .is_err());
+    assert_eq!(db.read().unwrap(), p);
+    assert_eq!(
+        db.generation_job(&job.id).unwrap().unwrap().status,
+        domain::GenerationJobStatus::Completed
+    );
+    let after = db
+        .accept_generated_beats(p.revision, &job.id, &sid, vec![document], 105)
+        .unwrap();
+    assert_eq!(after.scenes[0].beats.len(), 2);
+    assert_eq!(after.scenes[0].beats[0], p.scenes[0].beats[0]);
+    assert_eq!(after.scenes[0].beats[1].text, "Maya closes the door.");
+    assert_eq!(after.scenes[0].prose, p.scenes[0].prose);
+    let undone = apply(&mut db, Undo);
+    assert_eq!(undone.scenes, p.scenes);
+    let redone = apply(&mut db, Redo);
+    assert_eq!(redone.scenes, after.scenes);
+    assert!(db
+        .accept_generated_beats(
+            redone.revision,
+            &job.id,
+            &sid,
+            vec![domain::plain_document("Do not duplicate accepted output.")],
+            106
+        )
+        .is_err());
+    let mut partial = generation_job(&sid, redone.revision, 107);
+    partial.request_snapshot["purpose"] = json!("beats");
+    db.create_generation_job(&partial).unwrap();
+    db.checkpoint_generation_job(
+        &partial.id,
+        domain::GenerationJobStatus::Streaming,
+        "{\"beats\":[".into(),
+        None,
+        108,
+    )
+    .unwrap();
+    db.checkpoint_generation_job(
+        &partial.id,
+        domain::GenerationJobStatus::Stopped,
+        "{\"beats\":[".into(),
+        None,
+        109,
+    )
+    .unwrap();
+    assert!(db
+        .accept_generated_beats(
+            redone.revision,
+            &partial.id,
+            &sid,
+            vec![domain::plain_document("Partial must not be accepted.")],
+            110
+        )
+        .is_err());
+    db.save().unwrap();
+    drop(db);
+    assert_eq!(Database::open(file.path()).unwrap().read().unwrap(), redone);
+}
+
+#[test]
 fn shared_definitions_defaults_and_trash_survive_manual_save() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
@@ -209,6 +384,7 @@ fn empty_project_and_full_authoring_survive_reopen() {
             scene_id,
             title: None,
             summary: Some("A short idea.".into()),
+            summary_document: None,
             tone: Some("Hopeful".into()),
             prose: None,
             narration: Some(domain::Narration {
@@ -730,6 +906,7 @@ fn manual_save_keeps_structural_and_text_edits_out_of_the_file_until_saved() {
             scene_id: scene_id.clone(),
             title: None,
             summary: Some("Working summary".into()),
+            summary_document: None,
             tone: None,
             prose: Some("Working prose.".into()),
             narration: None,
@@ -805,7 +982,7 @@ fn full_save_detects_external_writes_even_without_a_revision_change() {
 }
 
 #[test]
-fn schema_v1_migrates_to_v3_without_losing_story_or_undo_history() {
+fn schema_v1_migrates_to_v4_without_losing_story_or_undo_history() {
     let file = ProjectFile::new();
     let mut db = file.create();
     let p = scene(&mut db);
@@ -817,6 +994,7 @@ fn schema_v1_migrates_to_v3_without_losing_story_or_undo_history() {
             scene_id: p.scenes[0].id.clone(),
             title: None,
             summary: Some("Maya tends to Damian.".into()),
+            summary_document: None,
             tone: Some("Careful, awkward warmth.".into()),
             prose: None,
             narration: None,
@@ -828,7 +1006,8 @@ fn schema_v1_migrates_to_v3_without_losing_story_or_undo_history() {
     let connection = rusqlite::Connection::open(file.path()).unwrap();
     connection
         .execute_batch(
-            "ALTER TABLE scenes DROP COLUMN prose;
+            "UPDATE scenes SET summary='Maya tends to Damian.';
+             ALTER TABLE scenes DROP COLUMN prose;
              DROP TABLE generation_jobs;
              DROP TABLE accepted_prose_revisions;
              DROP TABLE project_extensions;
@@ -850,7 +1029,7 @@ fn schema_v1_migrates_to_v3_without_losing_story_or_undo_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 3);
+    assert_eq!(version, 4);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
@@ -971,6 +1150,7 @@ fn generation_checkpoints_survive_authoring_saves_and_acceptance_is_undoable() {
                 scene_id: scene_id.clone(),
                 title: None,
                 summary: Some("A first aid scene.".into()),
+                summary_document: None,
                 tone: None,
                 prose: None,
                 narration: None,
@@ -1088,6 +1268,7 @@ fn draft_acceptance_rejects_stale_prose_mismatched_or_missing_jobs_and_wrong_sce
                 scene_id: scene_id.clone(),
                 title: None,
                 summary: None,
+                summary_document: None,
                 tone: None,
                 prose: Some("The writer changed this prose after generation.".into()),
                 narration: None,

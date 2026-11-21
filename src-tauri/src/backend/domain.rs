@@ -49,6 +49,8 @@ pub struct Scene {
     pub chapter_id: String,
     pub title: String,
     pub summary: String,
+    #[serde(default)]
+    pub summary_document: Option<Value>,
     pub tone: String,
     #[serde(default)]
     pub tone_id: String,
@@ -211,6 +213,7 @@ pub enum Operation {
         scene_id: String,
         title: Option<String>,
         summary: Option<String>,
+        summary_document: Option<Value>,
         tone: Option<String>,
         tone_id: Option<String>,
         prose: Option<String>,
@@ -342,7 +345,7 @@ pub fn normalize_occurrences(document: &mut Value, beat_id: &str) {
         }
     });
 }
-fn refresh_occurrences(document: &mut Value) {
+pub(super) fn refresh_occurrences(document: &mut Value) {
     let mut ids = HashMap::new();
     walk_nodes_mut(document, &mut |node| {
         if node["type"] == "characterReference" {
@@ -375,6 +378,63 @@ fn value_uses(value: &Value, key: &str, id: &str) -> bool {
         _ => false,
     }
 }
+pub fn plain_document(text: &str) -> Value {
+    let content: Vec<Value> = text
+        .split('\n')
+        .map(|part| {
+            if part.is_empty() {
+                json!({"type":"paragraph"})
+            } else {
+                json!({"type":"paragraph","content":[{"type":"text","text":part}]})
+            }
+        })
+        .collect();
+    json!({"type":"doc","content":content})
+}
+
+/// Old projects keep their summary and optional tone as one editable board.
+pub fn summary_document(scene: &Scene, tones: &[Preset]) -> Value {
+    let legacy = scene.summary_document.is_none();
+    let mut document = scene
+        .summary_document
+        .clone()
+        .unwrap_or_else(|| plain_document(&scene.summary));
+    let mut has_tone = false;
+    walk_nodes(&document, &mut |node| {
+        if node["type"] == "toneReference" {
+            has_tone = true;
+        }
+    });
+    if let Some(tone) = tones
+        .iter()
+        .find(|tone| !has_tone && tone.id == scene.tone_id)
+    {
+        if !document["content"].is_array() {
+            if !document["content"].is_null() {
+                return document;
+            }
+            document["content"] = json!([]);
+        }
+        if document["content"][0]["type"] != "paragraph" {
+            document["content"]
+                .as_array_mut()
+                .unwrap()
+                .insert(0, json!({"type":"paragraph"}));
+        }
+        let paragraph = &mut document["content"][0];
+        if paragraph["content"].is_null() {
+            paragraph["content"] = json!([]);
+        }
+        paragraph["content"].as_array_mut().unwrap().insert(
+            0,
+            json!({"type":"toneReference","attrs":{"toneId":tone.id,"label":tone.name}}),
+        );
+    }
+    if legacy && scene.tone_id.is_empty() && !scene.tone.trim().is_empty() {
+        document["content"].as_array_mut().unwrap().push(json!({"type":"paragraph","content":[{"type":"text","text":format!("Scene tone: {}", scene.tone)}]}));
+    }
+    document
+}
 fn permutation(actual: &[String], proposed: &[String]) -> Result<()> {
     let a: HashSet<_> = actual.iter().collect();
     let b: HashSet<_> = proposed.iter().collect();
@@ -387,7 +447,7 @@ fn permutation(actual: &[String], proposed: &[String]) -> Result<()> {
 
 /// Validate the supported Tiptap document subset and derive its portable text.
 /// Character names resolve from the project library, including archived profiles.
-fn document_text(
+pub(super) fn document_text(
     document: &Value,
     characters: &[Character],
     tones: &[Preset],
@@ -628,7 +688,12 @@ impl ProjectSnapshot {
         self.starter_types.push(kind.as_str().into());
     }
     fn character_is_used(&self, id: &str) -> bool {
-        self.scenes
+        self.scenes.iter().any(|s| {
+            s.summary_document
+                .as_ref()
+                .is_some_and(|d| value_uses(d, "characterId", id))
+        }) || self
+            .scenes
             .iter()
             .flat_map(|s| &s.beats)
             .any(|b| value_uses(&b.document, "characterId", id))
@@ -644,6 +709,9 @@ impl ProjectSnapshot {
         };
         self.scenes.iter().any(|s| {
             (kind == PresetKind::Tone && s.tone_id == id)
+                || s.summary_document
+                    .as_ref()
+                    .is_some_and(|d| value_uses(d, key, id))
                 || s.beats.iter().any(|b| value_uses(&b.document, key, id))
         }) || self.characters.iter().any(|c| match kind {
             PresetKind::Tone => c.default_tone_id == id,
@@ -753,6 +821,7 @@ impl ProjectSnapshot {
                     chapter_id,
                     title: name,
                     summary: String::new(),
+                    summary_document: Some(plain_document("")),
                     tone: String::new(),
                     tone_id: String::new(),
                     prose: String::new(),
@@ -764,6 +833,7 @@ impl ProjectSnapshot {
                 scene_id,
                 title: name,
                 summary,
+                summary_document,
                 tone,
                 tone_id,
                 prose,
@@ -777,7 +847,11 @@ impl ProjectSnapshot {
                     scene.title = v;
                 }
                 if let Some(v) = summary {
+                    scene.summary_document = None;
                     scene.summary = v;
+                }
+                if let Some(v) = summary_document {
+                    scene.summary_document = Some(v);
                 }
                 if let Some(v) = tone {
                     scene.tone = v;
@@ -796,6 +870,9 @@ impl ProjectSnapshot {
                 let mut scene = self.scene_mut(&scene_id)?.clone();
                 scene.id = new_id();
                 scene.title.push_str(" (copy)");
+                if let Some(document) = &mut scene.summary_document {
+                    refresh_occurrences(document);
+                }
                 for beat in &mut scene.beats {
                     beat.id = new_id();
                     refresh_occurrences(&mut beat.document);
@@ -1101,6 +1178,15 @@ impl ProjectSnapshot {
             }
         }
         for scene in &mut self.scenes {
+            if scene.summary_document.is_none() {
+                scene.summary_document = Some(summary_document(scene, &self.tones));
+            }
+            if let Some(document) = &mut scene.summary_document {
+                normalize_occurrences(document, &format!("{}:summary", scene.id));
+                scene.summary =
+                    document_text(document, &self.characters, &self.tones, &self.emotions)?
+                        .replace("[Beat tone:", "[Scene tone:");
+            }
             for beat in &mut scene.beats {
                 normalize_occurrences(&mut beat.document, &beat.id);
                 beat.text = document_text(
@@ -1147,6 +1233,16 @@ impl ProjectSnapshot {
         for s in &self.scenes {
             add(&s.id)?;
             title(&s.title)?;
+            if let Some(document) = &s.summary_document {
+                if serde_json::to_vec(document)
+                    .map_err(|e| e.to_string())?
+                    .len()
+                    > 4_000_000
+                {
+                    return Err("Scene summary exceeds the 4 MB limit.".into());
+                }
+                document_text(document, &self.characters, &self.tones, &self.emotions)?;
+            }
             if s.prose.len() > 10_000_000 {
                 return Err("Scene prose exceeds the 10 MB limit.".into());
             }

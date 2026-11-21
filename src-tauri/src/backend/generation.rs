@@ -6,7 +6,7 @@ use crate::chatgpt::{
     responses::{ResponsesEvent, ResponsesInput, ResponsesRequest},
     ChatGPTState,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
@@ -27,6 +27,14 @@ const MAX_CONTEXT_BYTES: usize = 500_000;
 const MAX_DRAFT_BYTES: usize = 10_000_000;
 const CHECKPOINT_BYTES: usize = 2_048;
 const CHECKPOINT_INTERVAL_MS: u128 = 500;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum GenerationPurpose {
+    #[default]
+    Prose,
+    Beats,
+}
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -155,6 +163,7 @@ struct SceneDirection {
     id: String,
     title: String,
     summary: String,
+    summary_document: Value,
     tone: String,
     tone_id: String,
     narration: domain::Narration,
@@ -220,6 +229,7 @@ struct SceneGenerationContext {
     schema_version: u8,
     project_revision: u64,
     scene: SceneDirection,
+    summary_board: GenerationBeat,
     beats: Vec<GenerationBeat>,
     referenced_characters: Vec<GenerationCharacter>,
     referenced_presets: Vec<GenerationPreset>,
@@ -457,6 +467,7 @@ fn block_document(
     project: &ProjectSnapshot,
     document: &Value,
     referenced: &mut Vec<GenerationPreset>,
+    summary: bool,
 ) -> Result<(Value, Option<domain::Preset>)> {
     let mut owners = HashMap::new();
     domain::walk_nodes(document, &mut |node| {
@@ -477,6 +488,7 @@ fn block_document(
         owners: &HashMap<String, String>,
         referenced: &mut Vec<GenerationPreset>,
         tone: &mut Option<domain::Preset>,
+        summary: bool,
     ) -> Result<Value> {
         let kind = node["type"].as_str().unwrap_or_default();
         if kind == "toneReference" {
@@ -490,7 +502,11 @@ fn block_document(
                 referenced,
             )?
             .ok_or("A beat tone reference is missing its definition.")?;
-            let text = format!("[Beat tone: {}]", p.name);
+            let text = format!(
+                "[{} tone: {}]",
+                if summary { "Scene" } else { "Beat" },
+                p.name
+            );
             *tone = Some(p);
             return Ok(json!({"type":"text","text":text}));
         }
@@ -516,14 +532,14 @@ fn block_document(
             result["content"] = Value::Array(
                 nodes
                     .iter()
-                    .map(|n| transform(project, n, owners, referenced, tone))
+                    .map(|n| transform(project, n, owners, referenced, tone, summary))
                     .collect::<Result<Vec<_>>>()?,
             );
         }
         Ok(result)
     }
     let mut tone = None;
-    let result = transform(project, document, &owners, referenced, &mut tone)?;
+    let result = transform(project, document, &owners, referenced, &mut tone, summary)?;
     Ok((result, tone))
 }
 
@@ -565,18 +581,52 @@ fn build_scene_context(
     let mut unresolved_references = Vec::new();
     let mut beats = Vec::with_capacity(scene.beats.len());
     let mut referenced_presets = Vec::new();
-    let scene_tone = add_preset(
-        project,
-        domain::PresetKind::Tone,
-        &scene.tone_id,
-        &mut referenced_presets,
-    )?
-    .map(|p| p.name)
-    .unwrap_or_else(|| scene.tone.clone());
+    let summary_id = format!("{}:summary", scene.id);
+    let mut summary_document = domain::summary_document(scene, &project.tones);
+    domain::normalize_occurrences(&mut summary_document, &summary_id);
+    let (summary_display, summary_tone) =
+        block_document(project, &summary_document, &mut referenced_presets, true)?;
+    let scene_tone = if let Some(tone) = &summary_tone {
+        tone.name.clone()
+    } else {
+        add_preset(
+            project,
+            domain::PresetKind::Tone,
+            &scene.tone_id,
+            &mut referenced_presets,
+        )?
+        .map(|p| p.name)
+        .unwrap_or_else(|| scene.tone.clone())
+    };
+    let mut summary_references = Vec::new();
+    collect_references(
+        &summary_document,
+        &mut Vec::new(),
+        &summary_id,
+        &characters,
+        &mut summary_references,
+        &mut referenced_ids,
+        &mut referenced_seen,
+        &mut unresolved_references,
+    );
+    let summary_board = GenerationBeat {
+        id: summary_id,
+        order: 0,
+        document: summary_document.clone(),
+        readable_text: clean_block(render_node(&summary_display, &characters)),
+        references: summary_references,
+        tone: scene_tone.clone(),
+        tone_source: if scene_tone.is_empty() {
+            "none"
+        } else {
+            "scene"
+        }
+        .into(),
+    };
 
     for (index, beat) in scene.beats.iter().enumerate() {
         let (display_document, beat_tone) =
-            block_document(project, &beat.document, &mut referenced_presets)?;
+            block_document(project, &beat.document, &mut referenced_presets, false)?;
         let mut references = Vec::new();
         collect_references(
             &beat.document,
@@ -642,13 +692,19 @@ fn build_scene_context(
         id: scene.id.clone(),
         title: scene.title.clone(),
         summary: scene.summary.clone(),
+        summary_document,
         tone: scene_tone,
-        tone_id: scene.tone_id.clone(),
+        tone_id: summary_tone
+            .map(|p| p.id)
+            .unwrap_or_else(|| scene.tone_id.clone()),
         narration: scene.narration.clone(),
     };
     let mut blocks = vec![format!("Scene: {}", direction.title)];
-    if !direction.summary.trim().is_empty() {
-        blocks.push(format!("Scene summary: {}", direction.summary.trim()));
+    if !summary_board.readable_text.trim().is_empty() {
+        blocks.push(format!(
+            "Scene summary: {}",
+            summary_board.readable_text.trim()
+        ));
     }
     if !direction.tone.trim().is_empty() {
         blocks.push(format!("Scene tone: {}", direction.tone.trim()));
@@ -737,6 +793,7 @@ fn build_scene_context(
         schema_version: 1,
         project_revision: project.revision,
         scene: direction,
+        summary_board,
         beats,
         referenced_characters,
         referenced_presets,
@@ -745,15 +802,28 @@ fn build_scene_context(
     })
 }
 
+#[cfg(test)]
 fn fingerprint(context: &SceneGenerationContext, guidance: &str) -> Result<String> {
-    let value = json!({
+    fingerprint_for_purpose(context, guidance, GenerationPurpose::Prose)
+}
+
+fn fingerprint_for_purpose(
+    context: &SceneGenerationContext,
+    guidance: &str,
+    purpose: GenerationPurpose,
+) -> Result<String> {
+    let mut value = json!({
         "scene": context.scene,
+        "summaryBoard": context.summary_board,
         "beats": context.beats,
         "referencedCharacters": context.referenced_characters,
         "referencedPresets": context.referenced_presets,
         "unresolvedReferences": context.unresolved_references,
         "defaultGuidance": guidance,
     });
+    if purpose == GenerationPurpose::Beats {
+        value["purpose"] = json!("beats");
+    }
     let canonical = serde_json::to_string(&canonicalize_json(value))
         .map_err(|_| "Could not fingerprint the scene direction.".to_string())?;
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
@@ -799,18 +869,33 @@ fn validate_guidance(guidance: Option<String>) -> Result<String> {
     Ok(guidance)
 }
 
+#[cfg(test)]
 fn validate_context_for_request(context: &SceneGenerationContext) -> Result<()> {
+    validate_context_for_purpose(context, GenerationPurpose::Prose)
+}
+
+fn validate_context_for_purpose(
+    context: &SceneGenerationContext,
+    purpose: GenerationPurpose,
+) -> Result<()> {
     if !context.unresolved_references.is_empty() {
         return Err(
             "A character definition is missing. Repair its reference before generating.".into(),
         );
     }
-    if !context
+    let has_beats = context
         .beats
         .iter()
-        .any(|beat| !beat.readable_text.trim().is_empty())
-    {
-        return Err("Add at least one non-empty beat before generating this scene.".into());
+        .any(|beat| !beat.readable_text.trim().is_empty());
+    let has_summary = !context.summary_board.readable_text.trim().is_empty();
+    if purpose == GenerationPurpose::Beats && !has_summary {
+        return Err("Describe the scene on its summary board before generating beats.".into());
+    }
+    if purpose == GenerationPurpose::Prose && !has_summary && !has_beats {
+        return Err(
+            "Describe the scene in its summary or add a non-empty beat before generating prose."
+                .into(),
+        );
     }
     if context.readable_context.len() > MAX_CONTEXT_BYTES {
         return Err("This scene has too much context for one generation request.".into());
@@ -818,10 +903,22 @@ fn validate_context_for_request(context: &SceneGenerationContext) -> Result<()> 
     Ok(())
 }
 
+#[cfg(test)]
 fn make_request(model: &str, guidance: &str, context: &SceneGenerationContext) -> ResponsesRequest {
-    let mut instructions = String::from(
-        "Write polished story prose for one scene using every beat in order. Treat character references as instructions for the named character at that moment; local emotion and delivery override the character's baseline profile only for that occurrence. An explicit beat tone overrides the scene tone for that beat only; other beats inherit the scene tone. Character voice remains independent. Use the narration guidance. Preserve the causal sequence and intent of the beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction.",
-    );
+    make_request_for_purpose(model, guidance, context, GenerationPurpose::Prose)
+}
+
+fn make_request_for_purpose(
+    model: &str,
+    guidance: &str,
+    context: &SceneGenerationContext,
+    purpose: GenerationPurpose,
+) -> ResponsesRequest {
+    let mut instructions = String::from(if purpose == GenerationPurpose::Prose {
+        "Write polished story prose for one scene from its summary board, using every beat in order when beats are present. Treat character references as instructions for the named character at that moment; local emotion and delivery override the character's baseline profile only for that occurrence. A tone on the summary board supplies the scene tone. An explicit beat tone overrides the scene tone for that beat only; other beats inherit the scene tone. Character voice remains independent. Use the narration guidance. Preserve the causal sequence and intent of the summary and beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction."
+    } else {
+        "Turn the summary board into a short sequence of 1 to 12 new editable story beats. These beats will be appended after any existing beats; do not repeat their events. Return ONLY a JSON object in this exact shape: {\"beats\":[{\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Describe one story moment.\"}]}]}}]}. Each beat is freeform shorthand, not finished prose. Use text and optionally characterReference, emotionReference, and toneReference inline nodes. Character attrs: {characterId:<existing id>,occurrenceId:<unique local id>,label:<name>,emotion:\"\",delivery:\"\"}. Emotion attrs: {emotionId:<existing id>,label:<name>,targetOccurrenceId:<character occurrence in THIS beat>}. Tone attrs: {toneId:<existing id>,label:<name>}; at most one tone per beat. Use ONLY IDs in referencedCharacters/referencedPresets from the supplied context. Never invent a shared ID or apply emotion to a different occurrence. Beats may have no characters. Preserve character voice, the author's intent, and the causal sequence. No Markdown fences, explanation, title, or prose outside the JSON object."
+    });
     if !guidance.is_empty() {
         instructions.push_str("\n\nAdditional author guidance:\n");
         instructions.push_str(guidance);
@@ -831,7 +928,15 @@ fn make_request(model: &str, guidance: &str, context: &SceneGenerationContext) -
         instructions: Some(instructions),
         input: vec![ResponsesInput {
             role: "user".into(),
-            content: context.readable_context.clone(),
+            content: if purpose == GenerationPurpose::Prose {
+                context.readable_context.clone()
+            } else {
+                format!(
+                    "{}\n\nStructured block context (use only these shared IDs):\n{}",
+                    context.readable_context,
+                    serde_json::to_string(context).unwrap_or_default()
+                )
+            },
         }],
     }
 }
@@ -842,6 +947,7 @@ fn make_request_snapshot(
     context: &SceneGenerationContext,
     guidance: &str,
     base_prose: &str,
+    purpose: GenerationPurpose,
 ) -> Result<Value> {
     serde_json::to_value(json!({
         "schemaVersion": 1,
@@ -849,6 +955,7 @@ fn make_request_snapshot(
         "model": request.model,
         "defaultGuidance": guidance,
         "baseProse": base_prose,
+        "purpose": purpose,
         "context": context,
         "request": request,
     }))
@@ -1089,12 +1196,14 @@ pub async fn start_scene_generation(
     scene_id: String,
     model: String,
     default_guidance: Option<String>,
+    purpose: Option<GenerationPurpose>,
     on_event: Channel<GenerationEvent>,
     backend: State<'_, BackendState>,
     chatgpt: State<'_, ChatGPTState>,
     generation: State<'_, GenerationState>,
 ) -> Result<GenerationJob> {
     let guidance = validate_guidance(default_guidance)?;
+    let purpose = purpose.unwrap_or_default();
     if model.trim().is_empty() || model.len() > 1000 {
         return Err("Choose a supported ChatGPT model in Settings.".into());
     }
@@ -1127,9 +1236,15 @@ pub async fn start_scene_generation(
         backend_state.with_project(&session_for_create, |database| {
             let project = database.read()?;
             let context = build_scene_context(&project, &scene_for_create)?;
-            validate_context_for_request(&context)?;
-            let input_fingerprint = fingerprint(&context, &guidance_for_create)?;
-            let request = make_request(&model_for_create, &guidance_for_create, &context);
+            validate_context_for_purpose(&context, purpose)?;
+            let input_fingerprint =
+                fingerprint_for_purpose(&context, &guidance_for_create, purpose)?;
+            let request = make_request_for_purpose(
+                &model_for_create,
+                &guidance_for_create,
+                &context,
+                purpose,
+            );
             let base_prose = project
                 .scenes
                 .iter()
@@ -1143,6 +1258,7 @@ pub async fn start_scene_generation(
                 &context,
                 &guidance_for_create,
                 &base_prose,
+                purpose,
             )?;
             let now = current_time_ms();
             let job = GenerationJob {
@@ -1331,6 +1447,105 @@ fn base_prose_from_job(job: &GenerationJob) -> Result<String> {
         .ok_or_else(|| "The saved generation request is invalid.".into())
 }
 
+fn purpose_from_job(job: &GenerationJob) -> Result<GenerationPurpose> {
+    match job.request_snapshot.get("purpose") {
+        None => Ok(GenerationPurpose::Prose),
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|_| "The saved generation purpose is invalid.".into()),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GeneratedBeats {
+    beats: Vec<GeneratedBeatDocument>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GeneratedBeatDocument {
+    document: Value,
+}
+
+fn parse_generated_beats(
+    draft: &str,
+    project: &ProjectSnapshot,
+    saved_context: &Value,
+) -> Result<Vec<Value>> {
+    if draft.len() > 1_000_000 {
+        return Err("The generated scene exceeds the 1 MB beat limit.".into());
+    }
+    let draft = draft.trim();
+    let draft = draft
+        .strip_prefix("```json")
+        .or_else(|| draft.strip_prefix("```"))
+        .and_then(|value| value.trim().strip_suffix("```"))
+        .map(str::trim)
+        .unwrap_or(draft);
+    let parsed: GeneratedBeats = serde_json::from_str(draft).map_err(|_| "The generated scene is not valid beat JSON. Generate a new attempt; your existing writing is unchanged.".to_string())?;
+    if parsed.beats.is_empty() || parsed.beats.len() > 40 {
+        return Err("A generated scene must contain between 1 and 40 beats.".into());
+    }
+    let characters: HashSet<&str> = saved_context["referencedCharacters"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["id"].as_str())
+        .collect();
+    let presets: HashSet<(&str, &str)> = saved_context["referencedPresets"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| Some((p["kind"].as_str()?, p["id"].as_str()?)))
+        .collect();
+    let mut documents = Vec::new();
+    for beat in parsed.beats {
+        let mut document = beat.document;
+        let mut invalid = false;
+        domain::walk_nodes(&document, &mut |node| match node["type"].as_str() {
+            Some("characterReference") => {
+                if !node["attrs"]["characterId"]
+                    .as_str()
+                    .is_some_and(|id| characters.contains(id))
+                {
+                    invalid = true;
+                }
+            }
+            Some("toneReference") => {
+                if !node["attrs"]["toneId"]
+                    .as_str()
+                    .is_some_and(|id| presets.contains(&("tone", id)))
+                {
+                    invalid = true;
+                }
+            }
+            Some("emotionReference") => {
+                if !node["attrs"]["emotionId"]
+                    .as_str()
+                    .is_some_and(|id| presets.contains(&("emotion", id)))
+                {
+                    invalid = true;
+                }
+            }
+            _ => {}
+        });
+        if invalid {
+            return Err("The generated scene references a block that was not supplied. Generate a new attempt; your existing writing is unchanged.".into());
+        }
+        let text = domain::document_text(
+            &document,
+            &project.characters,
+            &project.tones,
+            &project.emotions,
+        )?;
+        if text.trim().is_empty() {
+            return Err("Generated beats must describe a story moment.".into());
+        }
+        domain::refresh_occurrences(&mut document);
+        documents.push(document);
+    }
+    Ok(documents)
+}
+
 #[tauri::command]
 pub async fn accept_scene_generation(
     session_id: String,
@@ -1354,22 +1569,30 @@ pub async fn accept_scene_generation(
                 .generation_job(&job_id)?
                 .ok_or_else(|| "Generation job does not exist in this project.".to_string())?;
             verify_job_binding(&job, &scene_id, &model, &connection_id)?;
+            let purpose = purpose_from_job(&job)?;
+            if purpose == GenerationPurpose::Beats && job.status != GenerationJobStatus::Completed {
+                return Err("Only a completed generated scene can be added as beats. Generate a new attempt for a partial or interrupted scene.".into());
+            }
             if !matches!(job.status, GenerationJobStatus::Completed | GenerationJobStatus::Stopped) {
                 return Err("Only a completed or stopped scene draft can be accepted.".into());
             }
             let project = database.read()?;
             let context = build_scene_context(&project, &scene_id)?;
             let guidance = guidance_from_job(&job)?;
-            let current_fingerprint = fingerprint(&context, &guidance)?;
+            let current_fingerprint = fingerprint_for_purpose(&context, &guidance, purpose)?;
             let scene = project
                 .scenes
                 .iter()
                 .find(|scene| scene.id == scene_id)
                 .ok_or("The selected scene is no longer in this project.")?;
             let directions_changed = current_fingerprint != job.input_fingerprint;
-            let prose_changed = scene.prose != base_prose_from_job(&job)?;
+            let prose_changed = purpose == GenerationPurpose::Prose && scene.prose != base_prose_from_job(&job)?;
             if (directions_changed || prose_changed) && !acknowledge_outdated {
                 return Err("Scene directions or prose changed after generation started. Review the scene and confirm before accepting this draft.".into());
+            }
+            if purpose == GenerationPurpose::Beats {
+                let documents = parse_generated_beats(&job.draft_text, &project, &job.request_snapshot["context"])?;
+                return database.accept_generated_beats(expected_project_revision, &job_id, &scene_id, documents, current_time_ms());
             }
             database.accept_generated_prose(
                 expected_project_revision,
@@ -1444,6 +1667,99 @@ pub async fn discard_scene_generation(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn rich_summary_context_matches_frontend_fingerprints_for_both_purposes() {
+        let project: ProjectSnapshot =
+            serde_json::from_str(include_str!("../../../src/test/summary-board-context.json"))
+                .unwrap();
+        let context = build_scene_context(&project, "scene").unwrap();
+        let prose = fingerprint_for_purpose(&context, "", GenerationPurpose::Prose).unwrap();
+        let beats = fingerprint_for_purpose(&context, "", GenerationPurpose::Beats).unwrap();
+        assert_eq!(prose, "8202f5d7b8870fd9");
+        assert_eq!(beats, "71f34330f03469e6");
+        assert_eq!(context.referenced_characters.len(), 2);
+        assert!(context
+            .referenced_characters
+            .iter()
+            .all(|character| character.id != "joy"));
+        assert!(validate_context_for_purpose(&context, GenerationPurpose::Beats).is_ok());
+    }
+    #[test]
+    fn summary_board_resolves_blocks_and_generates_without_beats() {
+        let mut project: ProjectSnapshot =
+            serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
+                .unwrap();
+        project.scenes[0].beats.clear();
+        project.scenes[0].summary_document = Some(
+            json!({"type":"doc","content":[{"type":"paragraph","content":[
+                {"type":"toneReference","attrs":{"toneId":"tense","label":"Old tone"}},
+                {"type":"characterReference","attrs":{"characterId":"maya","occurrenceId":"summary-maya","label":"Old name","emotion":"","delivery":"softly"}},
+                {"type":"emotionReference","attrs":{"emotionId":"awe","label":"Old emotion","targetOccurrenceId":"summary-maya"}},
+                {"type":"text","text":" tends the wounds."}
+            ]}]}),
+        );
+        let context = build_scene_context(&project, "scene").unwrap();
+        assert_eq!(context.summary_board.id, "scene:summary");
+        assert_eq!(context.summary_board.tone, "Tense");
+        assert_eq!(context.scene.tone_id, "tense");
+        assert!(context
+            .summary_board
+            .readable_text
+            .contains("[Scene tone: Tense]"));
+        assert!(context
+            .summary_board
+            .readable_text
+            .contains("[Emotion: Awe → Maya]"));
+        assert_eq!(
+            context.summary_board.references[0].occurrence_id,
+            "summary-maya"
+        );
+        assert_eq!(context.referenced_characters.len(), 1);
+        assert!(validate_context_for_purpose(&context, GenerationPurpose::Beats).is_ok());
+        assert!(validate_context_for_purpose(&context, GenerationPurpose::Prose).is_ok());
+        assert_ne!(
+            fingerprint_for_purpose(&context, "", GenerationPurpose::Beats).unwrap(),
+            fingerprint(&context, "").unwrap()
+        );
+        let request =
+            make_request_for_purpose("test-model", "", &context, GenerationPurpose::Beats);
+        assert!(request.instructions.unwrap().contains("JSON object"));
+        assert!(request.input[0].content.contains("summary-maya"));
+        assert!(make_request("test-model", "", &context)
+            .instructions
+            .unwrap()
+            .contains("summary board"));
+    }
+
+    #[test]
+    fn generated_beats_validate_supplied_ids_and_remap_local_targets() {
+        let project: ProjectSnapshot =
+            serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
+                .unwrap();
+        let context =
+            serde_json::to_value(build_scene_context(&project, "scene").unwrap()).unwrap();
+        let source = project.scenes[0].beats[0].document.clone();
+        let draft = json!({"beats":[{"document":source}]}).to_string();
+        let documents = parse_generated_beats(&draft, &project, &context).unwrap();
+        let nodes = &documents[0]["content"][0]["content"];
+        let next_occurrence = nodes[2]["attrs"]["occurrenceId"].as_str().unwrap();
+        assert_ne!(next_occurrence, "maya-once");
+        assert_eq!(nodes[3]["attrs"]["targetOccurrenceId"], next_occurrence);
+        let mut invalid: Value = serde_json::from_str(&draft).unwrap();
+        invalid["beats"][0]["document"]["content"][0]["content"][2]["attrs"]["characterId"] =
+            json!("unrelated");
+        assert!(
+            parse_generated_beats(&invalid.to_string(), &project, &context)
+                .unwrap_err()
+                .contains("not supplied")
+        );
+        let mut invalid: Value = serde_json::from_str(&draft).unwrap();
+        invalid["beats"][0]["document"]["content"][0]["content"][3]["attrs"]
+            ["targetOccurrenceId"] = json!("different-occurrence");
+        assert!(parse_generated_beats(&invalid.to_string(), &project, &context).is_err());
+        assert!(parse_generated_beats("{\"beats\":[", &project, &context).is_err());
+        assert!(parse_generated_beats("{\"beats\":[]}", &project, &context).is_err());
+    }
+    #[test]
     fn missing_character_reference_blocks_sending_incomplete_context() {
         let mut project: ProjectSnapshot =
             serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
@@ -1466,7 +1782,7 @@ mod tests {
         assert_eq!(context.beats[1].tone, "Tender");
         assert!(context.readable_context.contains("[Emotion: Awe → Maya]"));
         assert!(!context.readable_context.contains("Must not leak"));
-        assert_eq!(fingerprint(&context, "").unwrap(), "873d7120b011db30");
+        assert_eq!(fingerprint(&context, "").unwrap(), "80bd2eb1e85a8048");
     }
     use super::*;
     use domain::{Beat, Chapter, Narration, Scene};
@@ -1506,6 +1822,7 @@ mod tests {
                     chapter_id: "chapter-a".into(),
                     title: "Infirmary".into(),
                     summary: "Maya treats Damian.".into(),
+                    summary_document: None,
                     tone: "Tense and tender".into(),
                     prose: String::new(),
                     narration: Narration {
@@ -1521,6 +1838,7 @@ mod tests {
                     chapter_id: "chapter-a".into(),
                     title: "Unrelated other scene".into(),
                     summary: "This must never leak.".into(),
+                    summary_document: None,
                     tone: String::new(),
                     prose: String::new(),
                     narration: Narration::default(),
@@ -1587,7 +1905,7 @@ mod tests {
         let original = fingerprint(&context, "").unwrap();
         // Same canonical JSON/FNV vector as the frontend helper, including a
         // non-ASCII em dash in the rendered character reference.
-        assert_eq!(original, "3637622f5f45db80");
+        assert_eq!(original, "51f2bbee86850c70");
         let mut unrelated_edit = project.clone();
         unrelated_edit.revision += 1;
         unrelated_edit.title = "A renamed project".into();
@@ -1617,6 +1935,8 @@ mod tests {
     #[test]
     fn empty_scene_beats_are_rejected_without_using_editor_mirror_text() {
         let mut project = fixture();
+        project.scenes[0].summary.clear();
+        project.scenes[0].tone.clear();
         project.scenes[0].beats[0].document = json!({
             "type":"doc",
             "content":[{"type":"paragraph","content":[]}]

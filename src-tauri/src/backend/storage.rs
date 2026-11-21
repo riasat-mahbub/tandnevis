@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
@@ -318,10 +318,10 @@ impl Database {
         expected_revision: u64,
         operation: Operation,
     ) -> Result<ProjectSnapshot> {
-        self.change(expected_revision, Some(operation), None, None)
+        self.change(expected_revision, Some(operation), None, None, None)
     }
     pub fn import(&mut self, expected_revision: u64, markdown: &str) -> Result<ProjectSnapshot> {
-        self.change(expected_revision, None, Some(markdown), None)
+        self.change(expected_revision, None, Some(markdown), None, None)
     }
     pub fn accept_generated_prose(
         &mut self,
@@ -336,6 +336,7 @@ impl Database {
                 scene_id,
                 title: None,
                 summary: None,
+                summary_document: None,
                 tone: None,
                 tone_id: None,
                 prose: Some(prose),
@@ -343,6 +344,28 @@ impl Database {
             }),
             None,
             Some(revision),
+            None,
+        )
+    }
+    pub fn accept_generated_beats(
+        &mut self,
+        expected_revision: u64,
+        job_id: &str,
+        scene_id: &str,
+        documents: Vec<serde_json::Value>,
+        accepted_at_ms: u64,
+    ) -> Result<ProjectSnapshot> {
+        self.change(
+            expected_revision,
+            None,
+            None,
+            None,
+            Some((
+                job_id.to_owned(),
+                scene_id.to_owned(),
+                documents,
+                accepted_at_ms,
+            )),
         )
     }
     fn change(
@@ -351,6 +374,7 @@ impl Database {
         operation: Option<Operation>,
         markdown: Option<&str>,
         accepted_revision: Option<AcceptedProseRevision>,
+        accepted_beats: Option<(String, String, Vec<serde_json::Value>, u64)>,
     ) -> Result<ProjectSnapshot> {
         let tx = self
             .connection
@@ -359,6 +383,20 @@ impl Database {
         let before = load(&tx)?;
         if before.revision != expected_revision {
             return Err(format!("Project changed: expected revision {expected_revision}, found {}. Reload before saving.", before.revision));
+        }
+        if let Some((job_id, scene_id, documents, _)) = &accepted_beats {
+            let job = load_generation_job(&tx, job_id)?.ok_or("Generation job does not exist.")?;
+            if job.scene_id != *scene_id
+                || job.status != GenerationJobStatus::Completed
+                || job.request_snapshot["purpose"] != "beats"
+            {
+                return Err(
+                    "Only a completed generated scene for these beats can be accepted.".into(),
+                );
+            }
+            if documents.is_empty() || documents.len() > 40 {
+                return Err("A generated scene must contain between 1 and 40 beats.".into());
+            }
         }
         if let Some(revision) = &accepted_revision {
             validate_accepted_revision(revision)?;
@@ -436,6 +474,15 @@ impl Database {
                 if let Some(markdown) = markdown {
                     after.import_markdown(markdown)?;
                 }
+                if let Some((_, scene_id, documents, _)) = &accepted_beats {
+                    for document in documents {
+                        after.apply(Operation::CreateBeat {
+                            scene_id: scene_id.clone(),
+                            document: document.clone(),
+                            text: String::new(),
+                        })?;
+                    }
+                }
                 after.revision = revision;
                 new_cursor = cursor + 1;
                 tx.execute("DELETE FROM history WHERE sequence>?1", [cursor])
@@ -483,6 +530,12 @@ impl Database {
             }
         }
         after.revision = revision;
+        if let Some((job_id, _, _, accepted_at_ms)) = &accepted_beats {
+            let changed = tx.execute("UPDATE generation_jobs SET status='accepted',updated_at_ms=?2 WHERE id=?1 AND status='completed'", params![job_id, accepted_at_ms]).map_err(sql)?;
+            if changed != 1 {
+                return Err("The generated scene changed before it could be accepted.".into());
+            }
+        }
         after.validate()?;
         persist(&tx, &after, new_cursor)?;
         let result = load(&tx)?;
@@ -665,6 +718,14 @@ fn migrate(connection: &mut Connection, version: i32) -> Result<()> {
               CREATE TABLE trash (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('chapter','scene','beat','character','tone','emotion')), title TEXT NOT NULL, deleted_at_revision INTEGER NOT NULL CHECK(deleted_at_revision>=0), payload TEXT NOT NULL CHECK(json_valid(payload)), position INTEGER NOT NULL UNIQUE CHECK(position>=0));
               INSERT INTO trash SELECT * FROM trash_v2; DROP TABLE trash_v2; PRAGMA user_version=3;").map_err(sql)?;
             tx.commit().map_err(sql)?;
+            migrate(connection, 3)
+        }
+        3 => {
+            // No table rewrite: the existing extension row now owns rich summaries.
+            // The version gate prevents old apps from discarding those documents.
+            connection
+                .pragma_update(None, "user_version", SCHEMA_VERSION)
+                .map_err(sql)?;
             Ok(())
         }
         SCHEMA_VERSION => Ok(()),
@@ -858,6 +919,7 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
             chapter_id,
             title,
             summary,
+            summary_document: None,
             tone,
             tone_id: String::new(),
             prose,
@@ -966,6 +1028,9 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
             serde_json::from_value(v["starterTypes"].clone()).map_err(|e| e.to_string())?;
         for s in &mut project.scenes {
             s.tone_id = v["sceneTones"][&s.id].as_str().unwrap_or_default().into();
+            s.summary_document = v["sceneSummaries"][&s.id]
+                .as_object()
+                .map(|_| v["sceneSummaries"][&s.id].clone());
         }
         for c in &mut project.characters {
             c.default_tone_id = v["characterDefaults"][&c.id]["toneId"]
@@ -979,6 +1044,16 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
         }
     }
     for s in &mut project.scenes {
+        let mut document = summary_document(s, &project.tones);
+        normalize_occurrences(&mut document, &format!("{}:summary", s.id));
+        s.summary = document_text(
+            &document,
+            &project.characters,
+            &project.tones,
+            &project.emotions,
+        )?
+        .replace("[Beat tone:", "[Scene tone:");
+        s.summary_document = Some(document);
         for b in &mut s.beats {
             normalize_occurrences(&mut b.document, &b.id);
         }
@@ -1100,7 +1175,16 @@ fn persist(connection: &Connection, project: &ProjectSnapshot, cursor: i64) -> R
             )
         })
         .collect();
-    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"characterDefaults":character_defaults});
+    let scene_summaries: serde_json::Map<String, serde_json::Value> = project
+        .scenes
+        .iter()
+        .filter_map(|s| {
+            s.summary_document
+                .as_ref()
+                .map(|d| (s.id.clone(), d.clone()))
+        })
+        .collect();
+    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults});
     connection.execute("INSERT INTO project_extensions(singleton,data) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET data=excluded.data",[encode(&extensions)?]).map_err(sql)?;
     Ok(())
 }

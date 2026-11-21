@@ -57,6 +57,7 @@ describe('scene generation context', () => {
 
     expect(context.scene).toEqual({
       id: 'scene-1', title: 'School Infirmary', summary: 'Maya stitches Damian’s wounds after a fight.',
+      summaryDocument: sceneDocument(paragraph('Maya stitches Damian’s wounds after a fight.'), paragraph('Scene tone: Tender with awkward humor')),
       tone: 'Tender with awkward humor', toneId: '',
       narration: { pointOfView: 'Third person limited', tense: 'Past', instructions: 'Stay close to Damian’s attention.' },
     });

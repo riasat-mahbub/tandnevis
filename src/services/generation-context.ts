@@ -1,5 +1,6 @@
 import type { JSONContent } from '@tiptap/core';
 import type { Character, Preset, PresetKind, ProjectSnapshot, Scene } from './project';
+import { summaryBoard } from './summary-board';
 
 /** A JSON value whose nested objects and arrays cannot be edited by a caller. */
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
@@ -58,10 +59,12 @@ export interface SceneGenerationContext {
     id: string;
     title: string;
     summary: string;
+    summaryDocument: JSONContent;
     tone: string;
     toneId: string;
     narration: Scene['narration'];
   };
+  summaryBoard: GenerationBeat;
   beats: GenerationBeat[];
   /** First-reference order, with each referenced profile listed once. */
   referencedCharacters: GenerationCharacter[];
@@ -201,9 +204,14 @@ export function buildSceneGenerationContext(
     if (!referencedPresets.some(p => p.kind === kind && p.id === id)) referencedPresets.push({ kind, ...cloneJson(preset) });
     return preset;
   };
-  const sceneTone = addPreset('tone', scene.toneId)?.name ?? scene.tone;
+  const summary = summaryBoard(scene, project.tones);
+  let summaryToneId = '';
+  const findSummaryTone = (node: JSONContent) => { if (node.type === 'toneReference') summaryToneId = stringAttr(node, 'toneId'); contentOf(node).forEach(findSummaryTone); };
+  findSummaryTone(summary.document);
+  const effectiveToneId = summaryToneId || scene.toneId;
+  const sceneTone = project.tones.find(p => p.id === effectiveToneId)?.name ?? scene.tone;
   const unresolvedReferences: SceneGenerationContext['unresolvedReferences'] = [];
-  const beats: GenerationBeat[] = scene.beats.map((beat, index) => {
+  const resolveBoard = (beat: { id: string; document: JSONContent }, index: number, isSummary = false): GenerationBeat => {
     const document = cloneJson(beat.document);
     const references: CharacterOccurrence[] = [];
     collectReferences(document, [], characterById, references);
@@ -214,7 +222,7 @@ export function buildSceneGenerationContext(
         if (beatTone) throw new Error('A beat can contain only one tone block.');
         beatTone = addPreset('tone', stringAttr(node, 'toneId'));
         if (!beatTone) throw new Error('A beat tone reference is missing its definition.');
-        return { type: 'text', text: `[Beat tone: ${beatTone.name}]` };
+        return { type: 'text', text: `[${isSummary ? 'Scene' : 'Beat'} tone: ${beatTone.name}]` };
       }
       if (node.type === 'emotionReference') {
         const preset = addPreset('emotion', stringAttr(node, 'emotionId'));
@@ -238,14 +246,17 @@ export function buildSceneGenerationContext(
     }
     return {
       id: beat.id,
-      order: index + 1,
+      order: isSummary ? 0 : index + 1,
       document,
       readableText: cleanBlock(renderNode(displayDocument, characterById)),
       references,
       tone: beatTone?.name ?? sceneTone,
-      toneSource: beatTone ? 'beat' : sceneTone ? 'scene' : 'none',
+      toneSource: isSummary ? sceneTone ? 'scene' : 'none' : beatTone ? 'beat' : sceneTone ? 'scene' : 'none',
     };
-  });
+  };
+  const resolvedSummary = resolveBoard(summary, 0, true);
+  if (!summaryToneId) addPreset('tone', scene.toneId);
+  const beats = scene.beats.map((beat, index) => resolveBoard(beat, index));
 
   // Preserve first occurrence order, not global-library order.
   const referencedCharacters = [...referencedIds].map(id => {
@@ -271,13 +282,14 @@ export function buildSceneGenerationContext(
     id: scene.id,
     title: scene.title,
     summary: scene.summary,
+    summaryDocument: cloneJson(summary.document),
     tone: sceneTone,
-    toneId: scene.toneId,
+    toneId: effectiveToneId,
     narration: cloneJson(scene.narration),
   };
   const contextBlocks = [
     `Scene: ${scene.title}`,
-    scene.summary.trim() && `Scene summary: ${scene.summary.trim()}`,
+    resolvedSummary.readableText && `Scene summary: ${resolvedSummary.readableText}`,
     sceneTone.trim() && `Scene tone: ${sceneTone.trim()}`,
     scene.narration.pointOfView.trim() && `Point of view: ${scene.narration.pointOfView.trim()}`,
     scene.narration.tense.trim() && `Tense: ${scene.narration.tense.trim()}`,
@@ -302,6 +314,7 @@ export function buildSceneGenerationContext(
     projectId: project.projectId,
     projectRevision: project.revision,
     scene: sceneCopy,
+    summaryBoard: resolvedSummary,
     beats,
     referencedCharacters,
     referencedPresets,
