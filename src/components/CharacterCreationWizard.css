@@ -29,6 +29,10 @@
   .wizard-stock-placeholder { display:grid; justify-items:start; gap:12px; padding:4px 0; }
   .wizard-stock-placeholder h2 { font-size:15px; }
   .wizard-stock-placeholder p { max-width:62ch; margin:0; color:var(--muted); font-size:12px; }
+  .wizard-starting-point-confirm { display:grid; gap:13px; margin-top:21px; padding:13px 0 0; border-top:1px solid var(--line); }
+  .wizard-starting-point-confirm h2 { margin-bottom:5px; font-size:14px; font-weight:650; }
+  .wizard-starting-point-confirm p { margin:0; color:var(--muted); font-size:12px; }
+  .wizard-starting-point-confirm-actions { display:flex; flex-wrap:wrap; gap:8px; }
 
   .wizard-identity-fields { display:grid; gap:25px; }
   .wizard-name-field { display:grid; gap:8px; }

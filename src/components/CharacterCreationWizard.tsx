@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ArrowLeft, ArrowRight, Check, Library, PencilLine } from 'lucide-react';
+import { stockCharacterCategories, stockCharacterTemplates } from '../content/stock-characters';
 import {
   characterWizardCanVisit,
   characterWizardHasPersonalEdits,
@@ -9,6 +10,7 @@ import {
 } from '../services/character-wizard';
 import CharacterIcon from './CharacterIcon';
 import CharacterIconPicker from './CharacterIconPicker';
+import CharacterTemplateBrowser from './CharacterTemplateBrowser';
 import './CharacterCreationWizard.css';
 
 interface Props {
@@ -100,11 +102,29 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
       <span className="wizard-starting-choice-copy"><strong>Choose a stock type</strong><small>Browse a documented character convention and adapt its suggestions.</small></span>
       <Library size={18} aria-hidden="true"/>
     </button>
-  </div> : <section className="wizard-stock-placeholder" data-testid="character-wizard-stock-browser" aria-label="Choose a stock type">
-    <h2>Choose a stock type</h2>
-    <p>The stock type browser will appear here. Your current draft stays unchanged while you browse.</p>
-    <button type="button" className="quiet" onClick={() => dispatch({ type: 'SHOW_STARTING_CHOICES' })}><ArrowLeft size={15}/>Back to starting choices</button>
-  </section>;
+  </div> : <CharacterTemplateBrowser mode="wizard" templates={stockCharacterTemplates} categories={stockCharacterCategories} state={state} dispatch={dispatch}/>;
+
+  function declineStartingPointChange() {
+    dispatch({ type: 'CONFIRM_STARTING_POINT_CHANGE', confirmed: false });
+    dispatch({ type: 'SET_BROWSER', patch: { selectedId: state.appliedStartingPoint?.kind === 'stock' ? state.appliedStartingPoint.templateId : null } });
+  }
+
+  function renderStartingPointConfirmation() {
+    const confirmation = state.startingPointConfirmation;
+    if (!confirmation) return null;
+    const fieldLabels = confirmation.fields.map(field => field === 'voice' ? 'baseline voice' : field).join(', ');
+    const target = confirmation.target.kind === 'stock' ? confirmation.target.title : 'blank fields';
+    return <section className="wizard-starting-point-confirm" role="alert" aria-labelledby="character-wizard-starting-point-confirm-heading">
+      <div>
+        <h2 id="character-wizard-starting-point-confirm-heading">Replace {fieldLabels}?</h2>
+        <p>Using {target} replaces {fieldLabels}. Your name stays. An icon you chose stays; an untouched icon follows the starting point.</p>
+      </div>
+      <div className="wizard-starting-point-confirm-actions">
+        <button type="button" className="primary" onClick={() => dispatch({ type: 'CONFIRM_STARTING_POINT_CHANGE', confirmed: true })}>Replace profile fields</button>
+        <button type="button" onClick={declineStartingPointChange}>Keep current fields</button>
+      </div>
+    </section>;
+  }
 
   const renderIdentity = () => <div className="wizard-identity-fields">
     <div className="wizard-name-field">
@@ -218,6 +238,7 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
       {state.step === 'identity' && renderIdentity()}
       {state.step === 'details' && renderDetails()}
       {state.step === 'review' && renderReview()}
+      {state.step === 'starting-point' && renderStartingPointConfirmation()}
 
       {state.step === 'review' && (state.submission.status === 'failed' || state.submission.status === 'conflict') && <div className="wizard-submission-error" role="alert">
         <strong>{state.submission.status === 'conflict' ? 'The project changed during creation.' : 'Character creation did not finish.'}</strong>
@@ -234,6 +255,7 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
     <footer className="wizard-footer" data-testid="character-wizard-footer">
       <div className="wizard-footer-navigation">
         {state.step !== 'starting-point' && <button type="button" onClick={() => dispatch({ type: 'BACK' })} disabled={cancelLocked}><ArrowLeft size={15}/>Back</button>}
+        {state.step === 'starting-point' && state.browser.view === 'catalog' && <button type="button" onClick={() => dispatch({ type: 'SHOW_STARTING_CHOICES' })}><ArrowLeft size={15}/>Back to starting choices</button>}
         <button type="button" className="quiet wizard-cancel" data-testid="character-wizard-cancel" aria-label="Cancel creation" disabled={cancelLocked} onClick={requestCancel}>Cancel creation</button>
       </div>
       <div className="wizard-footer-primary">{renderFooterAction()}</div>

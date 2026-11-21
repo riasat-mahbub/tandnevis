@@ -37,7 +37,8 @@ it('starts with two choices and keeps the stock branch inside Starting point', (
 
   fireEvent.click(screen.getByRole('button', { name: 'Choose a stock type' }));
   expect(screen.getByTestId('character-creation-wizard')).toHaveAttribute('data-browser-view', 'catalog');
-  expect(screen.getByTestId('character-wizard-stock-browser')).toHaveTextContent('The stock type browser will appear here.');
+  expect(screen.getByTestId('character-wizard-stock-browser')).toHaveTextContent('Stock character types');
+  expect(screen.getByRole('searchbox', { name: 'Search stock types' })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Back to starting choices' }));
   expect(screen.getByTestId('character-creation-wizard')).toHaveAttribute('data-browser-view', 'choices');
   expect(onCreate).not.toHaveBeenCalled();
