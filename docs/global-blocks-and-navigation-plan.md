@@ -62,19 +62,11 @@ An emotion describes what a character feels; a tone describes the attitude or tr
 
 ### Editable starter blocks
 
-New projects include a small set of real, editable global definitions. They are ordinary blocks with stable IDs and guidance, not hardcoded choices or example-only chips:
+Projects automatically include 18 editable tones and 24 emotions with meaning, writing guidance, and a concrete example. The complete catalog is recorded in [starter content](starter-content-ideas.md) and bundled in `src/content/starter-presets.json`. No Add starter button is required.
 
-| Type | Name | Initial guidance |
-|---|---|---|
-| Emotion | Serious | Focused and restrained; keep attention on the immediate task. |
-| Emotion | Awe | Let wonder or admiration interrupt the character's usual reactions. |
-| Emotion | Angry | Show irritation or frustration through responses and actions, without requiring shouting. |
-| Emotion | Embarrassed | Show self-consciousness through hesitation, deflection, or awkward reactions. |
-| Tone | Tender | Emphasize small gestures of care, warmth, and vulnerability. |
-| Tone | Tense | Emphasize uncertainty and restrained pressure without inventing extra danger. |
-| Tone | Playful | Allow light teasing and gentle humor while preserving character voice. |
+New projects contain the catalog immediately. Existing projects receive missing definitions once per catalog version in their working copy; Save keeps the upgrade. Same-name custom definitions, archived entries, and prior deletions are preserved. Untouched original starter definitions can receive missing meaning/example content. Initialization stays present while the writer uses Undo/Redo and does not become an extra authoring undo step.
 
-Writers can edit, duplicate, archive, or remove these with the same rules as their own definitions. No starter characters or sample manuscript are created. Existing projects can choose Add starter blocks from their library empty state; do not silently populate established libraries. Track initialization per project/type with stable seed keys so reopening, upgrading, or deleting/archiving a starter never recreates it. Skip same-type name collisions when adding starters and report the actual number added. Starter additions are undoable and use the existing manual Save policy.
+Characters are optional: the Scene sidebar always offers New character and a collapsed Stock characters section with six Add buttons. Adding a stock profile creates its background, personality, voice, and available default references atomically. It never overwrites a same-name character, including an archived one. Back is the first control at the far left of the app header.
 
 Each definition has a stable ID, revision, and archived flag. References resolve by ID; renaming never searches/replaces prose. Definitions are live variables: changing shared guidance affects future context in every scene that uses it. Show "Shared across this project" and actual usages in the editor. Local overrides do not edit the global definition.
 
@@ -203,6 +195,6 @@ G1 keeps the existing usable Characters implementation as a full screen while na
 - Generate from one scene: include referenced globals once with correct local targets, omit unrelated definitions/other scenes, and mark only affected drafts outdated after global edits.
 - Run each visible project command with realistic content, cancellation and error cases. Every action navigates, edits, opens a chooser, or reports a result; explain disabled states instead of leaving unexplained no-ops.
 - Verify active navigation, long names, empty/filter/archived states, focus return, 800px minimum window and high zoom, both themes, Calm, and reduced motion. Preserve both alternating timelines.
-- New projects contain the editable starter emotions/tones. Reopen/upgrade never duplicates them, and deleted or archived starters do not reappear. Adding starters to an existing project preserves same-name custom definitions.
+- New projects contain the editable starter emotions/tones. Reopen/upgrade never duplicates them, and deleted or archived starters do not reappear. The automatic existing-project upgrade preserves same-name custom definitions and remains unsaved until Save.
 - Apply Tender to a scene, Tense to one freeform beat, and leave the next beat inheriting Tender. Verify preview/generation scope, replace/remove/Undo behavior, and persistence after Save. Repeat with a character-free beat and through click/keyboard insertion.
 - Character, emotion, and tone backgrounds are distinct in the shelf, rich text, previews, and both themes. Screen-reader labels and focus state distinguish them without color.

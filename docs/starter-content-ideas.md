@@ -1,36 +1,64 @@
 # Starter tones, emotions, and characters
 
-These are editable writing suggestions. They are not automatically added to existing projects. The current built-in starters remain Tender, Tense, Playful, Serious, Awe, Angry, and Embarrassed. Additional definitions can be created in their libraries.
+The app automatically includes 18 editable tones and 24 emotions, each with meaning, writing guidance, and an example. New projects include them immediately; existing projects receive missing starters once in the working copy. Save keeps that upgrade. Custom edits, archived definitions, and earlier deletions are preserved. No Add starter action is needed.
+
+The canonical bundled content is [starter-presets.json](../src/content/starter-presets.json). Stock characters remain optional buttons under Stock characters in the Scene sidebar. New character is always available beside the character blocks.
 
 ## Tones
 
 A tone describes how a passage is written. Put it on the summary board to guide the scene, or in a beat to override that beat only.
 
-| Tone | Reusable writing guidance |
-|---|---|
-| Tender | Let small gestures of care carry the scene. Keep affection specific and understated. |
-| Tense | Sustain uncertainty through interrupted actions and restrained dialogue. Avoid announcing that something feels tense. |
-| Playful | Use light teasing, small surprises, and quick exchanges while respecting the stakes. |
-| Wry | Let dry observation and understated irony reveal the gap between what people say and what they mean. |
-| Unsettling | Favor ordinary details that feel slightly wrong. Leave room for doubt instead of explaining every disturbance. |
-| Hopeful | Let a credible possibility of improvement emerge through a choice or gesture; avoid sudden certainty. |
-| Melancholic | Give absence and memory space. Use concrete details rather than repeated declarations of sadness. |
-| Intimate | Stay close to small observations, pauses, and things left unsaid. Intimacy need not be romantic. |
+| Name | Meaning | Writing guidance | Example |
+|---|---|---|---|
+| Tender | Warmth expressed through care and vulnerability. | Emphasize small gestures of care, warmth, and vulnerability. Let restraint and attention carry affection without making every line sentimental. | She warmed the bandage between her palms before touching his skin. |
+| Tense | Immediate pressure with an uncertain outcome. | Keep attention on what could go wrong in the present moment. Use restrained reactions, interruptions, and consequential details without inventing extra danger. | The key turned halfway, then stopped. Footsteps paused outside. |
+| Playful | Lightness, teasing, and room for amusement. | Allow gentle challenges, surprising responses, and affectionate mischief. Preserve each character's voice and keep jokes from erasing genuine stakes. | He stole the last biscuit and offered her a solemn apology with his mouth full. |
+| Melancholic | Quiet sadness colored by absence or loss. | Notice what is missing through ordinary objects and subdued reactions. Let sadness linger without turning every observation into an explanation of grief. | Two cups still waited beside the kettle, though she only filled one. |
+| Hopeful | A credible possibility that things can improve. | Let small openings, practical efforts, or renewed trust suggest a way forward. Keep obstacles real; optimism should emerge from the scene's events. | The roof still leaked, but for the first time they had enough timber to mend it. |
+| Foreboding | An approaching threat that has not yet arrived. | Build anticipation through warnings, absences, and details whose consequences remain uncertain. Suggest future trouble without prematurely revealing or inventing it. | By dusk every fishing boat had returned except the one carrying the warning bell. |
+| Intimate | Close attention to private thoughts and shared space. | Favor small observations, pauses, and details noticed only at close range. Intimacy can be emotional or familiar and does not require romance. | He knew which stair would creak and stepped over it so she could keep sleeping. |
+| Wonderstruck | An expansive sense of discovery and possibility. | Let unfamiliar details unfold through attentive perception. Ground wonder in specific sensations and preserve the observer's distinctive way of understanding the world. | Under the ice, a thousand blue lights answered the movement of her hand. |
+| Reflective | A thoughtful pause that connects events with their meaning. | Make room for considered observations and associations prompted by the present scene. Keep reflection tied to a character's experience rather than delivering a detached lesson. | The gate was smaller than he remembered; perhaps leaving had made it seem enormous. |
+| Urgent | Limited time makes immediate action necessary. | Prioritize decisions, movement, and details that affect the next action. Compress pauses and description while preserving clarity about who acts and why. | She grabbed the ledger, kicked the door open, and ran before the second alarm. |
+| Humorous | Comic timing and incongruity shape the narration. | Draw humor from mismatched expectations, precise observations, and character reactions. Keep the people believable and avoid forcing a joke into every sentence. | The mayor had prepared for accusations, protests, and rain. He had not prepared for the goat. |
+| Bittersweet | Joy and sorrow coexist in the same moment. | Allow a gain to retain its cost, or a farewell to carry genuine gratitude. Hold both feelings together instead of immediately resolving one into the other. | She laughed when the train arrived, then tightened her grip on the hand she had to release. |
+| Eerie | Quiet strangeness unsettles a familiar place. | Use stillness, repetition, and sensory discrepancies to make the setting feel uncanny. Keep the source uncertain unless the scene explicitly reveals it. | Every clock in the empty house ticked a second after her heartbeat. |
+| Triumphant | An earned success releases accumulated struggle. | Let the result, physical release, and shared reactions express victory. Preserve the cost of reaching it and avoid claiming a larger victory than the scene supports. | The engine caught. For one stunned second nobody moved; then the workshop erupted. |
+| Wry | Dry amusement tempered by realism or irony. | Favor understated observations and economical humor. Let the narrator or character recognize an absurdity without explaining the joke or becoming broadly sarcastic. | The committee had finally agreed on something: another meeting was essential. |
+| Unsettling | Something feels wrong, even without a clear threat. | Introduce small contradictions, discomfort, or behavior that resists an easy explanation. Disturb certainty in the present rather than promising a specific future danger. | Her brother greeted her warmly and asked, for the third time, what her name was. |
+| Neutral | Clear, measured narration without a heightened emotional treatment. | Describe actions and observations plainly. Let events and dialogue carry their own implications; avoid intensifying, joking about, or sentimentalizing the moment. | He signed the form, returned the pen, and waited beside the door. |
+| Romantic | Attraction and emotional connection shape the scene. | Attend to mutual awareness, vulnerability, anticipation, and meaningful gestures. Preserve consent, individual voice, and the relationship's established level of intimacy. | She had rehearsed a clever greeting, but he smiled and she forgot every word. |
 
 ## Emotions
 
 An emotion belongs to one character occurrence. It changes that moment's expression without replacing the character's personality or voice.
 
-| Emotion | Reusable expression guidance |
-|---|---|
-| Serious | Focus on the immediate task. Keep speech direct and gestures deliberate. |
-| Awe | Let attention catch on a striking detail; admiration briefly interrupts the character's usual defenses. |
-| Angry | Show what the character wants to challenge or protect. Preserve their usual vocabulary and manner. |
-| Embarrassed | Let self-consciousness interrupt a response: a deflection, an unfinished sentence, or attention redirected. |
-| Relieved | Release held tension through a breath, a loosened grip, or a small practical action. |
-| Suspicious | Attend to inconsistencies. Use selective questions and guarded answers rather than instant accusations. |
-| Resentful | Let a remembered slight color an otherwise ordinary exchange, especially what the character withholds. |
-| Longing | Let attention return to someone or something out of reach. Express desire through specific omissions and choices. |
+| Name | Meaning | Writing guidance | Example |
+|---|---|---|---|
+| Serious | Focused attention leaves little room for levity. | Keep the character focused and restrained, attentive to the immediate task. Let concise choices and deliberate actions convey seriousness without making the voice uniformly cold. | She set the joking aside. 'Tell me exactly where it hurts.' |
+| Awe | Wonder or admiration briefly exceeds ordinary expectations. | Let attention catch on a specific person, action, or sight. Show a pause, changed perception, or unusually unguarded response instead of merely naming admiration. | He forgot his complaint halfway through, watching how steadily her hands moved. |
+| Angry | A perceived wrong provokes heat, resistance, or confrontation. | Show what the character objects to through precise words, physical restraint, or decisive action. Anger need not require shouting and should retain the character's usual voice. | She folded the letter once, carefully. 'You promised you would tell me.' |
+| Embarrassed | Unwanted attention creates self-consciousness. | Use hesitation, deflection, altered eye contact, or over-attention to a task. Ground the reaction in what the character thinks has been exposed. | 'That is not what I meant,' she said, straightening a bandage that was already straight. |
+| Joyful | Pleasure or delight opens the character toward the moment. | Let energy, attention, and behavior expand in a way that fits this person. Show what delights them rather than relying only on smiling or laughter. | He read the acceptance twice, then ran upstairs to wake everyone. |
+| Afraid | A perceived threat makes safety uncertain. | Anchor fear in the particular threat and the character's response: avoidance, vigilance, freezing, bargaining, or action. Preserve agency without making fear vanish on demand. | She kept talking while her hand searched behind her for the door latch. |
+| Grieving | Loss remains painfully present. | Let absence affect attention, routines, or responses. Avoid a compulsory display of tears; grief may appear as numbness, irritability, tenderness, or an interrupted habit. | He reached for a second plate and stood holding it until the food went cold. |
+| Relieved | A feared outcome has passed or become less likely. | Show the release of tension and what becomes possible afterward. Let relief coexist with fatigue, shaking, laughter, or a delayed admission of fear. | When she heard his voice, her knees weakened before she could answer. |
+| Curious | An unanswered question draws active attention. | Let the character notice details, test an idea, or ask a revealing question. Their curiosity should follow their interests and tolerate uncertainty rather than delivering instant insight. | Everyone examined the jewel; she turned the box over to inspect its hinges. |
+| Confident | Trust in one's judgment or ability supports action. | Use clear choices and a willingness to proceed without excessive reassurance. Confidence can remain quiet and should not imply that the character is necessarily correct. | He checked the knot once and stepped onto the bridge. |
+| Anxious | Uncertainty keeps possible problems in the foreground. | Let anticipation interrupt attention through checking, rehearsal, restlessness, or avoidance. Make the worry specific without making every feared outcome come true. | She rehearsed the first sentence again while counting the footsteps approaching her office. |
+| Guilty | The character feels responsible for a wrong or harm. | Tie guilt to a particular choice and its consequences. Show avoidance, repair, over-explanation, or difficulty accepting kindness without forcing a confession. | He replaced the broken cup before breakfast and could not meet her eyes when she thanked him. |
+| Jealous | A valued bond or position feels threatened by a rival. | Show selective attention, comparison, or a protective impulse linked to the perceived threat. Keep jealousy distinct from proof of betrayal and preserve the character's capacity to choose their response. | She knew his laugh well enough to recognize when someone else had earned it. |
+| Hopeful | The character sees a wanted outcome as possible. | Let expectation affect a small choice, question, or willingness to try. Preserve uncertainty and the cost of caring about the result. | He left the porch light on, though the last bus had already passed. |
+| Lonely | The character feels a lack of meaningful connection. | Notice missed contact, empty routines, or the effort of reaching out. Loneliness may exist in company and does not require the character to explain it aloud. | At the crowded table, she began a story twice and let the conversation carry on without it. |
+| Affectionate | Warm attachment invites care or closeness. | Use familiar attention, gentle humor, or practical care suited to the relationship. Affection may be familial, friendly, or romantic; do not assume one form without scene direction. | He saved her the corner piece and pretended it was because nobody else wanted it. |
+| Frustrated | A blocked goal wears at patience. | Connect irritation to the repeated obstacle. Show changes in effort, speech, or control without automatically escalating frustration into hostility toward everyone nearby. | She erased the same line again, pressed too hard, and put the pencil down. |
+| Determined | Commitment persists despite difficulty or doubt. | Express resolve through concrete choices and continued effort. Determination can coexist with fear or exhaustion and should not grant effortless success. | He wrapped his blistered hand, lifted the rope, and asked where they needed him next. |
+| Surprised | An event interrupts the character's expectation. | Show the brief mismatch between what was expected and what is happening, followed by the character's own interpretation. Surprise need not always be loud or pleasant. | She opened the cupboard, shut it, then opened it again. The cat was still there. |
+| Disappointed | A hoped-for outcome falls short. | Let expectation collapse through a small adjustment in attention, energy, or response. Preserve the scale of the setback and avoid turning every disappointment into despair. | He set the unopened envelope back on the shelf and said he had not been waiting for it. |
+| Suspicious | The character doubts an explanation or someone's intentions. | Let inconsistencies sharpen attention and shape cautious questions or tests. Keep suspicion separate from established fact and avoid granting knowledge the character does not have. | 'You came alone?' she asked, looking at the second wet coat by the door. |
+| Resentful | An unresolved unfairness continues to rankle. | Let remembered imbalance color a response through withholding, comparison, or guarded politeness. Keep the grievance specific and distinguish lingering resentment from immediate anger. | He handed over the spare key. 'Of course. I usually do the waiting.' |
+| Longing | A strong desire remains out of reach. | Draw attention toward what the character wants through lingering observation, restraint, or imagined proximity. Longing can concern a person, place, possibility, or former life. | She stopped outside the music room until the final note faded, then continued down the hall. |
+| Disgusted | Strong aversion creates an impulse to reject or withdraw. | Identify what repels the character and show the fitting bodily or moral response. Avoid using disgust as an unexplained judgment of a person's identity or appearance. | He pushed the ledger away. 'You charged them for water during the drought?' |
 
 ## Stock character profiles
 

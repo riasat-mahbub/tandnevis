@@ -1,8 +1,20 @@
 # Implementation progress
 
-Updated 20 November 2026. This ledger separates approved direction from implemented features. Check a box only after the change exists and its relevant verification is recorded. Commit-sized steps are ordered below; dependent steps can be prepared concurrently, while review and commits remain sequential.
+Updated 21 November 2026. This ledger separates approved direction from implemented features. Check a box only after the change exists and its relevant verification is recorded. Commit-sized steps are ordered below; dependent steps can be prepared concurrently, while review and commits remain sequential.
 
 ## Current implementation and saving behavior
+
+Latest revision (21 November): 18 tones and 24 emotions are bundled and automatically initialized, each with meaning, writing guidance, and a concrete example. Existing projects receive missing content once in the private working copy; project-file bytes remain unchanged until Save. Custom/archived definitions and earlier deletions are preserved. Old untouched starter entries receive missing meaning/example fields. Undo/Redo of old history retains initialized content with stable IDs. No Add starter button remains.
+
+The Scene sidebar always offers New character and an optional six-profile Stock characters chooser. Each Add button creates the full profile and available defaults in one undoable command, with duplicate-name protection including archived profiles. Block groups and the sidebar scroll independently to keep the writing board reachable. Back is the first control before Project in the header. Selecting a tone/emotion shows meaning, guidance, and example in the inspector.
+
+Verification: typecheck and 81 frontend tests pass; 77 Rust tests pass, with one anonymous network test ignored. New tests cover full catalog completeness, automatic upgrade without pre-Save file writes, Undo/reopen identity, custom/archive/deletion preservation, atomic stock-profile creation, persistent sidebar creation, and far-left Back. Native debug smoke `.tools/native-smoke/run-rhorXh/report.json` passes 26 checks and 20 screenshot/layout checks across both themes at 1440px/800px. It verifies all starter fields, stock creation/defaults, duplicate prevention, New character navigation, preset details, and actual block dragging from the expanded shelf.
+
+Commits: `6bdf873` for automatic presets and native creation fields; `390b363` for character/sidebar/navigation actions and preset details. Final portable verification follows.
+
+Release verification (21 November): the optimized build updated only `out/latest/`. The stable ZIP checksum and its three allowed entries were verified, and existing connection metadata is byte-for-byte unchanged. The archive was extracted to a temporary test folder and passed `.tools/native-smoke/run-5UF8zu/report.json`: 26 checks and 20 screenshot/layout checks. This includes the full automatic catalog, stock-profile/default creation, far-left Back, persistent New character, preset meaning/guidance/examples, real dragstart/drop, manual Save/reopen, and window closing. Native verification coverage is committed as `92c70dc`.
+
+### Previous scene-board revision
 
 Latest scene revision: [Scene board and generation](scene-board-and-generation.md). The writer now opens with top-left Generate scene/Generate prose actions, title, rich summary board, then beats. The separate Scene tone row is removed; a Tone block on the summary supplies scene direction. Context preview follows the beats. Shelf pointer-down no longer cancels drag initiation; inline blocks are draggable, and the editor handles native drops before ProseMirror's text-position hit test, including empty board space. Character moves carry linked emotion blocks; copies receive new local identities.
 

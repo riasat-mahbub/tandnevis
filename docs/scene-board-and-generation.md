@@ -27,4 +27,4 @@ Shelf blocks must begin a native browser drag without cancelling pointer-down. E
 
 SQLite schema 4 stores rich summaries in the project extension data and refuses older writers that could discard them. Manual Save remains the default; optional autosave and Save/Discard/Cancel close behavior apply to the summary, all beats, libraries, history, and drafts together.
 
-See [starter content ideas](starter-content-ideas.md) for additional tone/emotion guidance and stock profiles. Live model output still requires account verification; offline tests verify context construction, structured response acceptance, and data safety.
+The Scene sidebar includes a persistent New character action and optional Stock characters buttons. The app automatically supplies 18 tones and 24 emotions, with full definitions available in the libraries and local inspector. Back is the far-left header control. See [starter content](starter-content-ideas.md) for the full catalog and stock profiles. Live model output still requires account verification; offline tests verify context construction, structured response acceptance, and data safety.
