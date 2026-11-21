@@ -5,8 +5,8 @@
 .story-block.preset-colored,.block-preview.preset-colored,.definition-rows>li>button.preset-colored { background-color:var(--preset-bg-light); color:var(--preset-ink-light); }
 .definition-rows>li>button.preset-colored small,.definition-rows>li>button.preset-colored .definition-archived { color:inherit; }
 .definition-rows>li>button.preset-colored.definition-selected { border-color:var(--focus); outline:1px solid var(--focus); outline-offset:1px; }
-.story-block.preset-colored:hover:not(:disabled),.definition-rows>li>button.preset-colored:hover:not(:disabled) { filter:brightness(.96); }
-.story-block.preset-colored:active:not(:disabled),.definition-rows>li>button.preset-colored:active:not(:disabled) { filter:brightness(.92); }
+button.story-block.preset-colored:hover:not(:disabled),.definition-rows>li>button.preset-colored:hover:not(:disabled) { border-color:var(--focus); filter:none; }
+button.story-block.preset-colored:active:not(:disabled),.definition-rows>li>button.preset-colored:active:not(:disabled) { border-color:var(--focus); outline:1px solid var(--focus); outline-offset:1px; filter:none; }
 .story-block.ProseMirror-selectednode { outline:1px solid var(--focus,#435058); outline-offset:2px; }
 .beat-prose .story-block[data-drag-handle] { cursor:grab; user-select:none; }
 .beat-prose .story-block[data-drag-handle]:active { cursor:grabbing; }
@@ -66,9 +66,5 @@
 }
 @media(prefers-color-scheme:dark) {
   .app[data-theme="system"] .preset-colored { background-color:var(--preset-bg-dark); color:var(--preset-ink-dark); }
-  .app[data-theme="system"] .story-block.preset-colored:hover:not(:disabled),.app[data-theme="system"] .definition-rows>li>button.preset-colored:hover:not(:disabled) { filter:brightness(1.06); }
-  .app[data-theme="system"] .story-block.preset-colored:active:not(:disabled),.app[data-theme="system"] .definition-rows>li>button.preset-colored:active:not(:disabled) { filter:brightness(1.1); }
 }
 .app[data-theme="dark"] .preset-colored { background-color:var(--preset-bg-dark); color:var(--preset-ink-dark); }
-.app[data-theme="dark"] .story-block.preset-colored:hover:not(:disabled),.app[data-theme="dark"] .definition-rows>li>button.preset-colored:hover:not(:disabled) { filter:brightness(1.06); }
-.app[data-theme="dark"] .story-block.preset-colored:active:not(:disabled),.app[data-theme="dark"] .definition-rows>li>button.preset-colored:active:not(:disabled) { filter:brightness(1.1); }
