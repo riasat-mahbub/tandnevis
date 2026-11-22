@@ -178,6 +178,7 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
   </section>;
 
   const renderReview = () => <div className="wizard-review">
+    <p className="wizard-review-save-note">Create adds this character to the project. Use project Save to write project changes to disk.</p>
     <section className="wizard-review-identity" aria-labelledby="character-wizard-review-name">
       <span className="wizard-review-icon"><CharacterIcon icon={state.draft.icon} size={24}/></span>
       <div className="wizard-review-name">

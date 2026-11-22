@@ -1,6 +1,6 @@
 # Character creation wizard
 
-Planned 21 November 2026. This is a proposal; the application still uses the single-page creator. It supersedes the creation-page composition in [the stock-character revamp](stock-character-revamp-plan.md) when implemented. The 53 stock types, research notes, icon registry, and saved character model remain the foundations.
+Implemented 21 November 2026. This document records the shipped four-step character creation workflow and its accepted behavior. It supersedes the combined creation-page composition in [the stock-character revamp](stock-character-revamp-plan.md). The 53 stock types, research notes, icon registry, and saved character model remain the foundations.
 
 ## Problem and intended outcome
 
@@ -10,7 +10,7 @@ Replace that composition with a focused, full-page wizard inside the existing ap
 
 Success means a writer can choose a starting point, make it their own, and create exactly one reusable character without losing their place in the scene. Only the name is required. Ordinary editing of an existing character remains direct library editing.
 
-## Recommended sequence
+## Implemented sequence
 
 Four named steps: **Starting point → Name and icon → Profile details → Review**.
 
@@ -31,7 +31,7 @@ Initially show two clear choices: **Start blank** and **Choose a stock type**. D
 - Choose a stock type opens a dedicated browsing view within this step. It replaces the two-choice view rather than appearing underneath it. Provide a clear return to those choices.
 - Give browsing the available page width: search and category buttons above results and a preview. Remove the project character list. At narrow widths, use results followed by a selected-type detail view with a clear return to results; avoid two independent narrow scroll panes.
 - Preview shows the name, icon, a short description, and any essential historical/context note. Full suggested background/personality/voice and source details sit behind **Suggested profile** and **About this type** disclosures. Bibliographic text and copyable links remain available offline.
-- Selecting or previewing a result does not change the active draft. **Use this type and continue** explicitly copies its suggested fields and advances. This is the only primary forward action in the browsing view; remove the old in-preview Use template plus separate Next combination.
+- Selecting or previewing a result does not change the active draft. **Use this type and continue** explicitly copies its suggested fields and advances. It is the only primary forward action in the browsing view; the old in-preview Use template and separate Next combination are removed.
 - Keep search, category, selected result, and scroll position when returning from a later step. Search continues to support aliases, historical connections, tags, and accent-insensitive matching. No-results recovery keeps Start blank available.
 
 ### 2. Name and icon
@@ -76,17 +76,17 @@ Keep the workflow's original destination even when editing earlier wizard steps.
 
 ## Creation and recovery behavior
 
-The final step dispatches the existing single character-creation operation with the current name, icon, background, personality, and voice. Step visits, previews, and edits do not dispatch project writes. No new saved-character schema or template provenance field is required.
+The final step dispatches the existing single character-creation operation with the current name, icon, background, personality, and voice. Step visits, previews, and edits do not dispatch project writes. No new saved-character schema or template provenance field is required; character icons remain visual metadata under schema 7.
 
-While creating, show **Creating…** and prevent a second submission or starting-point change. On a definite failure, keep the complete draft on Review and offer recovery using the existing workspace mechanism. If a response is lost or a retry discovers a committed creation, resolve to that record rather than creating another. Preserve the established external-change conflict handling; do not blindly replay an ambiguous creation. Once created, ordinary Undo/Redo and manual Save apply.
+While creating, show **Creating…** and prevent a second submission or starting-point change. On a definite failure, keep the complete draft on Review and offer recovery using the existing workspace mechanism. If recovery finds one committed match, resolve to that record rather than creating another. If multiple characters match, pause for explicit selection and send no second create. Preserve the established external-change conflict handling; do not blindly replay an ambiguous creation. Once created, ordinary Undo/Redo and manual Save apply.
 
-## Implementation sequence
+## Implementation record and final verification
 
-1. **Isolate the flow state.** Introduce a project-scoped wizard draft/controller with current step, original destination, draft values, applied/provisional starting point, writer-edited icon state, visited steps, review edit-return state, and submission/recovery state. Keep this independent of the saved Character model and of preset creation.
-2. **Build the focused wizard shell.** Separate creation from the LibraryView master/detail layout. Both existing New character entry points open the same flow. Retain ordinary existing-character editing and preset libraries.
-3. **Reuse and simplify controls.** Adapt the stock browser into step 1 and reuse the icon registry/picker in step 2. Give profile fields their own step and add a readable Review screen. Remove creation-only controls from the old combined page.
-4. **Connect navigation and recovery.** Implement resume, Back, review Edit links, safe starting-point changes, cancellation, project-boundary handling, original-destination return, and single-operation submission. Reuse the current recovery safeguards.
-5. **Verify the actual flow.** Update component/App/native smoke checks, then inspect all four steps at 1440px and 800px in both themes. Include the narrower stacked browsing state. Review once, batch fixes, and confirm once. Update workflow docs and release evidence only after the wizard exists.
+1. **Flow state — implemented.** The project-scoped draft stores its origin, values, applied/provisional starting point, explicit icon choice, visited steps, Review return state, and creation/recovery state. It stays separate from the saved Character model and preset creation.
+2. **Wizard shell — implemented.** Creation is separate from the LibraryView master/detail layout. Both New character entry points open the same flow; existing-character editing remains in the library.
+3. **Control reuse — implemented.** The stock browser runs in Starting point and the shared icon registry/picker runs in Name and icon. Profile details and Review have their own steps, replacing creation controls in the combined page.
+4. **Navigation and recovery — implemented.** Resume, Back, Review Edit links, protected starting-point changes, cancellation, project-boundary handling, original-destination return, and single-operation submission are connected to the existing recovery safeguards.
+5. **Staged verification — passed; promotion pending.** Source-level and staged portable evidence is recorded in the [implementation progress ledger](implementation-progress.md). Finish review approved shipping at fix-list/staged-build scope; promotion to `out/latest` remains pending.
 
 ## Acceptance checks
 
@@ -101,4 +101,4 @@ While creating, show **Creating…** and prevent a second submission or starting
 - Created icons still persist through Undo/Redo and Save/reopen and remain outside generation context and fingerprints.
 - Keyboard operation, visible focus, readable text, both themes, and responsive layouts work without horizontal overflow or hidden navigation actions.
 
-These are proposed interaction decisions for review. No wizard implementation, runtime testing, or release rebuild is part of this planning pass.
+The wizard is implemented and its interaction decisions above describe the shipped behavior. Its footer reflows on narrow layouts, while the stock browser stacks at 900px and below and switches between results and selected-type details; the supported desktop window minimum is 800×600. The acceptance checks define the intended outcomes. Staged portable verification and finish review pass at fix-list/staged-build scope; promotion to `out/latest` remains pending in the progress ledger.

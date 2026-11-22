@@ -14,7 +14,8 @@
   .wizard-step-nav button.is-complete>svg { flex:none; }
   .wizard-title { display:grid; gap:8px; }
   .wizard-title h1 { width:fit-content; max-width:100%; }
-  .wizard-title h1:focus { outline:0; }
+  .wizard-title h1:focus { outline:2px solid var(--focus); outline-offset:5px; border-radius:3px; }
+  .wizard-title h1:focus-visible { outline:2px solid var(--focus); outline-offset:5px; border-radius:3px; }
   .wizard-title p { margin:0; color:var(--muted); font-size:13px; }
   .wizard-content { width:min(740px,100%); min-width:0; margin:0 auto; flex:1; }
   .wizard-content-starting-point { width:min(880px,100%); }
@@ -55,6 +56,7 @@
   .wizard-profile-field textarea { min-height:112px; background:var(--surface-raised); font:14px/1.75 Georgia,serif; }
 
   .wizard-review { display:grid; gap:24px; }
+  .wizard-review-save-note { margin:0; color:var(--muted); font-size:12px; line-height:1.55; }
   .wizard-review-identity { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:14px; padding:0 0 20px; border-bottom:1px solid var(--line); }
   .wizard-review-icon { display:grid; width:45px; height:45px; place-items:center; border-radius:50%; color:var(--block-character-ink); background:var(--block-character-bg); }
   .wizard-review-name { min-width:0; }

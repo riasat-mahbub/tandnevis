@@ -169,6 +169,16 @@ async function main() {
       await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
       await evaluate(`(${button}).click()`);
     };
+    const keyboardActivateLabel = async name => {
+      const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
+      await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+      await evaluate(`(${button}).focus()`);
+      const focusVisible = await evaluate(`(${button}).matches(':focus-visible')`);
+      assert.equal(focusVisible, true, `${name} must show keyboard focus before activation.`);
+      await evaluate(`(${button}).click()`);
+    };
     const clickSidebarTab = async name => {
       const tab = `Array.from(document.querySelectorAll('[role="tab"]')).find(tab => tab.textContent.trim() === ${JSON.stringify(name)})`;
       await waitFor(`Boolean(${tab})`, `${name} sidebar tab`);
@@ -313,6 +323,122 @@ async function main() {
       await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
       await clickLabel('Open Settings');
       await evaluate("document.querySelector('input[name=\"appearance\"][value=\"light\"]').click()");
+      await clickLabel('Back to writing');
+    };
+    const captureWizardScreenshots = async (view, expectedStep, sizes, themes, options = {}) => {
+      for (const theme of themes) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
+        await clickLabel('Open Settings');
+        await evaluate(`document.querySelector('input[name="appearance"][value="${theme}"]').click()`);
+        await clickLabel('Back to writing');
+        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await waitFor("document.querySelector('.app')?.dataset.theme === " + JSON.stringify(theme), view + ' appearance');
+        for (const { width, height } of sizes) {
+          await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+          if (options.browserView) await waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.browserView === " + JSON.stringify(options.browserView), view + ' browser view');
+          if (options.browserDetail !== undefined) await waitFor("document.querySelector('[data-testid=\"character-wizard-stock-browser\"]')?.dataset.detailOpen === " + JSON.stringify(String(options.browserDetail)), view + ' browser detail');
+          await waitFor(`document.querySelector('[data-testid="character-creation-wizard"]')?.dataset.wizardStep === ${JSON.stringify(expectedStep)}`, `${view} wizard step`);
+          const checkKeyboardHeading = options.focusHeading && theme === 'light' && width === 1440;
+          if (checkKeyboardHeading) {
+            await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+            await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+            await evaluate("document.querySelector('#character-wizard-heading')?.focus({preventScroll:true})");
+          }
+          await evaluate('window.scrollTo(0,0)');
+          await pause(120);
+          const layout = await evaluate(`(() => {
+            const wizard=document.querySelector('[data-testid="character-creation-wizard"]');
+            const content=wizard?.querySelector('[data-testid="character-wizard-content"]');
+            const footer=wizard?.querySelector('[data-testid="character-wizard-footer"]');
+            const browser=wizard?.querySelector('[data-testid="character-wizard-stock-browser"]');
+            const visible=element=>Boolean(element?.getClientRects().length);
+            return {
+              step:wizard?.dataset.wizardStep,
+              browserView:wizard?.dataset.browserView,
+              browserDetail:browser?.dataset.detailOpen ?? null,
+              browserVisible:visible(browser),
+              resultsVisible:visible(browser?.querySelector('[data-testid="character-wizard-stock-results"]')),
+              previewVisible:visible(browser?.querySelector('[aria-label="Stock type preview"]')),
+              choicesVisible:visible(wizard?.querySelector('[data-testid="character-wizard-starting-choices"]')),
+              nameVisible:visible(content?.querySelector('#character-wizard-name')),
+              profileFieldCount:content?.querySelectorAll('.wizard-profile-field').length ?? 0,
+              iconGridVisible:visible(content?.querySelector('[aria-label="Character icon choices"]')),
+              reviewSubmitVisible:Array.from(wizard?.querySelectorAll('button') ?? []).some(button=>visible(button)&&button.textContent.trim()==='Create character'),
+            saveReminderVisible:visible(wizard?.querySelector('.wizard-review-save-note')),
+            headingFocusVisible:document.activeElement?.id==='character-wizard-heading'&&document.activeElement.matches(':focus-visible'),
+            headingOutline:(()=>{const heading=wizard?.querySelector('#character-wizard-heading');const style=heading?getComputedStyle(heading):null;return style?{style:style.outlineStyle,width:style.outlineWidth,color:style.outlineColor}:null})(),
+              footerVisible:visible(footer),
+              footerPosition:footer?getComputedStyle(footer).position:null,
+              viewport:innerWidth,
+              scrollWidth:document.documentElement.scrollWidth,
+              horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
+              activeControl:document.activeElement?.getAttribute('aria-label')||document.activeElement?.tagName
+            };
+          })()`);
+          assert.equal(layout.step, expectedStep, `${view} must capture the expected wizard phase.`);
+          assert.equal(layout.footerVisible, true, `${view} exposes the wizard footer.`);
+          assert.equal(layout.footerPosition, 'static', `${view} keeps the footer in page flow.`);
+          assert.equal(layout.horizontalOverflow, false, `${view} fits the ${width}px native window.`);
+          if (options.browserView) assert.equal(layout.browserView, options.browserView, `${view} keeps the expected browser mode.`);
+          if (options.browserDetail !== undefined) assert.equal(layout.browserDetail, String(options.browserDetail), `${view} keeps the expected results/detail state.`);
+          if (expectedStep === 'starting-point' && options.browserView === 'choices') {
+            assert.equal(layout.choicesVisible, true, `${view} shows only the starting choices.`);
+            assert.equal(layout.browserVisible, false, `${view} hides the stock catalog until requested.`);
+          }
+          if (expectedStep === 'identity') {
+            assert.equal(layout.nameVisible, true, `${view} shows the name field.`);
+            assert.equal(layout.profileFieldCount, 0, `${view} keeps profile fields on their own step.`);
+            assert.equal(layout.browserVisible, false, `${view} hides the stock catalog.`);
+            assert.equal(layout.iconGridVisible, false, `${view} keeps the icon grid collapsed until requested.`);
+          }
+          if (expectedStep === 'details') {
+            assert.equal(layout.nameVisible, false, `${view} hides identity controls.`);
+            assert.equal(layout.profileFieldCount, 3, `${view} shows all three optional fields.`);
+            assert.equal(layout.browserVisible, false, `${view} hides the stock catalog.`);
+          }
+          if (expectedStep === 'review') {
+            assert.equal(layout.nameVisible, false, `${view} hides editable identity controls.`);
+            assert.equal(layout.profileFieldCount, 0, `${view} hides editable profile fields.`);
+            assert.equal(layout.browserVisible, false, `${view} hides the stock catalog.`);
+            assert.equal(layout.reviewSubmitVisible, true, `${view} exposes Create character only on Review.`);
+            assert.equal(layout.saveReminderVisible, true, `${view} explains that project Save writes the new character to disk.`);
+          }
+          if (checkKeyboardHeading) {
+            assert.equal(layout.headingFocusVisible, true, `${view} captures the heading focused in keyboard modality.`);
+            assert.notEqual(layout.headingOutline?.style, 'none', `${view} shows a keyboard focus outline on the heading.`);
+            assert.ok(Number.parseFloat(layout.headingOutline?.width) >= 1, `${view} keyboard heading outline is at least one pixel wide.`);
+          }
+          const footerBottom = await evaluate(`(() => { const footer=document.querySelector('[data-testid="character-wizard-footer"]'); return footer.getBoundingClientRect().bottom+window.scrollY; })()`);
+          await evaluate(`window.scrollTo(0,Math.max(0,${footerBottom}-innerHeight))`);
+          await pause(80);
+          const footerReachable = await evaluate(`(() => { const rect=document.querySelector('[data-testid="character-wizard-footer"]').getBoundingClientRect(); return rect.top>=-1&&rect.bottom<=innerHeight+1; })()`);
+          assert.equal(footerReachable, true, `${view} footer is reachable by normal page scrolling.`);
+          await evaluate('window.scrollTo(0,0)');
+          await pause(80);
+          report.layout.push({ view, theme, width, height, ...layout, footerReachable });
+          assert.equal(layout.viewport, width, view + ' emulates the requested viewport width.');
+          if (expectedStep === 'starting-point' && options.browserView === 'catalog' && width > 900) {
+            assert.equal(layout.resultsVisible, true, view + ' keeps catalog results visible in the wide layout.');
+            assert.equal(layout.previewVisible, true, view + ' keeps the type preview visible in the wide layout.');
+          }
+          if (expectedStep === 'starting-point' && options.browserDetail === 'false' && width <= 900) {
+            assert.equal(layout.resultsVisible, true, view + ' shows the results list in narrow mode.');
+            assert.equal(layout.previewVisible, false, view + ' hides the preview in narrow results mode.');
+          }
+          if (expectedStep === 'starting-point' && options.browserDetail === 'true' && width <= 900) {
+            assert.equal(layout.resultsVisible, false, view + ' hides results in narrow detail mode.');
+            assert.equal(layout.previewVisible, true, view + ' shows the selected detail in narrow mode.');
+          }
+          const filename = `${view}-${theme}-${width}x${height}.png`;
+          const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+          await fs.writeFile(path.join(run, filename), Buffer.from(screenshot.data, 'base64'));
+          report.screenshots.push(filename);
+        }
+      }
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
+      await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+      await clickLabel('Open Settings');
+      await evaluate('document.querySelector("input[name=\\"appearance\\"][value=\\"light\\"]").click()');
       await clickLabel('Back to writing');
     };
     await waitFor("typeof window.__TAURI_INTERNALS__?.invoke === 'function'", 'real Tauri bridge');
@@ -498,56 +624,204 @@ async function main() {
     report.checks.push('Native keyboard click insertion adds independent emotions and multiple tones at the last focused caret without opening scene details');
     assert.equal(await evaluate("document.querySelector('.project-header-identity')?.firstElementChild?.classList.contains('project-back')"),true,'Back is the leftmost header control');
     await clickSidebarTab('Characters');
+    await clickLabel('Save');
+    await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'clean project before character wizard checks');
+    const characterWorkflowDiskSnapshot = await fs.readFile(projectPath);
+    const beforeCharacterWizard = await readUi();
+    assert.equal(beforeCharacterWizard.characters.some(character => character.name === 'Tamsin Revised'), false, 'The project has no Tamsin record before wizard creation.');
+    const setWizardValue = async (selector, value) => {
+      await evaluate("(() => { const element=document.querySelector(" + JSON.stringify(selector) + "); if(!element) throw new Error('Wizard field missing: ' + " + JSON.stringify(selector) + "); const prototype=element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype,'value').set.call(element," + JSON.stringify(value) + "); element.dispatchEvent(new Event('input',{bubbles:true})); })()");
+      await waitFor("document.querySelector(" + JSON.stringify(selector) + ")?.value === " + JSON.stringify(value), 'wizard field ' + selector);
+    };
+    const readWizardProfile = () => evaluate("Object.fromEntries(['background','personality','voice'].map(field=>[field,document.querySelector('#character-wizard-'+field)?.value ?? null]))");
+    const readWizardReviewedProfile = () => evaluate("Object.fromEntries(['background','personality','voice'].map(field=>{const heading=document.getElementById('character-wizard-review-'+field);return [field,heading?.closest('.wizard-review-section')?.querySelector('p')?.textContent.trim() ?? ''];}))");
+    const readWizardIcon = () => evaluate("document.querySelector('.character-icon-picker-status [data-character-icon]')?.getAttribute('data-character-icon') ?? null");
+    const waitForWizardStep = step => waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.wizardStep === " + JSON.stringify(step), 'wizard step ' + step);
+
     await clickLabel('New character');
-    await waitFor("Boolean(document.querySelector('.character-template-browser'))", 'visual stock character browser');
-    const setCharacterDraftName = name => evaluate(`(() => { const label=Array.from(document.querySelectorAll('.library-create-character label')).find(item=>item.textContent.trim().startsWith('Character name')); const input=label?.querySelector('input'); if(!input)throw new Error('Character name field missing'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(name)}); input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
-    const beforeTemplateDraft = await readUi();
-    await setCharacterDraftName('Tamsin');
+    await waitForWizardStep('starting-point');
+    await captureWizardScreenshots('wizard-starting-point', 'starting-point', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark'], { browserView: 'choices' });
+    await clickLabel('Choose a stock type');
+    await waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.browserView === 'catalog'", 'stock catalog view');
+    await captureWizardScreenshots('wizard-stock-results', 'starting-point', [{ width: 800, height: 600 }], ['light', 'dark'], { browserView: 'catalog', browserDetail: 'false' });
+    const beforeStockPreview = await readUi();
     await clickLabel('Preview The Miser');
-    assert.ok(await evaluate("Array.from(document.querySelectorAll('.library-create-character textarea')).every(field=>field.value==='')"), 'Previewing a type leaves editable fields blank.');
-    assert.deepEqual(await readUi(), beforeTemplateDraft, 'Browsing templates never changes project records.');
-    assert.equal(await evaluate("Boolean(document.querySelector('select[aria-label=\"Start from a template\"]'))"), false, 'The visual browser replaces the old template dropdown.');
-    await evaluate('window.scrollTo(0,0)');
-    await captureView('new-character');
-    await clickLabel('Use template');
-    await waitFor("Array.from(document.querySelectorAll('.library-create-character textarea')).length===3 && Array.from(document.querySelectorAll('.library-create-character textarea')).every(field=>field.value.trim())", 'applied traditional stock type');
-    assert.deepEqual(await readUi(), beforeTemplateDraft, 'An unsubmitted template draft must not change the project.');
-    await clickLabel('Create character');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Tamsin'&&c.icon==='coins'))", 'traditional stock character with its icon');
-    await clickLabel('Undo project change');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>!p.characters.some(c=>c.name==='Tamsin'))", 'Undo removes one atomically created character');
-    await clickLabel('Redo project change');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Tamsin'&&c.icon==='coins'&&c.voice.trim()))", 'Redo restores the complete profile and icon');
-    await clickLabel('New character');
+    assert.deepEqual(await readUi(), beforeStockPreview, 'Previewing a stock result never mutates the project.');
+    await captureWizardScreenshots('wizard-stock-wide', 'starting-point', [{ width: 1440, height: 960 }], ['light'], { browserView: 'catalog', browserDetail: 'false' });
+    await captureWizardScreenshots('wizard-stock-compact', 'starting-point', [{ width: 800, height: 960 }], ['dark'], { browserView: 'catalog', browserDetail: 'true' });
+    await captureWizardScreenshots('wizard-stock-detail', 'starting-point', [{ width: 800, height: 600 }], ['light', 'dark'], { browserView: 'catalog', browserDetail: 'true' });
+    await clickLabel('Use this type and continue');
+    await waitForWizardStep('identity');
+    assert.equal(await readWizardIcon(), 'coins', 'The untouched stock icon follows into Name and icon.');
+    await captureWizardScreenshots('wizard-identity', 'identity', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark']);
+    await setWizardValue('#character-wizard-name', 'Tamsin');
+    await keyboardActivateLabel('Next: Profile details');
+    await waitForWizardStep('details');
+    await waitFor("document.activeElement?.id === 'character-wizard-heading'", 'keyboard transition focuses the profile details heading');
+    await captureWizardScreenshots('wizard-details', 'details', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark'], { focusHeading: true });
+    const initialStockProfile = await readWizardProfile();
+    assert.ok(Object.values(initialStockProfile).every(value => typeof value === 'string' && value.trim()), 'The applied stock type supplies all three optional suggestions.');
+    const tamsinBackground = 'Raised among careful traders, Tamsin now risks her savings on a quiet act of generosity.';
+    const tamsinPersonality = 'Patient with numbers and guarded with praise; she becomes unexpectedly bold when someone is being exploited.';
+    const tamsinVoice = 'Measured, practical, and warmer when she forgets to count the cost.';
+    await setWizardValue('#character-wizard-background', tamsinBackground);
+    await setWizardValue('#character-wizard-personality', tamsinPersonality);
+    await setWizardValue('#character-wizard-voice', tamsinVoice);
+    await clickLabel('Next: Review');
+    await waitForWizardStep('review');
+    await captureWizardScreenshots('wizard-review', 'review', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark']);
+    assert.equal(await evaluate("document.querySelector('#character-wizard-review-name')?.textContent.trim()"), 'Tamsin', 'Review shows the current identity.');
+    await clickLabel('Edit name and icon');
+    await setWizardValue('#character-wizard-name', 'Tamsin Revised');
+    await clickLabel('Review now');
+    await waitForWizardStep('review');
+    assert.equal(await evaluate("document.querySelector('#character-wizard-review-name')?.textContent.trim()"), 'Tamsin Revised', 'Review returns after an identity edit.');
+    await clickLabel('Edit baseline voice');
+    const tamsinRevisedVoice = 'Measured, practical, and warmer when she forgets to count the cost; she corrects herself with a small joke.';
+    await setWizardValue('#character-wizard-voice', tamsinRevisedVoice);
+    await clickLabel('Next: Review');
+    await waitForWizardStep('review');
+    assert.equal((await readWizardReviewedProfile()).voice, tamsinRevisedVoice, 'Review preserves its details edit.');
+
+    const editedProfileBeforeReplacement = await readWizardReviewedProfile();
+    await clickLabel('Edit name and icon');
+    await clickLabel('Change starting point');
     await clickLabel('Preview The Con Artist');
-    await clickLabel('Use template');
-    await setCharacterDraftName('Corin');
+    await clickLabel('Use this type and continue');
+    await waitFor("document.querySelector('#character-wizard-starting-point-confirm-heading')?.textContent.includes('Replace background, personality, baseline voice')", 'stock replacement confirmation');
+    const replacementHeading = await evaluate("document.querySelector('#character-wizard-starting-point-confirm-heading')?.textContent.trim()");
+    assert.equal(replacementHeading, 'Replace background, personality, baseline voice?', 'Confirmation names every profile field that will change.');
+    await clickLabel('Keep current fields');
+    await waitFor("document.querySelector('.character-template-preview-title h3')?.textContent.trim() === 'The Miser'", 'declined replacement restores the applied stock preview');
+    await clickLabel('Name and icon');
+    await clickLabel('Profile details');
+    assert.deepEqual(await readWizardProfile(), editedProfileBeforeReplacement, 'Declining a replacement retains every edited field.');
+    await clickLabel('Name and icon');
+    await clickLabel('Change starting point');
+    await clickLabel('Preview The Con Artist');
+    await clickLabel('Use this type and continue');
+    await waitFor("Boolean(document.querySelector('#character-wizard-starting-point-confirm-heading'))", 'confirmed stock replacement prompt');
+    await clickLabel('Replace profile fields');
+    await waitForWizardStep('identity');
+    assert.equal(await readWizardIcon(), 'hat-glasses', 'An untouched icon follows the confirmed new stock type.');
+    await clickLabel('Profile details');
+    const conArtistProfile = await readWizardProfile();
+    assert.notDeepEqual(conArtistProfile, editedProfileBeforeReplacement, 'Confirmed replacement updates the applied profile fields.');
+    assert.ok(Object.values(conArtistProfile).every(value => typeof value === 'string' && value.trim()), 'The replacement retains all three stock suggestions.');
+    await clickLabel('Name and icon');
+    await clickLabel('Change starting point');
+    await clickLabel('Preview The Miser');
+    await clickLabel('Use this type and continue');
+    await waitFor("Boolean(document.querySelector('#character-wizard-starting-point-confirm-heading'))", 'restore original stock type confirmation');
+    await clickLabel('Replace profile fields');
+    await waitForWizardStep('identity');
+    assert.equal(await readWizardIcon(), 'coins', 'The untouched icon follows when the original stock type is reapplied.');
+    await setWizardValue('#character-wizard-name', 'Tamsin Revised');
+    await clickLabel('Next: Profile details');
+    await setWizardValue('#character-wizard-background', tamsinBackground);
+    await setWizardValue('#character-wizard-personality', tamsinPersonality);
+    await setWizardValue('#character-wizard-voice', tamsinRevisedVoice);
+    await clickLabel('Next: Review');
+    await waitForWizardStep('review');
+    assert.equal(await evaluate("document.querySelector('#character-wizard-review-name')?.textContent.trim()"), 'Tamsin Revised');
+    assert.match(await evaluate("document.querySelector('[data-testid=\"character-creation-wizard\"] .wizard-review-save-note')?.innerText.trim() ?? ''"), /project Save to write project changes to disk/i, 'Review reminds the user to Save before Create submits the new character.');
+
+    const beforeTamsinCreate = await readUi();
+    assert.equal(beforeTamsinCreate.characters.filter(character => character.name === 'Tamsin Revised').length, 0, 'The draft has not created a project record before Review submission.');
     await clickLabel('Create character');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Corin'&&c.background.trim()&&c.personality.trim()&&c.voice.trim()))", 'genre stock character creation');
+    await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return to the original scene after creation');
+    const afterTamsinCreate = await readUi();
+    const newTamsin = afterTamsinCreate.characters.filter(character => !beforeTamsinCreate.characters.some(existing => existing.id === character.id) && character.name === 'Tamsin Revised');
+    assert.equal(newTamsin.length, 1, 'Review submits exactly one new character.');
+    assert.deepEqual(newTamsin[0], { id: newTamsin[0].id, name: 'Tamsin Revised', background: tamsinBackground, personality: tamsinPersonality, voice: tamsinRevisedVoice, icon: 'coins', archived: false, defaultToneId: '', defaultEmotionId: '' }, 'Creation uses the exact reviewed fields and icon.');
+    assert.deepEqual(afterTamsinCreate.scenes, beforeTamsinCreate.scenes, 'Returning to the original scene does not insert a character reference or alter prose.');
+    assert.equal(await invoke('project_has_unsaved_changes', { sessionId: await evaluate('window.__nativeSmokeSessionId') }), true, 'Character creation stays in the working copy until Save.');
+    await clickLabel('Undo project change');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>!p.characters.some(c=>c.name==='Tamsin Revised'))", 'Undo removes the created character');
+    await clickLabel('Redo project change');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Tamsin Revised'&&c.icon==='coins'&&c.voice=== " + JSON.stringify(tamsinRevisedVoice) + "))", 'Redo restores the complete reviewed profile and icon');
+
+    assert.deepEqual(await fs.readFile(projectPath), characterWorkflowDiskSnapshot, 'Creation and history stay out of the project file until Save.');
+    const beforeRowanCreate = await readUi();
     await clickLabel('New character');
-    await setCharacterDraftName('Rowan');
+    await clickLabel('Start blank');
+    await setWizardValue('#character-wizard-name', 'Rowan');
     await clickLabel('Choose character icon');
     await clickLabel('Bird icon');
+    assert.equal(await readWizardIcon(), 'bird', 'A blank character can choose a custom icon.');
+    await clickLabel('Review now');
+    await waitForWizardStep('review');
+    assert.equal(await evaluate("document.querySelectorAll('.wizard-review-empty').length === 3 && Array.from(document.querySelectorAll('.wizard-review-empty')).every(item=>item.textContent.trim()==='Not added')"), true, 'Blank review keeps all three optional fields empty.');
     await clickLabel('Create character');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Rowan'&&c.icon==='bird'&&!c.background&&!c.personality&&!c.voice))", 'custom blank character with selected icon');
+    await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return to the original scene after blank creation');
+    const afterRowanCreate = await readUi();
+    const newRowan = afterRowanCreate.characters.filter(character => !beforeRowanCreate.characters.some(existing => existing.id === character.id) && character.name === 'Rowan');
+    assert.equal(newRowan.length, 1, 'The blank route creates exactly one project record.');
+    assert.deepEqual(newRowan[0], { id: newRowan[0].id, name: 'Rowan', background: '', personality: '', voice: '', icon: 'bird', archived: false, defaultToneId: '', defaultEmotionId: '' }, 'The blank route creates with the chosen icon and empty optional fields.');
+    assert.deepEqual(afterRowanCreate.scenes, beforeRowanCreate.scenes, 'Blank creation also returns without inserting a scene reference.');
+    assert.deepEqual(await fs.readFile(projectPath), characterWorkflowDiskSnapshot, 'Blank creation also stays unsaved until project Save.');
+
+    const beforeDiscardedDraft = await readUi();
+    await clickLabel('New character');
+    await clickLabel('Choose a stock type');
+    await clickLabel('Preview The Miser');
+    await clickLabel('Use this type and continue');
+    await setWizardValue('#character-wizard-name', 'Draft Only');
+    await clickLabel('Choose character icon');
+    await clickLabel('Crown icon');
+    await clickLabel('Next: Profile details');
+    await setWizardValue('#character-wizard-background', 'A writer-owned field to carry through a profile replacement.');
+    await setWizardValue('#character-wizard-personality', 'Private, precise, and more generous than expected.');
+    await setWizardValue('#character-wizard-voice', 'Evenly paced, with a dry aside when needed.');
+    await clickLabel('Name and icon');
+    await clickLabel('Change starting point');
+    await clickLabel('Preview The Con Artist');
+    await clickLabel('Use this type and continue');
+    await waitFor("Boolean(document.querySelector('#character-wizard-starting-point-confirm-heading'))", 'explicit icon replacement prompt');
+    await clickLabel('Replace profile fields');
+    await waitForWizardStep('identity');
+    assert.equal(await readWizardIcon(), 'crown', 'An explicitly chosen icon stays across profile replacement.');
+    await clickLabel('Profile details');
+    const resumedProfile = await readWizardProfile();
+    assert.ok(Object.values(resumedProfile).every(value => typeof value === 'string' && value.trim()), 'The changed stock profile is ready to resume.');
+    await clickLabel('Characters');
+    await clickLabel('Resume character draft');
+    await waitForWizardStep('details');
+    assert.deepEqual(await readWizardProfile(), resumedProfile, 'Resume restores the draft at its current step.');
+    await clickLabel('Name and icon');
+    assert.equal(await evaluate("document.querySelector('#character-wizard-name')?.value"), 'Draft Only', 'Resume restores the draft identity.');
+    assert.equal(await readWizardIcon(), 'crown', 'Resume restores the explicitly chosen icon.');
+    await clickLabel('Profile details');
+    await clickLabel('Cancel creation');
+    await clickLabel('Discard draft');
+    await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return to the origin scene after discarding the resumed draft');
+    assert.deepEqual(await readUi(), beforeDiscardedDraft, 'Canceling and discarding a resumed draft does not change the project.');
+    assert.deepEqual(await fs.readFile(projectPath), characterWorkflowDiskSnapshot, 'Unsubmitted draft text is never written to the project file.');
+    report.checks.push('The four-step stock route captures in both themes and widths; blank and stock creation submit one reviewed operation, support safe profile replacement, preserve icon choices, return to the scene without insertion, and remain undoable/unsaved until Save.');
+    report.checks.push('A resumed draft keeps its step, name, profile and custom icon; explicit discard removes only the draft and writes no project data.');
+    report.checks.push('Stock default icons follow a confirmed type change; declining preserves every writer-edited profile field and restores the applied preview.');
+
+    await clickSidebarTab('Characters');
+    await clickLabel('Manage Characters');
+    await waitFor("Array.from(document.querySelectorAll('.global-library-character')).some(element=>element.getClientRects().length>0)", 'visible full Characters screen');
     await evaluate("(() => {const row=Array.from(document.querySelectorAll('.global-library-character .definition-rows button')).find(button=>button.querySelector('strong')?.textContent.trim()==='Mara');if(!row)throw new Error('Existing Mara profile missing');row.click();})()");
     const beforeCharacterIcon = await readUi();
     await clickLabel('Choose character icon');
     await clickLabel('Crown icon');
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Mara'&&c.icon==='crown'))", 'editing an existing character icon');
     const afterCharacterIcon = await readUi();
-    const oldMara = beforeCharacterIcon.characters.find(c=>c.name==='Mara');
-    const newMara = afterCharacterIcon.characters.find(c=>c.name==='Mara');
-    assert.deepEqual({...newMara,icon:undefined},{...oldMara,icon:undefined}, 'An icon edit preserves every character writing field.');
-    assert.deepEqual(afterCharacterIcon.scenes,beforeCharacterIcon.scenes, 'An icon edit never rewrites inline documents or scene prose.');
+    const oldMara = beforeCharacterIcon.characters.find(character => character.name === 'Mara');
+    const newMara = afterCharacterIcon.characters.find(character => character.name === 'Mara');
+    assert.deepEqual({ ...newMara, icon: undefined }, { ...oldMara, icon: undefined }, 'An icon edit preserves every character writing field.');
+    assert.deepEqual(afterCharacterIcon.scenes, beforeCharacterIcon.scenes, 'An icon edit never rewrites inline documents or scene prose.');
     await clickLabel('Undo project change');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Mara'&&!(c.icon)))", 'Undo restores the existing character default icon');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Mara'&&!c.icon))", 'Undo restores the existing character default icon');
     await clickLabel('Redo project change');
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Mara'&&c.icon==='crown'))", 'Redo restores the character icon');
     await clickLabel('Scene');
     await waitFor("Boolean(document.querySelector('.block-shelf button[aria-label=\"Character: Mara\"] [data-character-icon=\"crown\"]')) && Boolean(document.querySelector('.ProseMirror .character-chip [data-character-icon=\"crown\"]'))", 'live matching character icons in shelf and inline references');
-    report.checks.push('Visual stock browsing previews without mutation and creates traditional and genre profiles atomically with Undo/Redo');
-    report.checks.push('Custom characters choose icons; existing icon edits preserve writing fields and inline documents and support Undo/Redo');
+    report.checks.push('Existing character icon edits preserve writing fields and inline documents and support Undo/Redo');
+
     await clickSidebarTab('Tones');
     await clickLabel('Manage Tones');
     await waitFor("Array.from(document.querySelectorAll('.global-library-tone')).some(element=>element.getClientRects().length>0)", 'visible full Tones screen');
@@ -603,11 +877,11 @@ async function main() {
     assert.equal(persistedColors.emotions.find(preset => preset.name === 'Awe')?.color, '#000000');
     assert.equal(persistedColors.tones.find(preset => preset.name === 'Stillness')?.color, '#FF00AA');
     report.checks.push('Native Save and UI reopen preserve custom colors on built-in and newly created presets');
-    assert.equal(persistedColors.characters.find(character => character.name === 'Tamsin')?.icon, 'coins');
+    assert.equal(persistedColors.characters.find(character => character.name === 'Tamsin Revised')?.icon, 'coins');
     assert.equal(persistedColors.characters.find(character => character.name === 'Rowan')?.icon, 'bird');
     assert.equal(persistedColors.characters.find(character => character.name === 'Mara')?.icon, 'crown');
-    assert.ok(persistedColors.characters.some(character => character.name === 'Corin' && character.voice.trim()));
-    report.checks.push('Save and native reopen preserve traditional and genre profiles, custom icons, and edits to existing character icons');
+    assert.ok(persistedColors.characters.find(character => character.name === 'Tamsin Revised')?.voice.includes('small joke'));
+    report.checks.push('Save and native reopen preserve stock and blank wizard profiles, custom icons, and edits to existing character icons');
     await clickSidebarTab('Characters');
     await clickLabel('Manage Characters');
     await waitFor("Array.from(document.querySelectorAll('.global-library-character')).some(element=>element.getClientRects().length>0)", 'visible full Characters screen');
@@ -692,6 +966,21 @@ async function main() {
     report.checks.push('Native title-bar close request opens the unsaved prompt; Cancel keeps the project and edits open');
     await clickLabel('Save');
     await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'final manual Save acknowledgement');
+    const wizardScreenshots = report.screenshots.filter(filename => filename.startsWith('wizard-')).sort();
+    const expectedWizardScreenshots = [
+      'wizard-starting-point-light-1440x960.png', 'wizard-starting-point-light-800x960.png',
+      'wizard-starting-point-dark-1440x960.png', 'wizard-starting-point-dark-800x960.png',
+      'wizard-stock-results-light-800x600.png', 'wizard-stock-results-dark-800x600.png',
+      'wizard-stock-wide-light-1440x960.png', 'wizard-stock-compact-dark-800x960.png',
+      'wizard-stock-detail-light-800x600.png', 'wizard-stock-detail-dark-800x600.png',
+      'wizard-identity-light-1440x960.png', 'wizard-identity-light-800x960.png',
+      'wizard-identity-dark-1440x960.png', 'wizard-identity-dark-800x960.png',
+      'wizard-details-light-1440x960.png', 'wizard-details-light-800x960.png',
+      'wizard-details-dark-1440x960.png', 'wizard-details-dark-800x960.png',
+      'wizard-review-light-1440x960.png', 'wizard-review-light-800x960.png',
+      'wizard-review-dark-1440x960.png', 'wizard-review-dark-800x960.png',
+    ].sort();
+    assert.deepEqual(wizardScreenshots, expectedWizardScreenshots, 'The initial visual batch contains exactly 22 wizard states at the agreed viewport matrix.');
     await requestWindowClose(child.pid);
     if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
     assert.equal(child.exitCode, 0, 'A saved project must close normally through its native title-bar close handler.');
