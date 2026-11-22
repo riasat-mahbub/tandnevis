@@ -1,72 +1,32 @@
 # Shorthand Writer
 
-A local desktop writing application: each scene sits on a timeline and contains a freeform summary board plus ordered beat cards. Summary and beats accept text and draggable character, emotion, and tone blocks, with zero, one, or many characters. Separate Characters, Tones, and Emotions screens manage project-wide definitions. Optional physical stages remain planned.
+Shorthand Writer is a local desktop app for shaping a story with chapters, scenes, and ordered beats, then writing editable prose for each scene. You can write and manage projects offline; ChatGPT generation is optional.
 
-**Status:** native SQLite authoring, Story/Scene timelines, full global libraries, scoped emotion/scene-tone/beat-tone blocks, ChatGPT Settings, individual scene drafting, and a four-step character creation wizard are implemented. Projects automatically include 18 editable tones and 24 emotions with meaning, guidance, and an example. The wizard starts blank or browses 53 reference-backed character types, reuses the 32-icon picker, and creates a character only from Review; existing profiles still use the ordinary library editor. Drafts support streaming, Stop, recovery, Copy/Discard, and undoable acceptance into editable scene prose. Platinum is the default appearance. Live ChatGPT account eligibility and inference still require an eligible test account. [Implementation progress](docs/implementation-progress.md) records verification and remaining features.
+## Start on Windows
 
-The character wizard separates Starting point, Name and icon, optional Profile details, and Review. Its Save reminder explains that **Create character** adds a profile to the project while **Save** writes project changes to disk. Creation from a scene returns to that scene without inserting a character reference; creation from the Characters library opens the new profile. A draft can be resumed within its open project session. See the [character creation workflow](docs/character-creation-wizard-plan.md).
+For the portable Windows ZIP, extract it to a folder you can write to and run `Shorthand Writer.exe`. The app requires Microsoft's Edge WebView2 Runtime. If it is missing, install the Evergreen Runtime from Microsoft's [WebView2 download page](https://developer.microsoft.com/en-us/microsoft-edge/webview2).
 
-**Implementation target:** Tauri 2 desktop, React/TypeScript frontend, and Rust backend. A local SQLite project database is the canonical store, accessed only through Rust domain commands. Markdown is explicit import/export interchange; there is no live two-way Obsidian sync. Ordinary authoring works offline.
+Choose **New project** or **Open project** from the welcome screen or the **Project** menu. Projects are local `.shorthand` files saved where you choose. No account is needed to create or edit a project.
 
-In Scene view, **Generate scene** proposes editable beats from the summary; **Generate prose** drafts narration and dialogue from the summary and beats. Both actions sit at the top left and require the configured ChatGPT connection. Review before accepting: generated beats append without replacing existing writing. A Tone block on the summary guides the scene, while a beat tone overrides only that beat. [Scene board behavior](docs/scene-board-and-generation.md) and [starter character/preset ideas](docs/starter-content-ideas.md) describe the workflow.
+## Shape and write a story
 
-Saving is manual by default: use **Save** or **Ctrl+S** (Cmd+S on macOS keyboards). Text, timeline changes, characters, history, and generated drafts remain in the current session until saved. Settings → Appearance → **Autosave** enables saving after editing settles. Closing or switching projects offers Save / Discard / Cancel for unsaved work. Unsaved manual changes are lost if the app crashes or is forcibly terminated.
+1. In **Story**, add chapters and scenes to build the story overview. Open a scene to work on it.
+2. Write the scene's direction in **Scene summary**. Use **Add beat** to create ordered beat cards beneath it, and write narration or dialogue in **Scene prose**.
+3. Use **Characters**, **Tones**, and **Emotions** to manage reusable project-wide definitions. In a scene, click a block or drag it into the summary or a beat to insert a reference.
+4. To make a character, choose **New character**. The four steps are **Starting point**, **Name and icon**, optional **Profile details**, and **Review**. Start blank or adapt one of 58 stock character types, including five ensemble functions. Tone and emotion defaults are optional; **None** leaves either unset. Review the profile and choose **Create character**, then **Save** to write the project changes to disk.
 
-[Read the development plan](docs/development-plan.md). The [stock character revamp](docs/stock-character-revamp-plan.md) implements searchable browsing, previews, sources, and character icons; the [research audit](docs/stock-character-catalog-research.md) records 53 shipped types and six deferred candidates.
+Reorder scenes and beats with drag and drop or the move controls. Use the **Undo** and **Redo** buttons for recent project changes. Deleted scenes, beats, chapters, and unused definitions go to **Trash**, where you can restore them.
 
-## Run the desktop app
+## Save and move between projects
 
-With Node 22.12+, Rust 1.90+, and the [Windows desktop prerequisites](docs/development-setup.md) installed:
+Saving is manual by default: choose **Save** or press **Ctrl+S**. To save automatically, turn on **Autosave** in **Settings**. If you close or switch projects with unsaved changes, choose whether to save, discard, or cancel.
 
-```powershell
-npm ci
-npm run desktop:dev
-```
+The **Project** menu also has **Import Markdown...** and **Export outline as Markdown...**. Import adds Markdown as chapters, scenes, and beats; export includes the story outline and beat text. These are explicit import and export actions, not a live sync.
 
-Use `npm run desktop:build` to build the Windows executable and installer. `npm run dev` opens only the renderer; native project access requires Tauri. See [development setup](docs/development-setup.md) for the local toolchain, checks, native smoke runner, and Markdown interchange limits.
+## Optional ChatGPT generation
 
-## Portable Windows ZIP
+To generate in a scene, connect ChatGPT and verify a model in **Settings**. Generation needs an internet connection and eligible ChatGPT plan access; availability depends on your account and the current app build. **Generate scene** proposes beats from the summary. **Generate prose** drafts from the summary and beats. Review each result, then accept it into the project or discard it. You can continue writing without connecting ChatGPT.
 
-Build a portable Windows x64 ZIP using the command below. Extract it into a writable folder and launch `Shorthand Writer.exe`. The app requires Microsoft's WebView2 Runtime. If startup reports that it is missing, install the Evergreen Runtime from Microsoft's [official WebView2 download page](https://developer.microsoft.com/en-us/microsoft-edge/webview2).
+## Projects and backups
 
-The portable build is designed to keep application settings and recovery data in a `data` folder beside the executable. `.shorthand` project files remain wherever you choose to save them and should be backed up separately from the application folder. ChatGPT credentials use the current Windows account's protected credential storage: copying the portable folder to another computer or Windows user does not carry a working sign-in, so reconnect from Settings there.
-
-To build or update the single latest release, run `powershell -ExecutionPolicy Bypass -File .\scripts\package-portable.ps1`. Launch `out/latest/Shorthand Writer.exe`. Packaging updates that same folder and replaces `Shorthand-Writer-latest-win-x64.zip` plus its SHA-256 checksum. It preserves the existing `data` folder, including connection metadata and appearance settings. Save your project and close the app before updating. Clean-machine launch and live account generation remain release verification gates.
-
-[Read the detailed Tauri implementation plan](docs/tauri-implementation-plan.md): architecture, entities and storage, native command contracts, editor/drag-and-drop implementation, AI jobs, recovery, packaging, and milestone acceptance gates.
-
-[Read the next interface plan](docs/interface-plan.md): playful skew/asymmetry, complete editing controls, library management, and recoverable removal.
-
-[Read the global blocks and navigation plan](docs/global-blocks-and-navigation-plan.md): implemented Characters, Tones, and Emotions screens; a Scene shelf for inserting their reusable blocks; explicit emotion targets; and clear places for Save, project commands, and Trash.
-
-[Read the scoped portable and AI plan](docs/install-and-ai-plan.md): portable Windows ZIP, ChatGPT setup in Settings, scene-by-scene generation from beats, the Harvest Orange theme, and verification gates.
-
-## Agreed direction
-
-- A separate software repository from the story vault.
-- A Tauri full-stack desktop app with a React/TypeScript UI and Rust application backend.
-- Two views at two zoom levels: a whole-story overview with a vertical timeline of draggable scene blocks, and an individual scene writer retaining its accepted design.
-- Open any scene to edit it; return to the overview while preserving its independent edits and timeline position.
-- A main scene idea/summary box above each scene's beat cards.
-- A matching vertical timeline of freeform beat cards inside each scene, alternating left/right when space allows, with no required cast size or actor fields.
-- Drag-and-drop reordering for both scenes and beats, with keyboard equivalents and before/after drop targets.
-- Directly visible Duplicate/Delete quick actions on scene and beat blocks, with Trash/Undo recovery.
-- Separate reusable, draggable character, emotion, tone, and voice/delivery blocks mixed with regular text.
-- Optional stages; writing and generation work without a physical layout.
-- Story-level narration defaults, with optional scene overrides.
-- Human-authored shorthand, tags, scene direction, and character changes.
-- AI primarily generates and revises prose.
-- Create/open a native local SQLite project containing stories, chapters, scenes, freeform beats, profiles, presets, revisions, and recoverable Trash.
-- Import/export Markdown deliberately, preserving imported source material and reporting compatibility limits; external Markdown edits never silently overwrite the native project.
-
-The first compatibility target is the existing shorthand framework. Native authoring comes first; legacy parser/replay parity, advanced AI, and production signing remain later milestones with their own acceptance gates.
-
-[Explore the scene writer design](outputs/scene-writer-studio.html). This is an interactive local prototype, separate from the desktop implementation.
-
-[Try the playful interface preview](outputs/scene-writer-playful.html): asymmetric scene blocks, skewed backings, Calm appearance, scene/beat actions, Trash/Undo, and basic character profiles.
-
-## Repository boundary
-
-This repository will contain application code, documentation, and synthetic test fixtures. Story manuscripts, canon, API credentials, generated story drafts, and project-specific history belong outside the application repository.
-
-No hosted service or GitHub remote is configured by this planning scaffold.
+In portable mode, app settings and recovery data are stored in a `data` folder beside the application. Each `.shorthand` project is saved separately at its chosen location. Back up your project files separately from the portable app folder.
