@@ -8,7 +8,7 @@ The implemented [character creation wizard](character-creation-wizard-plan.md) s
 
 Give a writer recognizable, reference-backed stock types from which to create an individual character. Replace the invented six-profile catalog with established names, concise explanations, and useful editable starting text. Retain the blank-character path and the existing Characters library and Scene-sidebar entry points.
 
-The previous catalog in [stock-characters.ts](../src/content/stock-characters.ts) contained the guarded medic, proud rival, observant friend, charming liar, tired mentor, and anxious planner. These authored personality sketches have been replaced by 53 supported types; the [research record](stock-character-catalog-research.md) documents the six deferrals. Characters already created from earlier catalogs keep their names, fields, IDs, references, history, and archived state.
+The previous catalog in [stock-characters.ts](../src/content/stock-characters.ts) contained the guarded medic, proud rival, observant friend, charming liar, tired mentor, and anxious planner. These authored personality sketches were replaced by 53 supported stock types; five individually reusable ensemble functions were added later, for 58 catalog entries total. The [research record](stock-character-catalog-research.md) documents the six deferred candidates and the limits of the ensemble-role adaptation. Characters already created from earlier catalogs keep their names, fields, IDs, references, history, and archived state.
 
 This tranche covers catalog research/content, template discovery, draft application, character icons, and relevant verification. The catalog itself needs no project schema change; durable character icons use schema 7's compatibility gate and extension metadata. Templates remain bundled application content and create ordinary project characters only through the existing Create action. Browsing works offline and does not require a new character relationship model.
 
@@ -42,6 +42,8 @@ Retain all 59 supplied rows for editorial review. Counts below describe candidat
 | School and coming of age | 8 | Bully; Jock; Nerd; Mean Girl / Queen Bee; Preppy; Tomboy; Schoolmaster; Headmaster / Headmistress |
 | Fantasy, adventure, and fairy tale | 11 | Wise Old Man; Enchantress; Dark Lord; Necromancer; Prince Charming; Damsel in Distress; Wicked Stepmother; Black Knight; Knight-Errant; Elderly Martial Arts Master; Fallen Hero |
 | Eccentric and comic | 7 | Absent-Minded Professor; Mad Scientist; Lovable Rogue; Oddball / Misfit; Jester; Foolish Braggart; Harlequin |
+
+The five optional Ensemble roles—Leader, Lancer, Brains, Powerhouse, and Heart—are a later addition outside the original candidate inventory. They adapt an educational group-dynamics framework as individual writing starting points; they do not add a required team-creation flow.
 
 The supplied characterizations are editorial inputs. Complete entry-level verification and write distinct profiles before fixing the shipped count.
 
@@ -107,4 +109,4 @@ The catalog, browser, and icon persistence are implemented. The creation composi
 
 Acceptance requires every shipped entry to have a supported established label or clearly qualified equivalent, distinct useful draft text, accessible discovery, and safe reuse. Existing project characters must remain byte-for-byte equivalent in their saved fields when merely browsing the new catalog. No character is added until Create, and the catalog itself never seeds project records.
 
-The editorial audit finalized 53 shipped types and six deferred candidates. Deferred types remain in the research record for future evidence review.
+The original editorial audit finalized 53 shipped stock types and six deferred candidates. Five ensemble-function templates were added afterward, bringing the catalog to 58 entries. The deferred types remain in the research record for future evidence review.

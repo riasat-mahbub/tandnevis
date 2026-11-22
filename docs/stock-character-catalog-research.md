@@ -1,6 +1,6 @@
 # Stock character catalog research
 
-Audited 21 November 2026 against the candidate inventory in [the revamp plan](stock-character-revamp-plan.md). The bundled catalog has 53 entries across six browsing groups. The selection is predominantly European and Anglo-American, matching the scope limitation in the plan.
+Audited 21 November 2026 against the candidate inventory in [the revamp plan](stock-character-revamp-plan.md). The bundled catalog has 58 entries across seven browsing groups: 53 established stock types and five optional ensemble functions. The 53 stock types are predominantly European and Anglo-American, matching the scope limitation in the plan; the ensemble functions are an educational framework adapted for writing.
 
 Every shipped entry has at least one source record with a title, URL, locator, and a short statement of what it supports. The record is marked verified only when the named entry or qualified historical equivalent was present at that locator during review. A verified source supports the recorded claim; it does not certify every part of an authored draft profile.
 
@@ -10,8 +10,10 @@ Every shipped entry has at least one source record with a title, URL, locator, a
 - The [SAGE Encyclopedia of Identity entry, “Stock Character”](https://sk.sagepub.com/ency/edvol/embed/identity/chpt/stock-character) defines audience-recognizable stock characters and gives the ingénue and damsel in distress as examples.
 - The [Cambridge International AS & A Level Drama glossary](https://www.cambridgeinternational.org/Images/635905-2024-2026-glossary-of-dramatic-and-theatrical-terms.pdf) supplies a concise definition of stock characters and their theatrical history.
 - The [Alloprof “Characters in Literature” guide](https://www.alloprof.qc.ca/en/students/vl/english/characters-in-literature-e0190) contains an explicit stock-character section naming, among others, the absent-minded professor, hardboiled detective, mad scientist, bully, lovable loser, lovable rogue, jock, nerd, old master/wise old man, and wise fool.
+- Kathryn Burt’s [“Scooby Doo, Who Are You?: Scaffolding Collaboration Through Narrative Tropes”](https://www.digitalrhetoriccollaborative.org/2026/05/05/scooby-doo-who-are-you-scaffolding-collaboration-through-narrative-tropes/) presents the Five-Man Band as a teaching framework for discussing collaborative group dynamics. Its five labels and role descriptions support the labels used below; the catalog’s flexible fiction-writing prompts are application-authored adaptations, not definitions supplied by the essay.
 - Specialist sources include Daniel C. Boughner’s [“The Braggart in Italian Renaissance Comedy”](https://www.cambridge.org/core/journals/pmla/article/abs/braggart-in-italian-renaissance-comedy/C95755108F332405ECB9CF714A869B45), Anne Duncan’s [“The Fraud and the Flatterer”](https://www.cambridge.org/core/books/abs/performance-and-identity-in-the-classical-world/fraud-and-the-flatterer-images-of-actors-on-the-comic-stage/10DB927F04D1DFC5A20C9273815A98BF), W. Senior’s [“Quest Fantasies”](https://www.cambridge.org/core/books/abs/cambridge-companion-to-fantasy-literature/quest-fantasies/3900A981D4385C2C6DF48BBBB3973DA0), and targeted *Encyclopedia.com* entries for the ingénue/damsel, femme fatale, wicked stepmother, and Pollyanna.
 - The [Wikipedia list of stock characters](https://en.wikipedia.org/wiki/List_of_stock_characters) was used as a discovery and name cross-check, not as blanket proof. Where it is the catalog’s only direct source, the source locator names the exact row and the source claim is limited to what that row says. Several such types remain suitable for later review against stronger specialist references.
+- TV Tropes was unavailable for this review and is not cited or represented as directly verified.
 
 The summary, background, personality, and voice fields are original application-authored suggestions. References support the type label or identified historical connection; they do not prescribe dialogue, temperament, appearance, relationships, gender, or backstory.
 
@@ -87,3 +89,17 @@ The summary, background, personality, and voice fields are original application-
 - The Young Lovers template drafts one character and leaves the partner unspecified. The Red Herring template treats suspicion as a narrative function and does not assert that a suspect is innocent.
 - The ingénue, damsel, girl/boy next door, spinster, tomboy, mean girl, femme fatale, black widow, wise old man, and enchantress entries carry context notes for gender or social assumptions.
 - Sources are bundled for offline reading. The chooser does not fetch them; using a template copies background, personality, voice, and its suggested icon into the editable draft. Source metadata stays outside saved character profiles and generation context.
+
+## Ensemble functions
+
+The ensemble category fills a different gap from the 53 named literary and genre conventions above. Its entries are reusable functions within group dynamics, not historical stock-character types. Kathryn Burt’s essay applies the Five-Man Band in an educational setting to help students discuss collaborative roles, conflict, and labor. The catalog adapts that framework into optional prompts for individual fictional characters. It does not present the Five-Man Band as a definitive or universally agreed taxonomy.
+
+| Catalog entry | Adapted writing function | Source and limit |
+|---|---|---|
+| Ensemble Leader | Helps set, negotiate, or sustain a direction; formal authority is not required. | Burt’s Leader role organizes tasks and tracks group progress. The catalog leaves authority and leadership style open. |
+| Ensemble Lancer | Offers a contrasting perspective without requiring rivalry or total opposition. | Burt describes the Lancer as balancing the Leader’s style through counter-perspectives. The catalog broadens this into a flexible relational function. |
+| Ensemble Brains | Gathers, tests, or interprets information without ranking anyone’s intelligence. | Burt’s Brain role attends to research and the quality of a shared project. The catalog’s information-gathering prompt is an adaptation. |
+| Ensemble Powerhouse | Brings strength, force, or decisive action to a challenge. | Burt calls this role the source of momentum and notes its traditional “big guy” framing. The catalog preserves strength/action as its center while leaving the capacity’s source and expression to the writer. |
+| Ensemble Heart | Attends to trust and connection without assigning group caretaking. | Burt’s Heart role attends to interpersonal needs. The catalog limits its prompt to optional attention to trust and connection, not compulsory mediation or emotional labor. |
+
+Each role is its own template and can be used for one character. Roles may overlap, shift, or be absent; no group of five is required. Names, genders, emotions, and personalities are not prescribed. `Five-Man Band role` is a searchable alias on each role, with `Five-Man Band`, `Five Man Band`, and `5 Man Band` tags so searches with the hyphenated, unhyphenated, or numeric form surface all five options. These catalog entries introduce no tone or emotion IDs and assign no automatic defaults.

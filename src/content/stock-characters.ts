@@ -2,9 +2,9 @@
  * Reference-backed starting points for a character draft. These templates are
  * bundled content only: using one never creates or updates a project record.
  */
-export type StockCharacterCategory = 'classical' | 'social' | 'crime' | 'school' | 'fantasy' | 'comic';
+export type StockCharacterCategory = 'classical' | 'social' | 'crime' | 'school' | 'fantasy' | 'comic' | 'ensemble';
 
-export type StockCharacterStanding = 'historical-literary' | 'genre-convention';
+export type StockCharacterStanding = 'historical-literary' | 'genre-convention' | 'ensemble-function';
 
 export interface StockCharacterSource {
   title: string;
@@ -42,6 +42,7 @@ export const stockCharacterCategories: Array<{
   { id: 'school', label: 'School and coming of age', icon: 'graduation-cap' },
   { id: 'fantasy', label: 'Fantasy, adventure, and fairy tale', icon: 'wand-sparkles' },
   { id: 'comic', label: 'Eccentric and comic', icon: 'theater' },
+  { id: 'ensemble', label: 'Ensemble roles', icon: 'hand-heart' },
 ];
 
 const STOCK_CHARACTER_LIST_URL = 'https://en.wikipedia.org/wiki/List_of_stock_characters';
@@ -108,8 +109,8 @@ function makeTemplate(
 const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'miser', 'The Miser', 'classical', 'historical-literary',
-    'A person whose fear of loss turns keeping and counting wealth into a governing habit.',
-    'Has accumulated resources and arranged daily life around keeping them intact.',
+    'Guards possessions or resources closely; fear, greed, principle, or scarcity may explain why.',
+    'Keeps a close watch on possessions or resources. Their means, history, and reason for guarding them are the writer’s choices.',
     'Treats concessions as losses and keeps close account of favors. Wants security, yet risks alienating the people who could provide it.',
     'Returns to costs, terms, and obligations. May offer elaborate reasons for refusing a small request.', 'coins',
     [
@@ -134,7 +135,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'clever-servant', 'The Clever Servant', 'classical', 'historical-literary',
     'A resourceful attendant who advances the plot by reading people and arranging the next move.',
-    'Has learned how to navigate a household where others hold formal power and resources.',
+    'Works near people with more formal power or resources; the role and institution are the writer’s choice.',
     'Observant, quick to improvise, and alert to leverage. May help a loved one, a patron, or themself, with motives that can change.',
     'Asks pointed questions, offers a plausible story at the useful moment, and leaves room to deny having planned anything.', 'key-round',
     [
@@ -161,8 +162,8 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   ),
   makeTemplate(
     'pedant', 'The Pedant', 'classical', 'historical-literary',
-    'A status-conscious expert who displays learning even when it is irrelevant to the moment.',
-    'Has spent years building expertise and expects that knowledge to command respect.',
+    'An expert who displays learning even when it is irrelevant to the moment.',
+    'Has expertise they expect others to value; the field, path to it, and reason for displaying it are open.',
     'Precise and self-assured, with a blind spot for how little a display of learning helps the people around them.',
     'Corrects terminology, cites authorities, and may answer a practical question with a lecture.', 'book-open',
     [
@@ -209,9 +210,9 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   ),
   makeTemplate(
     'jealous-guardian', 'The Jealous Guardian', 'classical', 'historical-literary',
-    'An older authority who tries to control a younger person’s romantic choice.',
-    'Believes that family duty, reputation, or security gives them the right to decide whom someone else may love.',
-    'Protective in their own account and controlling in practice. Their fear of losing authority can make them easy to outmaneuver.',
+    'An authority figure who tries to control another person’s romantic choice.',
+    'Uses an authority role to influence someone else’s romantic choice; the source of authority and family relationship are open.',
+    'May act from protection, reputation, possessiveness, or another motive. The motive and limits of their control are the writer’s choices.',
     'Frames restrictions as sensible precautions and treats a request for freedom as proof that more supervision is needed.', 'shield',
     [
       metEvidence('Opening paragraph on commedia plots and vecchi', 'Names a jealous guardian as a possible elder blocking the union of young lovers.'),
@@ -223,7 +224,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'dandy', 'The Dandy', 'social', 'historical-literary',
     'A person who treats dress, taste, and social presentation as a deliberate art.',
-    'Has time and means to cultivate a public image and knows that people read clothes as a statement.',
+    'Treats dress or public presentation as an intentional art; resources, setting, and reasons are open.',
     'Self-possessed, observant about fashion, and selective about company. May care more about style than conventionally useful work.',
     'Chooses exact words about texture, color, and taste; can make a small social distinction sound consequential.', 'hat-glasses',
     [stockListEvidence('“Dandy” entry', 'Identifies the dandy as a recurring figure in Regency and Victorian literature, associated with fashion and leisure.')],
@@ -249,7 +250,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   ),
   makeTemplate(
     'ingenue', 'The Ingénue', 'social', 'historical-literary',
-    'A young, inexperienced character whose openness shapes how they interpret the world around them.',
+    'A character whose inexperience and openness shape how they read the world; the historical stage role often signals youth, but exact age is the writer’s choice.',
     'Is encountering a larger and more complicated world than the one they have known so far.',
     'Sincere and curious, with assumptions that may be tested by people with more experience or less honest aims.',
     'Asks plain questions, takes promises seriously, and gradually finds language for what they want.', 'heart',
@@ -277,7 +278,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'girl-next-door', 'The Girl Next Door', 'social', 'genre-convention',
     'A familiar local person whose appeal comes from an established connection and unguarded ease.',
-    'Has known the protagonist through an ordinary shared place, routine, or community for years.',
+    'Shares a familiar place, routine, or community with the protagonist; the duration and relationship are open.',
     'Comfortable and approachable, but not obligated to be innocent, plain, or romantically available.',
     'Talks with easy familiarity and can refer to shared history without explaining it to outsiders.', 'heart',
     [stockListEvidence('“Girl next door” entry', 'Describes a recurring romantic figure defined by local familiarity and contrast with a more glamorous outsider.')],
@@ -298,7 +299,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'pollyanna', 'The Pollyanna', 'social', 'genre-convention',
     'An optimist whose hopeful outlook can encourage others and sometimes obscure real problems.',
-    'Has learned to search for possibility even when circumstances are disappointing or uncertain.',
+    'Looks for possibility when circumstances disappoint; whether this is temperament, a learned practice, or a coping strategy is open.',
     'Warm and resilient, but may mistake hope for a plan or overlook when someone needs practical help.',
     'Notices small bright details, offers encouragement, and can struggle to hear bad news without immediately reframing it.', 'sparkles',
     [
@@ -332,7 +333,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'holmesian-detective', 'The Holmesian Detective', 'crime', 'genre-convention',
     'A highly observant investigator who builds a solution from small details and explicit reasoning.',
-    'Has trained themself to notice details others dismiss and to connect evidence across a case.',
+    'Notices small details and connects evidence; training, profession, and route to the skill are the writer’s choice.',
     'Analytical and self-directed, sometimes impatient with routine or with people who do not share their focus.',
     'States observations precisely, tests a theory aloud, and may explain the chain of reasoning after a reveal.', 'search',
     [stockListEvidence('“Holmesian detective” entry', 'Describes the type as a perceptive, deductive investigator modeled on Sherlock Holmes.')],
@@ -341,7 +342,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'hardboiled-detective', 'The Hardboiled Detective', 'crime', 'genre-convention',
     'A cynical investigator who works through a corrupt or violent world without expecting it to be fair.',
-    'Has seen institutions fail people and learned to work with limited trust and imperfect options.',
+    'Works in a harsh or unjust environment and expects limited help from institutions; the source and extent of that distrust are open.',
     'Wary, independent, and capable of compassion beneath a practiced defensive manner.',
     'Uses clipped observations and dry humor; gives trust slowly and calls out convenient lies.', 'fingerprint',
     [
@@ -355,7 +356,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
     'An official investigator who must solve a case while working inside the procedures and limits of an institution.',
     'Has responsibility for a case, a team, and a record of decisions that can be scrutinized later.',
     'May follow procedure closely or bend it; the central tension is how judgment fits inside official authority.',
-    'Asks for timelines and evidence, explains what can be established, and may disagree with a private investigator’s shortcuts.', 'shield',
+    'Asks about timelines and evidence, and explains what the applicable procedure can establish.', 'shield',
     [
       stockListEvidence('“Police inspector / chief of police” entry', 'Places the role in detective fiction and police procedurals, describing investigative and leadership variants.'),
       source('“A nice old boy”: Characterizing the chief constable role in detective fiction c.1890–1960', 'https://pure.plymouth.ac.uk/ws/portalfiles/portal/39316319/7177%20LEADING%20THE%20POLICE%201st%20proofs.pdf', 'Chapter introduction', 'Describes police figures as recurring stock figures in late-Victorian detective tales, often used to contrast with private-detective brilliance.'),
@@ -364,12 +365,12 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   ),
   makeTemplate(
     'red-herring-character', 'The Red Herring Character', 'crime', 'genre-convention',
-    'A suspect whose partial or misleading presentation draws attention away from the central explanation.',
-    'Is known to the investigator through a few suspicious details, incomplete testimony, or an apparent motive.',
-    'Choose freely: evasiveness may signal guilt in another matter, fear, privacy, or a misleading first impression.',
-    'Leaves a gap in an account or answers a narrower question than the one asked. The writer decides why.', 'search',
+    'A suspect whose presentation briefly points attention away from the central explanation.',
+    'Their apparent connection to the mystery can be direct, circumstantial, or misunderstood; the writer decides what the story reveals.',
+    'Their actual personality and motive are up to the writer; guilt or innocence is also the writer’s choice.',
+    'Any evasiveness, candor, humor, or reserve comes from the character the writer creates; it is not implied by this plot function.', 'search',
     [stockListEvidence('“Red herring character” entry', 'Defines a mystery-fiction role that appears suspicious and temporarily draws attention away from the actual solution.')],
-    { tags: ['mystery', 'narrative role'], contextNote: 'This is a narrative function, not a fixed personality or a claim of innocence. Applying the template drafts one suspect only.' },
+    { tags: ['mystery', 'narrative role'], contextNote: 'This is a narrative plot function, not a personality type or a claim about guilt. The writer defines the character’s motive, traits, and role in the solution.' },
   ),
   makeTemplate(
     'femme-fatale', 'The Femme Fatale', 'crime', 'historical-literary',
@@ -416,7 +417,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'corrupt-cop', 'The Corrupt Cop', 'crime', 'genre-convention',
     'An officer who uses the authority of the law for private gain or to protect a criminal interest.',
-    'Has access to information and power through a law-enforcement role, then begins trading that access for personal benefit.',
+    'Uses law-enforcement access for private gain or to protect a criminal interest; when this began and why are the writer’s choices.',
     'Calculating and alert to risk. May hide corruption behind a respectable record or stop pretending to conceal it.',
     'Uses official language to discourage questions and knows which procedural details will sound reassuring.', 'shield',
     [stockListEvidence('“Corrupt cop / dirty cop” entry', 'Defines the character by betraying law-enforcement duties for personal gain and distinguishes the type from a rule-bending but principled officer.')],
@@ -438,7 +439,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'bully', 'The Bully', 'school', 'genre-convention',
     'A character who uses social or physical pressure to control peers and test their boundaries.',
-    'Has found that intimidation can win attention, compliance, or protection from being targeted themself.',
+    'Uses social or physical pressure to control peers; the reason, history, and vulnerability behind the behavior are the writer’s choice.',
     'Dominating in public, with motives and vulnerabilities the writer can define without excusing the harm they cause.',
     'Uses challenges, put-downs, or loaded jokes to see whether someone will push back.', 'swords',
     [
@@ -476,8 +477,8 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
     'mean-girl', 'The Mean Girl', 'school', 'genre-convention',
     'A socially powerful student who uses popularity and exclusion to decide who belongs.',
     'Has a visible place in the school’s social hierarchy and understands how reputation travels through the group.',
-    'Strategic, status-conscious, and capable of cruelty. The writer can give her ambitions and relationships beyond the rivalry.',
-    'Uses compliments with a second meaning, speaks for the group, and keeps conflict deniable when adults are near.', 'crown',
+    'May use status or exclusion to shape who belongs; the character’s gender, tactics, and audience are the writer’s choices.',
+    'May speak through hints, direct challenges, public praise, private criticism, or another tactic the writer chooses.', 'crown',
     [stockListEvidence('“Mean girl” entry', 'Defines the recurring school-fiction type as a popular student who uses status to bully others.')],
     { aliases: ['Queen Bee', 'School Diva'], tags: ['school', 'social status'], contextNote: 'Popularity is a story convention, not an explanation for girls’ behavior generally. The writer can choose the character’s gender and social position.' },
   ),
@@ -493,8 +494,8 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'tomboy', 'The Tomboy', 'school', 'historical-literary',
     'A gendered coming-of-age convention for a girl who rejects activities and presentation expected of her.',
-    'Has had to negotiate expectations about how a girl should dress, play, move, or speak.',
-    'Independent and comfortable following her interests, while the story decides whether those interests challenge a local rule or simply fit her.',
+    'The convention reflects expectations historically applied to girls; whether the character encounters, resists, or ignores them is the writer’s choice.',
+    'Independent and comfortable following their interests, while the story decides whether those interests challenge a local rule or simply fit them.',
     'Speaks plainly and can question a rule that others accept without discussion.', 'flame',
     [stockListEvidence('“Tomboy” entry', 'Describes the recurring coming-of-age convention and the historical gender expectations it can either resist or reproduce.')],
     { tags: ['school', 'coming of age'], contextNote: '“Tomboy” is a gendered historical label. It does not determine a character’s gender identity, sexuality, appearance, or eventual choices.' },
@@ -521,7 +522,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'wise-old-man', 'The Wise Old Man', 'fantasy', 'historical-literary',
     'An experienced guide whose knowledge can help a protagonist see choices they could not yet see.',
-    'Has lived through enough change to recognize patterns and consequences that younger characters have not encountered.',
+    'Has substantial experience that helps the protagonist recognize patterns; how it was gained, the character’s age, and gender are the writer’s choices.',
     'Thoughtful and discerning, but not all-knowing. Their advice may reflect limits, regrets, or a particular point of view.',
     'Uses stories, questions, and carefully chosen silences rather than solving every problem for the protagonist.', 'book-open',
     [
@@ -554,7 +555,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'necromancer', 'The Necromancer', 'fantasy', 'genre-convention',
     'A magic-user whose work with death, memory, or the dead makes a story’s moral limits tangible.',
-    'Has pursued knowledge or power that other characters regard as forbidden or dangerous.',
+    'Works with death, memory, or the dead; the magic’s rules and how others judge it are the writer’s choices.',
     'May be cruel, curious, grieving, pragmatic, or protective; the practice itself does not determine motive.',
     'Speaks precisely about what can be restored, what must remain lost, and who bears the cost.', 'ghost',
     [stockListEvidence('“Necromancer / sorcerer / black magician” entry', 'Describes the recurring fantasy role through forbidden magic, the dead, and ambitions that may make the figure a larger antagonist.')],
@@ -565,7 +566,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
     'A fairy-tale romantic figure whose arrival appears to promise rescue, status, or a happy ending.',
     'Enters a story where a romantic union has been framed as a solution to danger or constraint.',
     'Can be genuinely brave and generous, or can reveal the limits of a role that rewards appearance over understanding.',
-    'Uses gracious, assured language and may be surprised when the person he hopes to rescue has plans of their own.', 'crown',
+    'Speaks with gracious assurance; gender, agency, and any rescue or romantic relationship are the writer’s choices.', 'crown',
     [
       encyclopediaEvidence('Opening definition and examples', 'Names the hero and damsel in distress as recognizable stock-character examples.'),
       stockListEvidence('“Prince Charming” entry', 'Describes the recurring fairy-tale romantic hero who rescues a damsel or undertakes a quest.')
@@ -587,7 +588,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'wicked-stepmother', 'The Wicked Stepmother', 'fantasy', 'historical-literary',
     'A fairy-tale antagonist who turns a household into a place of rivalry, exclusion, or control.',
-    'Has formed a new family arrangement and believes security or status depends on controlling the household.',
+    'Treats a spouse’s child as a rival or target in this fairy-tale convention; motive, family history, and tactics are the writer’s choices.',
     'Can be calculating, jealous, or cruel, while the writer decides what history and interests lie beyond that role.',
     'Uses rules and obligations to make unfair treatment sound ordinary, especially when other people are listening.', 'drama',
     [
@@ -619,7 +620,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
     'A former champion whose past failure or turn to harm becomes a test for a new protagonist.',
     'Was once trusted with a purpose or power but now lives with the consequences of a decisive change.',
     'May be remorseful, self-justifying, or still convinced that a harmful choice was necessary.',
-    'Avoids talking about the turning point until a present-day choice forces the old reasoning into the open.', 'flame',
+    'May name the turning point, avoid it, or defend it; present choices can reveal what the past means to them.', 'flame',
     [stockListEvidence('“Fallen hero” entry', 'Defines the recurring fantasy and wuxia antagonist as a former pupil or predecessor who turned against the hero’s cause.')],
     { historicalConnections: ['wuxia fiction', 'former chosen one'], tags: ['fantasy', 'redemption', 'antagonist'] },
   ),
@@ -652,7 +653,7 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
   makeTemplate(
     'lovable-rogue', 'The Lovable Rogue', 'comic', 'genre-convention',
     'A rule-breaker whose charm or loyalty keeps an audience invested despite their selfish choices.',
-    'Has learned to survive through improvisation, minor schemes, or a willingness to bend rules.',
+    'Uses improvisation or rule-bending to get by or gain an advantage; the reason and history are open.',
     'Self-interested and resourceful, with moments of care that complicate the harm they can cause.',
     'Uses wit to avoid embarrassment and becomes unexpectedly sincere when someone else is at risk.', 'key-round',
     [
@@ -697,6 +698,76 @@ const stockCharacterTemplates: StockCharacterTemplate[] = [
       stockListEvidence('“Harlequin” entry', 'Identifies the comic servant and lists its costume, physical comedy, and relationship with Columbina.')
     ],
     { aliases: ['Arlecchino'], historicalConnections: ['commedia dell’arte', 'Columbina / Colombina'], tags: ['comedy', 'commedia', 'servant'] },
+  ),
+  makeTemplate(
+    'leader', 'Ensemble Leader', 'ensemble', 'ensemble-function',
+    'A character who helps an ensemble choose, negotiate, or sustain a direction.',
+    'Takes initiative in shaping a direction when a group needs one; leadership may be shared, informal, contested, or temporary.',
+    'May take the lead, share responsibility, or make room for someone else when the situation calls for it.',
+    'States a next step, checks priorities, and gives others room to add to the plan.', 'compass',
+    [source(
+      'Scooby Doo, Who Are You?: Scaffolding Collaboration Through Narrative Tropes — Digital Rhetoric Collaborative',
+      'https://www.digitalrhetoriccollaborative.org/2026/05/05/scooby-doo-who-are-you-scaffolding-collaboration-through-narrative-tropes/',
+      'Kathryn Burt’s 5-Man Band discussion, Leader role',
+      'Introduces the Leader as one role in an educational use of the Five-Man Band for collaboration; this flexible fictional writing profile is an application-authored adaptation.',
+    )],
+    { aliases: ['Five-Man Band role'], tags: ['ensemble', 'Five-Man Band', 'Five Man Band', '5 Man Band', 'group dynamics'], contextNote: 'An optional ensemble function, not a required position or personality. Roles may overlap and shift; leadership may be shared or temporary, and no fixed group size is implied.' },
+  ),
+  makeTemplate(
+    'lancer', 'Ensemble Lancer', 'ensemble', 'ensemble-function',
+    'A character whose perspective challenges or contrasts with another character’s approach.',
+    'Often sees a decision from another angle because their priorities, methods, or experience differ from someone else’s.',
+    'Can question an idea, defend a different priority, or support a plan after testing its assumptions.',
+    'Questions an assumption, names another route, or points out a cost the group has not considered.', 'swords',
+    [source(
+      'Scooby Doo, Who Are You?: Scaffolding Collaboration Through Narrative Tropes — Digital Rhetoric Collaborative',
+      'https://www.digitalrhetoriccollaborative.org/2026/05/05/scooby-doo-who-are-you-scaffolding-collaboration-through-narrative-tropes/',
+      'Kathryn Burt’s 5-Man Band discussion, Lancer role',
+      'Introduces the Lancer through counter-perspectives in an educational collaboration framework; this adaptable relational role is an application-authored writing interpretation.',
+    )],
+    { aliases: ['Five-Man Band role'], tags: ['ensemble', 'Five-Man Band', 'Five Man Band', '5 Man Band', 'group dynamics', 'foil'], contextNote: 'An optional relational function. Contrasting another character does not require rivalry, opposition in every matter, or a fixed relationship. Roles may overlap and shift; no fixed group size is implied.' },
+  ),
+  makeTemplate(
+    'brains', 'Ensemble Brains', 'ensemble', 'ensemble-function',
+    'A character who gathers, tests, or interprets information that can help an ensemble decide what to do.',
+    'Contributes research, observation, practical knowledge, or careful interpretation when the group faces a question.',
+    'Tracks evidence and connections while staying alert to new information and to the limits of what is known.',
+    'Asks what supports a conclusion, separates evidence from inference, and names what remains uncertain.', 'book-open',
+    [source(
+      'Scooby Doo, Who Are You?: Scaffolding Collaboration Through Narrative Tropes — Digital Rhetoric Collaborative',
+      'https://www.digitalrhetoriccollaborative.org/2026/05/05/scooby-doo-who-are-you-scaffolding-collaboration-through-narrative-tropes/',
+      'Kathryn Burt’s 5-Man Band discussion, Brain role',
+      'Introduces the Brain through research and attention to a project’s quality in an educational collaboration framework; this broader information role is an application-authored adaptation.',
+    )],
+    { aliases: ['Five-Man Band role', 'Brain'], tags: ['ensemble', 'Five-Man Band', 'Five Man Band', '5 Man Band', 'group dynamics', 'information'], contextNote: 'An optional group function. Roles may overlap and shift; no fixed group size or single smartest person is implied.' },
+  ),
+  makeTemplate(
+    'powerhouse', 'Ensemble Powerhouse', 'ensemble', 'ensemble-function',
+    'A character who brings force, strength, or decisive action when an ensemble meets a challenge.',
+    'Can provide physical strength, stamina, skill, magical force, or another story-specific capacity for action.',
+    'Strength may be protective, tactical, impatient, or deliberate; a decision to act can alter the options for everyone present.',
+    'Says what they can attempt and identifies the obstacle in front of them; speech may be quiet, grand, careful, or another register.', 'swords',
+    [source(
+      'Scooby Doo, Who Are You?: Scaffolding Collaboration Through Narrative Tropes — Digital Rhetoric Collaborative',
+      'https://www.digitalrhetoriccollaborative.org/2026/05/05/scooby-doo-who-are-you-scaffolding-collaboration-through-narrative-tropes/',
+      'Kathryn Burt’s 5-Man Band discussion, Powerhouse role',
+      'Names the Powerhouse as one Five-Man Band role and notes the trope’s traditional physical framing; this strength- and action-oriented fictional profile is an application-authored adaptation.',
+    )],
+    { aliases: ['Five-Man Band role'], tags: ['ensemble', 'Five-Man Band', 'Five Man Band', '5 Man Band', 'group dynamics', 'strength', 'action'], contextNote: 'Physical strength is a familiar expression of the role, while its source and form of action remain the writer’s choice. This role is useful when a story needs force or decisive action. Roles may overlap and shift; no fixed group size is implied.' },
+  ),
+  makeTemplate(
+    'heart', 'Ensemble Heart', 'ensemble', 'ensemble-function',
+    'A character who pays attention to trust, connection, and how group choices affect people.',
+    'Notices the relationships and shared commitments that shape how an ensemble works together.',
+    'Notices when trust is growing or fraying and can value connection while still setting boundaries.',
+    'Asks who has been heard and names a point of trust or strain; directness can shift with the moment.', 'heart',
+    [source(
+      'Scooby Doo, Who Are You?: Scaffolding Collaboration Through Narrative Tropes — Digital Rhetoric Collaborative',
+      'https://www.digitalrhetoriccollaborative.org/2026/05/05/scooby-doo-who-are-you-scaffolding-collaboration-through-narrative-tropes/',
+      'Kathryn Burt’s 5-Man Band discussion, Heart role',
+      'Introduces the Heart as attentive to interpersonal needs in an educational collaboration framework; this trust- and connection-oriented fictional role is an application-authored adaptation.',
+    )],
+    { aliases: ['Five-Man Band role'], tags: ['ensemble', 'Five-Man Band', 'Five Man Band', '5 Man Band', 'group dynamics', 'connection'], contextNote: 'An optional contribution to group dynamics. Attention to trust or connection does not require caretaking, mediation, or emotional labor for the group. Roles may overlap and shift; no fixed group size is implied.' },
   ),
 ];
 
