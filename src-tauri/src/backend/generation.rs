@@ -880,10 +880,13 @@ fn make_request_for_purpose(
     purpose: GenerationPurpose,
 ) -> ResponsesRequest {
     let mut instructions = String::from(if purpose == GenerationPurpose::Prose {
-        "Write polished story prose for one scene from its summary board, using every beat in order when beats are present. Treat the summary and beats as freeform ordered guidance. Interpret character, emotion, and tone references from their position and surrounding text, using the supplied definitions. References may appear anywhere and repeat; do not apply automatic tone replacement or inheritance. Honor the supplied scene and character defaults and explicitly named character directions. Use the narration guidance. Preserve the causal sequence and intent of the summary and beats while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction."
+        "Write polished story prose for one scene from its summary board, using every beat in order when beats are present. Treat the summary and beats as freeform ordered guidance. Preserve their causal sequence and intent while writing natural, connected prose. Do not add a title, explanation, analysis, or events that contradict the scene direction."
     } else {
-        "Turn the summary board into a short sequence of 1 to 12 new editable story beats. These beats will be appended after any existing beats; do not repeat their events. Return ONLY a JSON object in this exact shape: {\"beats\":[{\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Describe one story moment.\"}]}]}}]}. Each beat is freeform shorthand, not finished prose. Use text and optionally characterReference, emotionReference, and toneReference inline nodes anywhere and in any order; any number of each is allowed. Character attrs: {characterId:<existing id>,occurrenceId:<unique local id>,label:<name>,emotion:\"\",delivery:\"\"}. Emotion attrs: {emotionId:<existing id>,label:<name>}. Tone attrs: {toneId:<existing id>,label:<name>}. Do not impose tone replacement, override, or inheritance rules; interpret token order and the supplied definitions. Use ONLY IDs in referencedCharacters/referencedPresets from the supplied context. Preserve character voice, the author's intent, and the causal sequence. No Markdown fences, explanation, title, or prose outside the JSON object."
+        "Turn the summary board into a short sequence of 1 to 12 new editable story beats. These beats will be appended after any existing beats; do not repeat their events. Return ONLY a JSON object in this exact shape: {\"beats\":[{\"document\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Describe one story moment.\"}]}]}}]}. Each beat is freeform shorthand, not finished prose. Use text and optionally characterReference, emotionReference, and toneReference inline nodes anywhere and in any order; any number of each is allowed. Character attrs: {characterId:<existing id>,occurrenceId:<unique local id>,label:<name>,emotion:\"\",delivery:\"\"}. Emotion attrs: {emotionId:<existing id>,label:<name>}. Tone attrs: {toneId:<existing id>,label:<name>}. Interpret references at their authored positions, using surrounding text and supplied definitions, and follow the direction scope rules below. Use ONLY IDs in referencedCharacters/referencedPresets from the supplied context. Preserve the author's intent and causal sequence. No Markdown fences, explanation, title, or prose outside the JSON object."
     });
+    instructions.push_str(
+        "\n\nDirection precedence and reference scope: Treat each referenced character's background and personality, their voice, and any selected default tone or emotion as baseline guidance. Scene narration instructions and the scene default tone apply across this scene as stated. A direction explicitly scoped to the scene, one beat, or one character occurrence takes priority over a conflicting character baseline within that scope; outside it, retain the baseline. When directions at different scopes conflict, the narrowest applicable explicit scope wins: occurrence, then beat, then scene. Beat-scoped directions apply only within that beat; emotion and delivery on a character reference apply only to that exact occurrence. A local emotion is momentary and does not rewrite a character's persistent personality or voice. Point of view, tense, and narration guidance govern narration; tone guides narration and presentation, not automatically a character's emotion or spoken delivery. Character voice guides baseline diction; local delivery guides only the referenced occurrence. References may appear anywhere and repeat. Keep inline Tone and Emotion references at their authored positions and use surrounding text to read their local reach; do not turn them into automatic scene-wide replacement, beat-wide inheritance, or later carryover. Do not assign an untargeted emotion to the nearest character by proximity or order. Associate an emotion cue with a character only when the reference explicitly targets that occurrence or the surrounding authored text clearly names the association; otherwise keep the emotion cue unattached."
+    );
     if !guidance.is_empty() {
         instructions.push_str("\n\nAdditional author guidance:\n");
         instructions.push_str(guidance);
@@ -1711,6 +1714,95 @@ mod tests {
     }
 
     #[test]
+    fn generation_prompts_define_scoped_precedence_and_preserve_competing_cues() {
+        let mut project = fixture();
+        project.scenes[0].tone = "Warm scene baseline".into();
+        project.scenes[0].narration.instructions =
+            "Keep the scene narration gentle throughout.".into();
+        project.scenes[0].beats[0].document = json!({
+            "type":"doc",
+            "content":[{"type":"paragraph","content":[
+                {"type":"toneReference","attrs":{"toneId":"tense","label":"Tense"}},
+                {"type":"text","text":"For this beat, tension rises. "},
+                {"type":"characterReference","attrs":{"characterId":"maya","occurrenceId":"maya-occurrence","label":"Maya","emotion":"angry","delivery":"shouts"}},
+                {"type":"text","text":" Then "},
+                {"type":"emotionReference","attrs":{"emotionId":"fear","label":"Fear"}},
+                {"type":"text","text":" passes through the room; "},
+                {"type":"emotionReference","attrs":{"emotionId":"panic","label":"Panic","targetOccurrenceId":"maya-occurrence"}}
+            ]}]
+        });
+        project.characters[0].personality = "Usually patient and protective.".into();
+        project.characters[0].voice = "Quiet, measured phrasing.".into();
+        project.characters[0].default_tone_id = "gentle".into();
+        project.characters[0].default_emotion_id = "calm".into();
+        let preset = |id: &str, name: &str, meaning: &str| domain::Preset {
+            id: id.into(),
+            name: name.into(),
+            meaning: meaning.into(),
+            guidance: String::new(),
+            example: String::new(),
+            color: String::new(),
+            archived: false,
+            revision: 0,
+        };
+        project.tones = vec![
+            preset("gentle", "Gentle", "A calm presentation."),
+            preset("tense", "Tense", "Rising pressure."),
+        ];
+        project.emotions = vec![
+            preset("calm", "Calm", "A calm baseline state."),
+            preset("fear", "Fear", "A moment of fear."),
+            preset("panic", "Panic", "A moment of panic."),
+        ];
+
+        let context = build_scene_context(&project, "scene-a").unwrap();
+        assert!(context.readable_context.contains("Warm scene baseline"));
+        assert!(context
+            .readable_context
+            .contains("Keep the scene narration gentle throughout."));
+        assert!(context
+            .readable_context
+            .contains("Personality: Usually patient and protective."));
+        assert!(context
+            .readable_context
+            .contains("Baseline voice: Quiet, measured phrasing."));
+        assert!(context.readable_context.contains("Default tone: Gentle"));
+        assert!(context.readable_context.contains("Default emotion: Calm"));
+        assert!(context.readable_context.contains("[Tone: Tense]"));
+        assert!(context
+            .readable_context
+            .contains("[Maya \u{2014} emotion: angry; delivery: shouts]"));
+        assert!(context.readable_context.contains("[Emotion: Fear]"));
+        assert!(context
+            .readable_context
+            .contains("[Emotion: Panic \u{2192} Maya]"));
+
+        let prose = make_request("test-model", "", &context);
+        let beats = make_request_for_purpose("test-model", "", &context, GenerationPurpose::Beats);
+        for request in [&prose, &beats] {
+            let instructions = request.instructions.as_deref().unwrap();
+            assert!(instructions.contains("baseline guidance"));
+            assert!(instructions.contains(
+                "takes priority over a conflicting character baseline within that scope"
+            ));
+            assert!(instructions.contains("narrowest applicable explicit scope wins"));
+            assert!(instructions.contains("only within that beat"));
+            assert!(instructions.contains("only to that exact occurrence"));
+            assert!(instructions.contains("momentary"));
+            assert!(instructions
+                .contains("Do not assign an untargeted emotion to the nearest character"));
+            assert!(instructions.contains("authored positions"));
+        }
+        assert!(prose.input[0].content.contains("Default tone: Gentle"));
+        assert!(prose.input[0].content.contains("[Tone: Tense]"));
+        assert!(prose.input[0].content.contains("[Emotion: Fear]"));
+        assert!(beats.input[0].content.contains("Default tone: Gentle"));
+        assert!(beats.input[0]
+            .content
+            .contains("\"targetOccurrenceId\":\"maya-occurrence\""));
+    }
+
+    #[test]
     fn generated_beats_validate_supplied_ids_and_preserve_optional_legacy_targets() {
         let project: ProjectSnapshot =
             serde_json::from_str(include_str!("../../../src/test/global-block-context.json"))
@@ -1818,7 +1910,10 @@ mod tests {
             preset.color = "#D4E5F6".into();
         }
         let recolored_context = build_scene_context(&recolored, "scene").unwrap();
-        assert_eq!(fingerprint(&recolored_context, "").unwrap(), "5d9e08ad4bfe1a11");
+        assert_eq!(
+            fingerprint(&recolored_context, "").unwrap(),
+            "5d9e08ad4bfe1a11"
+        );
     }
     use super::*;
     use domain::{Beat, Chapter, Narration, Scene};
