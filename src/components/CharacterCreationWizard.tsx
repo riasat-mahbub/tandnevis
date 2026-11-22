@@ -4,10 +4,12 @@ import { stockCharacterCategories, stockCharacterTemplates } from '../content/st
 import {
   characterWizardCanVisit,
   characterWizardHasPersonalEdits,
+  characterWizardMissingDefaultGuidance,
   type CharacterWizardAction,
   type CharacterWizardState,
   type CharacterWizardStep,
 } from '../services/character-wizard';
+import type { Preset } from '../services/project';
 import CharacterIcon from './CharacterIcon';
 import CharacterIconPicker from './CharacterIconPicker';
 import CharacterTemplateBrowser from './CharacterTemplateBrowser';
@@ -15,6 +17,9 @@ import './CharacterCreationWizard.css';
 
 interface Props {
   state: CharacterWizardState;
+  tones: readonly Preset[];
+  emotions: readonly Preset[];
+  creationReady: boolean;
   dispatch: (action: CharacterWizardAction) => void;
   onCreate: (state: CharacterWizardState) => void;
   onCancel: () => void;
@@ -39,7 +44,7 @@ function stepInstruction(state: CharacterWizardState) {
     ? 'Browse documented character types, then choose one to adapt.'
     : 'Start with a blank profile or adapt a documented stock type.';
   if (state.step === 'identity') return 'Give this character a name and choose an icon.';
-  if (state.step === 'details') return 'Add any background, personality, and voice details you want to keep.';
+  if (state.step === 'details') return 'Add any profile details you want to keep. Default tone and emotion are optional.';
   return 'Check the profile before adding it to this project.';
 }
 
@@ -59,14 +64,35 @@ function startingPointLabel(state: CharacterWizardState) {
     : state.appliedStartingPoint?.kind === 'blank' ? 'Blank character' : 'Not chosen yet';
 }
 
-export default function CharacterCreationWizard({ state, dispatch, onCreate, onCancel }: Props) {
+function presetDisplayName(preset: Preset) {
+  return preset.name.trim().toLocaleLowerCase() === 'none' ? 'None (preset)' : preset.name;
+}
+
+function presetLabel(id: string, presets: readonly Preset[], type: 'tone' | 'emotion') {
+  if (!id) return 'None';
+  const preset = presets.find(item => item.id === id);
+  if (!preset) return `Unavailable ${type} reference (${id})`;
+  return `${presetDisplayName(preset)}${preset.archived ? ' (archived)' : ''}`;
+}
+
+export default function CharacterCreationWizard({ state, tones, emotions, creationReady, dispatch, onCreate, onCancel }: Props) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const defaultGuidanceRef = useRef<HTMLDetailsElement>(null);
+  const defaultToneRef = useRef<HTMLSelectElement>(null);
+  const focusDefaultGuidanceOnDetails = useRef(false);
   const nameError = state.nameError;
   const isCreating = state.submission.status === 'creating' || state.submission.status === 'recovering';
   const cancelLocked = state.submission.status !== 'idle';
+  const missingGuidance = characterWizardMissingDefaultGuidance(state, { tones, emotions });
 
   useEffect(() => {
+    if (state.step === 'details' && focusDefaultGuidanceOnDetails.current) {
+      if (defaultGuidanceRef.current) defaultGuidanceRef.current.open = true;
+      defaultToneRef.current?.focus({ preventScroll: true });
+      focusDefaultGuidanceOnDetails.current = false;
+      return;
+    }
     const target = state.step === 'identity' ? nameRef.current : headingRef.current;
     target?.focus({ preventScroll: true });
   }, [state.step, state.browser.view]);
@@ -90,7 +116,13 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
 
   function createOrRetry() {
     if (state.step !== 'review' || isCreating || state.submission.status === 'succeeded') return;
+    if (state.submission.status === 'idle' && (!creationReady || missingGuidance.length)) return;
     onCreate(state);
+  }
+
+  function editDefaultGuidance() {
+    focusDefaultGuidanceOnDetails.current = true;
+    dispatch({ type: 'EDIT_REVIEW_SECTION', section: 'details' });
   }
 
   const renderStartingPoint = () => state.browser.view === 'choices' ? <div className="wizard-starting-choices" data-testid="character-wizard-starting-choices" role="group" aria-label="Character starting points">
@@ -167,6 +199,44 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
         onChange={event => dispatch({ type: 'SET_FIELD', field, value: event.target.value })}
       />
     </div>)}
+    <details ref={defaultGuidanceRef} className="wizard-default-guidance" data-testid="character-wizard-default-guidance">
+      <summary>
+        <span>Optional default guidance</span>
+        <small>Choose a project tone or emotion to suggest when this character is used.</small>
+      </summary>
+      <div className="wizard-default-guidance-fields">
+        {(['tone', 'emotion'] as const).map(type => {
+          const field = type === 'tone' ? 'defaultToneId' : 'defaultEmotionId';
+          const value = state.draft[field];
+          const presets = type === 'tone' ? tones : emotions;
+          const selected = presets.find(item => item.id === value);
+          const missing = !!value && !selected;
+          const selectable = presets.filter(item => !item.archived || item.id === value);
+          const noActive = selectable.length === 0;
+          return <div className="wizard-default-guidance-field" key={type}>
+            <label htmlFor={`character-wizard-default-${type}`}>Default {type}</label>
+            <select
+              id={`character-wizard-default-${type}`}
+              ref={type === 'tone' ? defaultToneRef : undefined}
+              data-testid={`character-wizard-default-${type}`}
+              value={value}
+              aria-describedby={`character-wizard-default-${type}-note`}
+              onChange={event => dispatch({ type: 'SET_DEFAULT_GUIDANCE', field, value: event.target.value })}
+            >
+              <option value="">None</option>
+              {missing && <option value={value}>Unavailable saved reference ({value})</option>}
+              {selectable.map(preset => <option key={preset.id} value={preset.id}>{presetDisplayName(preset)}{preset.archived ? ' (archived)' : ''}</option>)}
+            </select>
+            <div id={`character-wizard-default-${type}-note`} className="wizard-default-guidance-note" data-testid={`character-wizard-default-${type}-preview`}>
+              {selected ? <>
+                <span><strong>Meaning:</strong> {selected.meaning || 'No meaning supplied.'}</span>
+                <span><strong>{type === 'tone' ? 'Writing guidance' : 'Expression guidance'}:</strong> {selected.guidance || 'No guidance supplied.'}</span>
+              </> : missing ? <span role="alert">This saved reference is no longer in the project. Choose None or a current {type}.</span> : noActive ? <span data-testid={`character-wizard-no-${type}-options`}>No active {type}s in this project yet. None is still a valid choice. Add a {type} in the {type === 'tone' ? 'Tones' : 'Emotions'} library to make another option available.</span> : type === 'tone' ? <span>None leaves this unset. Neutral is a separate tone preset.</span> : <span>None leaves this unset; emotion defaults are optional scene guidance.</span>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </details>
   </div>;
 
   const renderReviewSection = (field: 'background' | 'personality' | 'voice') => <section className="wizard-review-section" aria-labelledby={`character-wizard-review-${field}`} key={field}>
@@ -190,6 +260,18 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
     <div className="wizard-review-profile" aria-label="Profile details">
       {(['background', 'personality', 'voice'] as const).map(renderReviewSection)}
     </div>
+    <section className="wizard-review-guidance" aria-labelledby="character-wizard-review-guidance-heading" data-testid="character-wizard-review-guidance">
+      <div className="wizard-review-section-heading">
+        <h2 id="character-wizard-review-guidance-heading">Default guidance</h2>
+        <button type="button" className="quiet" data-testid="character-wizard-edit-default-guidance" disabled={cancelLocked} onClick={editDefaultGuidance}>Edit default guidance</button>
+      </div>
+      <dl>
+        <div><dt>Default tone</dt><dd data-testid="character-wizard-review-default-tone">{presetLabel(state.draft.defaultToneId, tones, 'tone')}</dd></div>
+        <div><dt>Default emotion</dt><dd data-testid="character-wizard-review-default-emotion">{presetLabel(state.draft.defaultEmotionId, emotions, 'emotion')}</dd></div>
+      </dl>
+      {missingGuidance.length > 0 && state.submission.status === 'idle' && <p className="wizard-default-guidance-error" role="alert">A selected default is no longer in this project. Edit default guidance to choose None or a current preset before creating this character.</p>}
+      {!creationReady && state.submission.status === 'idle' && <p className="wizard-create-pending" role="status" data-testid="character-wizard-create-pending">Project changes are still in progress. Creation will be available when they finish.</p>}
+    </section>
   </div>;
 
   function renderFooterAction() {
@@ -205,7 +287,7 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
       : state.submission.status === 'failed' ? 'Retry character creation'
       : state.submission.status === 'conflict' ? 'Try recovery again'
       : 'Create character';
-    return <button type="button" className="primary" disabled={isCreating} onClick={createOrRetry}>{label}</button>;
+    return <button type="button" className="primary" disabled={isCreating || state.submission.status === 'idle' && (!creationReady || missingGuidance.length > 0)} onClick={createOrRetry}>{label}</button>;
   }
 
   const heading = stepHeading(state);
@@ -248,7 +330,7 @@ export default function CharacterCreationWizard({ state, dispatch, onCreate, onC
       {state.step === 'review' && state.submission.status === 'recovering' && <p className="wizard-submission-status" role="status">Checking whether this character was already created…</p>}
 
       {state.cancel.status === 'confirm' && <section className="wizard-discard-confirm" role="alert" aria-labelledby="character-wizard-discard-heading">
-        <div><h2 id="character-wizard-discard-heading">Discard this character draft?</h2><p>Your name, icon, and profile details will be lost.</p></div>
+        <div><h2 id="character-wizard-discard-heading">Discard this character draft?</h2><p>Your name, icon, profile details, and default guidance will be lost.</p></div>
         <div className="wizard-discard-actions"><button type="button" className="primary" onClick={discardDraft}>Discard draft</button><button type="button" onClick={() => dispatch({ type: 'KEEP_WORKING' })}>Keep working</button></div>
       </section>}
     </div>

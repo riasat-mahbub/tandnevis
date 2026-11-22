@@ -3,6 +3,7 @@ import {
   characterWizardCanVisit,
   characterWizardCreateOperation,
   characterWizardHasPersonalEdits,
+  characterWizardMissingDefaultGuidance,
   characterWizardReducer,
   createCharacterWizard,
   validateCharacterWizardName,
@@ -36,7 +37,7 @@ describe('character creation wizard state', () => {
     expect(state.step).toBe('identity');
     expect(state.origin).toEqual({ kind: 'scene', sceneId: 'scene-1', sceneTitle: 'The Crossing' });
     expect(state.appliedStartingPoint).toEqual({ kind: 'blank' });
-    expect(state.draft).toEqual({ name: '', background: '', personality: '', voice: '', icon: '', iconExplicitlyChosen: false });
+    expect(state.draft).toEqual({ name: '', background: '', personality: '', voice: '', defaultToneId: '', defaultEmotionId: '', icon: '', iconExplicitlyChosen: false });
     expect(state.visitedSteps).toEqual(['starting-point', 'identity']);
     expect(characterWizardHasPersonalEdits(state)).toBe(false);
   });
@@ -126,6 +127,52 @@ describe('character creation wizard state', () => {
     expect(state.appliedStartingPoint).toEqual(second);
     expect(state.draft.icon).toBe('search');
     expect(state.draft.iconExplicitlyChosen).toBe(false);
+  });
+
+  it('keeps explicit default guidance across stock changes, Back, Review, and creation', () => {
+    const other = stock({ templateId: 'detective', title: 'The Detective', icon: 'search' });
+    let state = createCharacterWizard({ projectSessionId: 'session-1', origin: { kind: 'library' } });
+    state = reduce(state,
+      { type: 'PREVIEW_STARTING_POINT', point: stock() },
+      { type: 'APPLY_PROVISIONAL_STARTING_POINT' },
+      { type: 'SET_FIELD', field: 'name', value: 'Rae' },
+      { type: 'NEXT' },
+      { type: 'SET_DEFAULT_GUIDANCE', field: 'defaultToneId', value: 'custom-tone-id' },
+      { type: 'SET_DEFAULT_GUIDANCE', field: 'defaultEmotionId', value: 'custom-emotion-id' },
+    );
+    expect(characterWizardHasPersonalEdits(state)).toBe(true);
+
+    state = reduce(state,
+      { type: 'BACK' },
+      { type: 'SHOW_STARTING_CHOICES' },
+      { type: 'OPEN_CATALOG' },
+      { type: 'PREVIEW_STARTING_POINT', point: other },
+      { type: 'APPLY_PROVISIONAL_STARTING_POINT' },
+      { type: 'CONFIRM_STARTING_POINT_CHANGE', confirmed: true },
+      { type: 'SET_FIELD', field: 'name', value: 'Rae' },
+      { type: 'NEXT' },
+      { type: 'NEXT' },
+    );
+
+    expect(state.step).toBe('review');
+    expect(state.draft).toMatchObject({ defaultToneId: 'custom-tone-id', defaultEmotionId: 'custom-emotion-id' });
+    expect(characterWizardCreateOperation(state)).toMatchObject({
+      type: 'createCharacter', name: 'Rae', defaultToneId: 'custom-tone-id', defaultEmotionId: 'custom-emotion-id',
+    });
+  });
+
+  it('validates default references by current project ID, accepts archived IDs, and catches missing IDs', () => {
+    let state = reviewState('Rae');
+    state = reduce(state,
+      { type: 'SET_DEFAULT_GUIDANCE', field: 'defaultToneId', value: 'renamed-tone-id' },
+      { type: 'SET_DEFAULT_GUIDANCE', field: 'defaultEmotionId', value: 'missing-emotion-id' },
+    );
+    const project = {
+      tones: [{ id: 'renamed-tone-id', name: 'A new name', meaning: 'Measured narration', guidance: 'Use spare, even phrasing.', example: '', archived: true, revision: 2 }],
+      emotions: [],
+    };
+    expect(characterWizardMissingDefaultGuidance(state, project)).toEqual(['defaultEmotionId']);
+    expect(characterWizardMissingDefaultGuidance({ ...state, draft: { ...state.draft, defaultEmotionId: '' } }, project)).toEqual([]);
   });
 
   it('returns from a Review edit to Review and skips details for Review now', () => {

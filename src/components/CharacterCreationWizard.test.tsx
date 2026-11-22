@@ -1,26 +1,30 @@
 import '../test/dom';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useReducer } from 'react';
 import {
   characterWizardReducer,
   createCharacterWizard,
   type CharacterWizardState,
 } from '../services/character-wizard';
+import type { Preset } from '../services/project';
 import CharacterCreationWizard from './CharacterCreationWizard';
 
 afterEach(cleanup);
 
-function WizardHarness({ onCreate, onCancel, initialState }: {
+function WizardHarness({ onCreate, onCancel, initialState, tones = [], emotions = [], creationReady = true }: {
   onCreate: (state: CharacterWizardState) => void;
   onCancel: () => void;
   initialState?: CharacterWizardState;
+  tones?: Preset[];
+  emotions?: Preset[];
+  creationReady?: boolean;
 }) {
   const [state, dispatch] = useReducer(characterWizardReducer, initialState ?? createCharacterWizard({
     projectSessionId: 'session-1',
     origin: { kind: 'library' },
   }));
-  return <CharacterCreationWizard state={state} dispatch={dispatch} onCreate={onCreate} onCancel={onCancel}/>;
+  return <CharacterCreationWizard state={state} tones={tones} emotions={emotions} creationReady={creationReady} dispatch={dispatch} onCreate={onCreate} onCancel={onCancel}/>;
 }
 
 it('starts with two choices and keeps the stock branch inside Starting point', () => {
@@ -110,6 +114,110 @@ it('allows reviewing an identity directly without opening Profile details', () =
   expect(onCreate).not.toHaveBeenCalled();
 });
 
+it('offers current project presets as optional guidance and carries selected IDs through Review', () => {
+  const onCreate = vi.fn(), onCancel = vi.fn();
+  const tones: Preset[] = [
+    { id: 'tone-neutral-id', name: 'Neutral', meaning: 'Measured and plain', guidance: 'Use restrained, even phrasing.', example: '', archived: false, revision: 0 },
+    { id: 'tone-wry-id', name: 'Wry', meaning: 'Dry humor at a little distance', guidance: 'Let the narrator notice an absurd detail.', example: '', archived: false, revision: 0 },
+  ];
+  const emotions: Preset[] = [
+    { id: 'emotion-tender-id', name: 'Tender', meaning: 'Gentle care or affection', guidance: 'Keep attention close to small gestures.', example: '', archived: false, revision: 0 },
+  ];
+  const { rerender } = render(<WizardHarness onCreate={onCreate} onCancel={onCancel} tones={tones} emotions={emotions}/>);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Mara' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Next: Profile details' }));
+  const disclosure = screen.getByTestId('character-wizard-default-guidance');
+  expect(disclosure).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByText('Optional default guidance'));
+
+  const tone = screen.getByRole('combobox', { name: 'Default tone' });
+  const emotion = screen.getByRole('combobox', { name: 'Default emotion' });
+  expect(tone).toHaveValue('');
+  expect(within(tone).getByRole('option', { name: 'None' })).toBeInTheDocument();
+  expect(within(tone).getByRole('option', { name: 'Neutral' })).toBeInTheDocument();
+  expect(within(emotion).getByRole('option', { name: 'Tender' })).toBeInTheDocument();
+  expect(screen.getByTestId('character-wizard-default-tone-preview')).toHaveTextContent('None leaves this unset. Neutral is a separate tone preset.');
+
+  fireEvent.change(tone, { target: { value: 'tone-neutral-id' } });
+  fireEvent.change(emotion, { target: { value: 'emotion-tender-id' } });
+  expect(screen.getByTestId('character-wizard-default-tone-preview')).toHaveTextContent('Measured and plain');
+  expect(screen.getByTestId('character-wizard-default-tone-preview')).toHaveTextContent('Use restrained, even phrasing.');
+  expect(screen.getByTestId('character-wizard-default-emotion-preview')).toHaveTextContent('Gentle care or affection');
+  const renamedArchivedTone = { ...tones[0], name: 'Measured', meaning: 'Updated meaning', guidance: 'Updated guidance.', archived: true };
+  rerender(<WizardHarness onCreate={onCreate} onCancel={onCancel} tones={[renamedArchivedTone, tones[1]]} emotions={emotions}/>);
+  expect(screen.getByRole('combobox', { name: 'Default tone' })).toHaveValue('tone-neutral-id');
+  expect(within(screen.getByRole('combobox', { name: 'Default tone' })).getByRole('option', { name: 'Measured (archived)' })).toBeInTheDocument();
+  expect(screen.getByTestId('character-wizard-default-tone-preview')).toHaveTextContent('Updated meaning');
+  fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+  expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('Measured (archived)');
+  expect(screen.getByTestId('character-wizard-review-default-emotion')).toHaveTextContent('Tender');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Edit default guidance' }));
+  expect(screen.getByTestId('character-wizard-default-guidance')).toHaveAttribute('open');
+  expect(screen.getByRole('combobox', { name: 'Default tone' })).toHaveValue('tone-neutral-id');
+  expect(screen.getByRole('combobox', { name: 'Default tone' })).toHaveFocus();
+  expect(within(screen.getByRole('combobox', { name: 'Default tone' })).getByRole('option', { name: 'Measured (archived)' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Default emotion' })).toHaveValue('emotion-tender-id');
+  fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+    step: 'review',
+    draft: expect.objectContaining({ defaultToneId: 'tone-neutral-id', defaultEmotionId: 'emotion-tender-id' }),
+  }));
+});
+
+it('distinguishes an empty None value from a custom preset named None', () => {
+  const onCreate = vi.fn(), onCancel = vi.fn();
+  const nonePreset: Preset = { id: 'custom-none-id', name: 'None', meaning: 'A writer-defined tone', guidance: "Use this project's own guidance.", example: '', archived: false, revision: 0 };
+  let initialState = createCharacterWizard({ projectSessionId: 'session-1', origin: { kind: 'library' } });
+  initialState = characterWizardReducer(initialState, { type: 'CHOOSE_BLANK' });
+  initialState = characterWizardReducer(initialState, { type: 'SET_FIELD', field: 'name', value: 'Rae' });
+  initialState = characterWizardReducer(initialState, { type: 'NEXT' });
+  initialState = characterWizardReducer(initialState, { type: 'SET_DEFAULT_GUIDANCE', field: 'defaultToneId', value: nonePreset.id });
+  render(<WizardHarness initialState={initialState} tones={[nonePreset]} onCreate={onCreate} onCancel={onCancel}/>);
+
+  const tone = screen.getByRole('combobox', { name: 'Default tone' });
+  expect(within(tone).getByRole('option', { name: 'None' })).toHaveValue('');
+  expect(within(tone).getByRole('option', { name: 'None (preset)' })).toHaveValue('custom-none-id');
+  expect(tone).toHaveValue('custom-none-id');
+  fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+  expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('None (preset)');
+  expect(screen.getByTestId('character-wizard-review-default-emotion')).toHaveTextContent('None');
+  fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ draft: expect.objectContaining({ defaultToneId: 'custom-none-id', defaultEmotionId: '' }) }));
+});
+
+it('keeps empty projects usable and blocks a missing reference until it is cleared', () => {
+  const onCreate = vi.fn(), onCancel = vi.fn();
+  let initialState = createCharacterWizard({ projectSessionId: 'session-1', origin: { kind: 'library' } });
+  initialState = characterWizardReducer(initialState, { type: 'CHOOSE_BLANK' });
+  initialState = characterWizardReducer(initialState, { type: 'SET_FIELD', field: 'name', value: 'Rowan' });
+  initialState = characterWizardReducer(initialState, { type: 'NEXT' });
+  initialState = characterWizardReducer(initialState, { type: 'SET_DEFAULT_GUIDANCE', field: 'defaultToneId', value: 'removed-tone-id' });
+  initialState = characterWizardReducer(initialState, { type: 'NEXT' });
+  render(<WizardHarness initialState={initialState} onCreate={onCreate} onCancel={onCancel}/>);
+
+  expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('Unavailable tone reference (removed-tone-id)');
+  expect(screen.getByRole('alert')).toHaveTextContent('no longer in this project');
+  expect(screen.getByRole('button', { name: 'Create character' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit default guidance' }));
+  const tone = screen.getByRole('combobox', { name: 'Default tone' });
+  expect(tone).toHaveValue('removed-tone-id');
+  expect(within(tone).getByRole('option', { name: 'Unavailable saved reference (removed-tone-id)' })).toBeInTheDocument();
+  expect(screen.getByTestId('character-wizard-no-emotion-options')).toHaveTextContent('None is still a valid choice');
+  fireEvent.change(tone, { target: { value: '' } });
+  expect(screen.getByTestId('character-wizard-no-tone-options')).toHaveTextContent('None is still a valid choice');
+  fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+
+  expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('None');
+  expect(screen.getByTestId('character-wizard-review-default-emotion')).toHaveTextContent('None');
+  expect(screen.getByRole('button', { name: 'Create character' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ draft: expect.objectContaining({ defaultToneId: '', defaultEmotionId: '' }) }));
+});
+
 it('cancels an untouched draft directly and asks before discarding personal edits', () => {
   const onCreate = vi.fn(), onCancel = vi.fn();
   render(<WizardHarness onCreate={onCreate} onCancel={onCancel}/>);
@@ -124,7 +232,7 @@ it('cancels an untouched draft directly and asks before discarding personal edit
   fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Juniper' } });
   fireEvent.click(screen.getByRole('button', { name: 'Cancel creation' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('Your name, icon, and profile details will be lost.');
+  expect(screen.getByRole('alert')).toHaveTextContent('Your name, icon, profile details, and default guidance will be lost.');
   expect(editedOnCancel).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Keep working' }));
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();

@@ -17,7 +17,7 @@ afterEach(() => {
 
 function WizardHarness({ initialState }: { initialState: CharacterWizardState }) {
   const [state, dispatch] = useReducer(characterWizardReducer, initialState);
-  return <CharacterCreationWizard state={state} dispatch={dispatch} onCreate={vi.fn()} onCancel={vi.fn()}/>;
+  return <CharacterCreationWizard state={state} tones={[]} emotions={[]} creationReady dispatch={dispatch} onCreate={vi.fn()} onCancel={vi.fn()}/>;
 }
 
 function catalogState() {
@@ -43,6 +43,23 @@ it('keeps preview provisional and applies a stock type only through Use this typ
   expect(screen.getByRole('textbox', { name: 'Background' })).toHaveValue(template.background);
   expect(screen.getByRole('textbox', { name: 'Personality' })).toHaveValue(template.personality);
   expect(screen.getByRole('textbox', { name: 'Baseline voice' })).toHaveValue(template.voice);
+});
+
+it('finds all five flexible ensemble functions and labels the selected type distinctly', () => {
+  render(<WizardHarness initialState={catalogState()}/>);
+  expect(screen.getByText('58 types')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Ensemble roles' }));
+  const search = screen.getByRole('searchbox', { name: 'Search stock types' });
+  fireEvent.change(search, { target: { value: 'Five-Man Band' } });
+  const results = screen.getByRole('group', { name: 'Stock type results' });
+  expect(within(results).getAllByRole('button', { name: /^Preview Ensemble / })).toHaveLength(5);
+  for (const name of ['Ensemble Leader', 'Ensemble Lancer', 'Ensemble Brains', 'Ensemble Powerhouse', 'Ensemble Heart']) {
+    expect(within(results).getByRole('button', { name: `Preview ${name}` })).toBeVisible();
+  }
+
+  fireEvent.click(within(results).getByRole('button', { name: 'Preview Ensemble Heart' }));
+  expect(screen.getByText('Ensemble function')).toBeVisible();
+  expect(screen.getByText('Ensemble roles', { selector: '.character-template-category' })).toBeVisible();
 });
 
 it('keeps the suggested profile and source details behind named disclosures', () => {

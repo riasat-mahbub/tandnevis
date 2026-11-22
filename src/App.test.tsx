@@ -47,11 +47,14 @@ describe('connected writing views', () => {
     expect(g.save).not.toHaveBeenCalled();
   });
   it('creates once from Review and returns to the original scene without inserting a reference', async () => {
-    const initial = project(), g = gateway(initial), created = structuredClone(initial);
+    const initial = project(), g = gateway(initial);
+    initial.tones.push({ id: 'tone-none-name', name: 'None', meaning: 'A project-defined tone named None', guidance: 'Use this specific custom guidance.', example: '', archived: false, revision: 0 });
+    initial.emotions.push({ id: 'emotion-hopeful', name: 'Hopeful', meaning: 'Expectation of a better outcome', guidance: 'Keep an opening for possibility.', example: '', archived: false, revision: 0 });
+    const created = structuredClone(initial);
     created.revision = 1;
     vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
       if (operation.type !== 'createCharacter') throw new Error('Unexpected write');
-      created.characters.push({ id: 'character-new', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', icon: operation.icon ?? '', archived: false, defaultToneId: '', defaultEmotionId: '' });
+      created.characters.push({ id: 'character-new', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', icon: operation.icon ?? '', archived: false, defaultToneId: operation.defaultToneId ?? '', defaultEmotionId: operation.defaultEmotionId ?? '' });
       return structuredClone(created);
     });
     render(<App gateway={g} initialSession={session(initial)}/>);
@@ -64,16 +67,72 @@ describe('connected writing views', () => {
     expect(screen.getByTestId('character-creation-wizard')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Sable' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Review now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Profile details' }));
+    fireEvent.click(screen.getByText('Optional default guidance'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Default tone' }), { target: { value: 'tone-none-name' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Default emotion' }), { target: { value: 'emotion-hopeful' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+    expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('None (preset)');
     expect(g.apply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
     await waitFor(() => expect(g.apply).toHaveBeenCalledTimes(1));
-    expect(g.apply).toHaveBeenCalledWith('session-1', 0, { type: 'createCharacter', name: 'Sable', background: '', personality: '', voice: '' });
+    expect(g.apply).toHaveBeenCalledWith('session-1', 0, { type: 'createCharacter', name: 'Sable', background: '', personality: '', voice: '', defaultToneId: 'tone-none-name', defaultEmotionId: 'emotion-hopeful' });
     expect(await screen.findByRole('textbox', { name: 'Scene summary' })).toBe(summary);
     expect((summary as HTMLElement & { editor: Editor }).editor).toBe(editor);
     expect(editor.state.selection.from).toBe(caret);
     expect(summary).not.toHaveTextContent('Sable');
     expect(g.save).not.toHaveBeenCalled();
+  });
+
+  it('waits for a preset deletion, then lets the writer clear its stale draft reference before creating', async () => {
+    const initial = project();
+    initial.tones.push({ id: 'tone-wry', name: 'Wry', meaning: 'Dry humor', guidance: 'Let an absurd detail land lightly.', example: '', archived: false, revision: 0 });
+    const g = gateway(initial), current = structuredClone(initial), deletion = deferred<ProjectSnapshot>();
+    vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
+      if (operation.type === 'deletePreset') return deletion.promise;
+      if (operation.type !== 'createCharacter') throw new Error('Unexpected write');
+      current.revision += 1;
+      current.characters.push({ id: 'created-after-clear', name: operation.name, background: operation.background ?? '', personality: operation.personality ?? '', voice: operation.voice ?? '', icon: operation.icon ?? '', archived: false, defaultToneId: operation.defaultToneId ?? '', defaultEmotionId: operation.defaultEmotionId ?? '' });
+      return structuredClone(current);
+    });
+    render(<App gateway={g} initialSession={session(initial)}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Wren' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Profile details' }));
+    fireEvent.click(screen.getByText('Optional default guidance'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Default tone' }), { target: { value: 'tone-wry' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tones' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Wry/ })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(g.apply).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume character draft' }));
+    expect(screen.getByTestId('character-wizard-create-pending')).toHaveTextContent('Project changes are still in progress');
+    expect(screen.getByRole('button', { name: 'Create character' })).toBeDisabled();
+    expect(g.apply).toHaveBeenCalledTimes(1);
+
+    current.tones = [];
+    current.revision += 1;
+    await act(async () => { deletion.resolve(structuredClone(current)); await deletion.promise; });
+    await waitFor(() => expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('Unavailable tone reference (tone-wry)'));
+    expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('Unavailable tone reference (tone-wry)');
+    expect(screen.getByRole('alert')).toHaveTextContent('no longer in this project');
+    expect(screen.getByRole('button', { name: 'Create character' })).toBeDisabled();
+    expect(g.apply).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit default guidance' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Default tone' }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
+    expect(screen.getByTestId('character-wizard-review-default-tone')).toHaveTextContent('None');
+    fireEvent.click(screen.getByRole('button', { name: 'Create character' }));
+    await waitFor(() => expect(g.apply).toHaveBeenCalledTimes(2));
+    expect(g.apply).toHaveBeenLastCalledWith('session-1', 1, { type: 'createCharacter', name: 'Wren', background: '', personality: '', voice: '' });
+    expect(await screen.findByText('Character: Wren')).toBeVisible();
   });
 
   it('resumes the same session draft from Characters and cancels back to its original scene', async () => {

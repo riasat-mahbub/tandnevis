@@ -35,7 +35,9 @@ function normalize(value: string) {
 }
 
 function standingLabel(standing: StockCharacterTemplate['standing']) {
-  return standing === 'historical-literary' ? 'Historical / literary' : 'Genre convention';
+  if (standing === 'historical-literary') return 'Historical / literary';
+  if (standing === 'ensemble-function') return 'Ensemble function';
+  return 'Genre convention';
 }
 
 export default function CharacterTemplateBrowser(props: Props) {

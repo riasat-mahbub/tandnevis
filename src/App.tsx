@@ -9,6 +9,7 @@ import CharacterCreationWizard from './components/CharacterCreationWizard';
 import {
   characterWizardCreateOperation,
   characterWizardHasPersonalEdits,
+  characterWizardMissingDefaultGuidance,
   characterWizardReducer,
   createCharacterWizard,
 } from './services/character-wizard';
@@ -62,7 +63,9 @@ function matchingCreatedCharacters(project: ProjectSnapshot, attempt: CharacterC
     && character.background === (operation.background ?? '')
     && character.personality === (operation.personality ?? '')
     && character.voice === (operation.voice ?? '')
-    && (character.icon ?? '') === (operation.icon ?? ''));
+    && (character.icon ?? '') === (operation.icon ?? '')
+    && character.defaultToneId === (operation.defaultToneId ?? '')
+    && character.defaultEmotionId === (operation.defaultEmotionId ?? ''));
 }
 
 export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService, runtimeService }: Props) {
@@ -306,6 +309,15 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     if (current.submission.status !== 'idle' || current.step !== 'review') return;
     const workspaceState = workspace.getSnapshot();
     if (!workspaceState.session || workspaceState.session.sessionId !== current.projectSessionId || !workspaceState.project) return;
+    if (!workspaceState.ready || workspaceState.pending > 0 || workspaceState.saving || workspaceState.error || workspaceState.conflict) {
+      setNotice('Wait for the current project changes to finish before creating this character.');
+      return;
+    }
+    const missingGuidance = characterWizardMissingDefaultGuidance(current, workspaceState.project);
+    if (missingGuidance.length) {
+      setNotice('A selected default guidance preset is no longer in this project. Choose None or a current preset before creating this character.');
+      return;
+    }
     let operation: ReturnType<typeof characterWizardCreateOperation>;
     try { operation = characterWizardCreateOperation(current); }
     catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return; }
@@ -564,7 +576,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       <fieldset id="workspace-main" className="workspace-content" disabled={!ready}>
         <div className="destination-view" hidden={destination !== 'story'}><StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/></div>
         {scene && <div className="destination-view" hidden={destination !== 'scene'}><div className="breadcrumb"><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>}
-        {characterWizard && <div className="destination-view character-wizard-destination" hidden={destination !== 'character-wizard'}><CharacterCreationWizard state={characterWizard} dispatch={dispatchCharacterWizard} onCreate={requestCharacterCreation} onCancel={cancelCharacterWizard}/></div>}
+        {characterWizard && <div className="destination-view character-wizard-destination" hidden={destination !== 'character-wizard'}><CharacterCreationWizard state={characterWizard} tones={project.tones} emotions={project.emotions} creationReady={ready && pending === 0 && !saving && !error && !conflict} dispatch={dispatchCharacterWizard} onCreate={requestCharacterCreation} onCancel={cancelCharacterWizard}/></div>}
         {(['characters', 'tones', 'emotions'] as const).map(kind => <div key={`${project.projectId}:${kind}`} className="destination-view" hidden={destination !== kind}><LibraryView kind={kind} project={project} workspace={workspace} locked={locked} selectedId={librarySelection[kind]} onSelect={id => setLibrarySelection(selection => ({ ...selection, [kind]: id }))} createRequest={createRequests[kind]} openSelectionRequest={kind === 'characters' ? characterProfileRequests : 0} onCreateCharacter={() => startCharacterWizard({ kind: 'library' })} hasCharacterDraft={!!characterWizard && characterWizard.projectSessionId === session?.sessionId && characterWizard.submission.status !== 'succeeded'} onResumeCharacterDraft={resumeCharacterWizard} onOpenUsage={openUsage} onOpenCharacter={id => openLibrary('characters', id)} notify={setNotice} run={run}/></div>)}
         {destination === 'trash' && <main className="recovery-screen" aria-labelledby="trash-heading"><div className="recovery-heading"><div><h1 id="trash-heading">Trash</h1><p>Restore deleted writing and unused definitions to this project.</p></div></div>{project.trash.length ? <ul className="trash-list">{project.trash.map(item => <li key={item.id}><div><strong>{item.title || 'Untitled item'}</strong><small>{item.kind} - Deleted at revision {item.deletedAtRevision}</small></div><button disabled={locked} onClick={() => run(async () => { await workspace.dispatch({ type: 'restoreTrash', trashId: item.id }); setNotice(`${item.title || item.kind} restored. Save the project to keep this change.`); })}>Restore</button></li>)}</ul> : <div className="library-empty"><h2>Trash is empty</h2><p>Deleted scenes, beats, chapters, and unused definitions can be restored here.</p></div>}</main>}
       </fieldset>

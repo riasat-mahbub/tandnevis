@@ -44,7 +44,11 @@ Show the chosen starting point as a short, quiet line with **Change starting poi
 
 ### 3. Profile details
 
-Show only Background, Personality, and Baseline voice, with short plain-language prompts. These three fields share one purpose and can fit comfortably once the catalog, sources, and icon grid are elsewhere. Keep them in a single reading column and make all three optional.
+Show Background, Personality, and Baseline voice, with short plain-language prompts. Keep them in a single reading column and make all three optional. Follow them with a compact, initially closed **Optional default guidance** disclosure; it stays in this step and does not add a wizard phase.
+
+The disclosure offers the project's current tones and emotions by preset ID, with **None** as each initial choice. Show the selected preset's current meaning and writing/expression guidance. None leaves a reference unset; the Neutral tone, when present, is a separate preset. A custom preset named “None” is labeled **None (preset)** so it remains distinct from an empty reference. The two controls remain independent and optional. An empty project keeps None available and explains that a tone or emotion can be added in its library.
+
+Treat these as project-specific writer suggestions. Do not assign a tone or emotion from a stock type, choose one from copied profile text, or imply that a default overrides scene-level choices. Applying or changing a stock starting point leaves both IDs untouched. If a chosen preset is archived, keep the existing reference visible and preserve it. Resolve a reference only by its ID so a renamed preset displays its latest name. If the referenced ID is no longer in the project, show it as unavailable; Review must let the writer return to this disclosure and clear or replace it before creation.
 
 For a stock type, prefill the copied suggestions and explain once that they are editable starting text. For a blank character, use empty fields with useful prompts. Do not add mandatory biographies, personality questionnaires, generated suggestions, or an additional AI connection flow.
 
@@ -52,7 +56,7 @@ Use normal field sizes and allow page scrolling for longer writing. Keep the nav
 
 ### 4. Review
 
-Show the name and icon prominently, followed by readable Background, Personality, and Baseline voice sections. Empty fields say **Not added**. Each section has a clearly named Edit action that returns to its owning step without losing other values; returning from that edit goes back to Review.
+Show the name and icon prominently, followed by readable Background, Personality, Baseline voice, and Default guidance sections. Empty profile fields say **Not added**. The guidance section shows the selected tone and emotion names, or **None** for each empty ID. A missing reference is labeled unavailable rather than treated as None. Each section has a clearly named Edit action that returns to its owning step without losing other values; **Edit default guidance** returns to Profile details, opens its disclosure, and focuses the tone control. Returning from that edit goes back to Review.
 
 The final action is **Create character**. Explain briefly that this adds the character to the project and that project Save still controls writing to disk. Before this action, no project character exists.
 
@@ -76,7 +80,7 @@ Keep the workflow's original destination even when editing earlier wizard steps.
 
 ## Creation and recovery behavior
 
-The final step dispatches the existing single character-creation operation with the current name, icon, background, personality, and voice. Step visits, previews, and edits do not dispatch project writes. No new saved-character schema or template provenance field is required; character icons remain visual metadata under schema 7.
+The final step dispatches the existing single character-creation operation with the current name, icon, background, personality, voice, and any selected default-tone/default-emotion IDs. Empty IDs remain omitted. Wait for pending project writes to finish, then check references against the live project's preset IDs before a fresh create; missing IDs block submission and remain explicit until cleared or replaced. Archived IDs that still exist remain valid. An uncertain prior create still enters recovery inspection before the new-create checks. Step visits, previews, and edits do not dispatch project writes. No new saved-character schema or template provenance field is required; character icons remain visual metadata under schema 7.
 
 While creating, show **Creating…** and prevent a second submission or starting-point change. On a definite failure, keep the complete draft on Review and offer recovery using the existing workspace mechanism. If recovery finds one committed match, resolve to that record rather than creating another. If multiple characters match, pause for explicit selection and send no second create. Preserve the established external-change conflict handling; do not blindly replay an ambiguous creation. Once created, ordinary Undo/Redo and manual Save apply.
 
@@ -84,7 +88,7 @@ While creating, show **Creating…** and prevent a second submission or starting
 
 1. **Flow state — implemented.** The project-scoped draft stores its origin, values, applied/provisional starting point, explicit icon choice, visited steps, Review return state, and creation/recovery state. It stays separate from the saved Character model and preset creation.
 2. **Wizard shell — implemented.** Creation is separate from the LibraryView master/detail layout. Both New character entry points open the same flow; existing-character editing remains in the library.
-3. **Control reuse — implemented.** The stock browser runs in Starting point and the shared icon registry/picker runs in Name and icon. Profile details and Review have their own steps, replacing creation controls in the combined page.
+3. **Control reuse — implemented.** The stock browser runs in Starting point and the shared icon registry/picker runs in Name and icon. Profile details and Review have their own steps, replacing creation controls in the combined page. Profile details includes optional project-default tone and emotion choices with current preset explanations; both start at None and stock types never assign them.
 4. **Navigation and recovery — implemented.** Resume, Back, Review Edit links, protected starting-point changes, cancellation, project-boundary handling, original-destination return, and single-operation submission are connected to the existing recovery safeguards.
 5. **Staged verification — passed; promotion pending.** Source-level and staged portable evidence is recorded in the [implementation progress ledger](implementation-progress.md). Finish review approved shipping at fix-list/staged-build scope; promotion to `out/latest` remains pending.
 
@@ -92,6 +96,9 @@ While creating, show **Creating…** and prevent a second submission or starting
 
 - Blank route: Start blank → Name and icon → Review now → Create produces one character with the chosen icon and empty optional fields.
 - Stock route: preview without mutation → apply → name/icon → edit optional fields → review → create uses exactly the reviewed values.
+- Optional guidance: profile details lists current project presets and their meanings/guidance; None is distinct from Neutral. Selection, Back, Review edits, resume, and stock changes preserve ID-based choices, and creation sends only selected IDs.
+- Missing guidance: Review names a missing preset reference as unavailable, offers Edit default guidance, and blocks a new create until the writer clears or replaces it. Renamed and archived presets resolve by their current ID; archived choices remain available when already selected.
+- Pending deletion: Review disables fresh creation while project writes are pending. After a selected preset is deleted, the latest project ID check marks the saved draft reference unavailable and allows the writer to clear or replace it before creating.
 - Each step displays only its phase's controls. The full catalog, icon grid, editing fields, and source bibliography never appear together.
 - Back, review Edit, app navigation, and resume preserve values and the correct return location. Applying a different type cannot silently overwrite edited profile fields or a chosen icon.
 - Cancel has no project-write side effects. Unsubmitted drafts cannot leak into another project's wizard.

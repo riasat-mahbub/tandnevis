@@ -1,4 +1,4 @@
-import type { Operation } from './project';
+import type { Operation, Preset } from './project';
 
 export type CharacterWizardStep = 'starting-point' | 'identity' | 'details' | 'review';
 export type CharacterWizardOrigin =
@@ -19,6 +19,7 @@ export interface CharacterWizardBlankStartingPoint { kind: 'blank' }
 export type CharacterWizardStartingPoint = CharacterWizardBlankStartingPoint | CharacterWizardStockStartingPoint;
 export type CharacterWizardProfileField = 'background' | 'personality' | 'voice';
 export type CharacterWizardDraftField = 'name' | CharacterWizardProfileField;
+export type CharacterWizardDefaultGuidanceField = 'defaultToneId' | 'defaultEmotionId';
 
 export interface CharacterWizardBrowserState {
   view: 'choices' | 'catalog';
@@ -38,6 +39,9 @@ export interface CharacterWizardState {
     background: string;
     personality: string;
     voice: string;
+    /** Preset identities are chosen explicitly; empty means None. */
+    defaultToneId: string;
+    defaultEmotionId: string;
     /** Empty means the registry's default person icon. */
     icon: string;
     /** Keeps an explicit writer choice when a different stock type is applied. */
@@ -71,6 +75,7 @@ export type CharacterWizardAction =
   | { type: 'CONFIRM_STARTING_POINT_CHANGE'; confirmed: boolean }
   | { type: 'SET_BROWSER'; patch: Partial<CharacterWizardBrowserState> }
   | { type: 'SET_FIELD'; field: CharacterWizardDraftField; value: string }
+  | { type: 'SET_DEFAULT_GUIDANCE'; field: CharacterWizardDefaultGuidanceField; value: string }
   | { type: 'SET_ICON'; icon: string }
   | { type: 'RESET_ICON' }
   | { type: 'GO_TO_STEP'; step: CharacterWizardStep }
@@ -95,7 +100,7 @@ export function createCharacterWizard(input: { projectSessionId: string; origin:
     projectSessionId: input.projectSessionId,
     origin: input.origin,
     step: 'starting-point',
-    draft: { name: '', background: '', personality: '', voice: '', icon: '', iconExplicitlyChosen: false },
+    draft: { name: '', background: '', personality: '', voice: '', defaultToneId: '', defaultEmotionId: '', icon: '', iconExplicitlyChosen: false },
     appliedStartingPoint: null,
     provisionalStartingPoint: null,
     startingPointConfirmation: null,
@@ -121,7 +126,7 @@ const pointFields = (point: CharacterWizardStartingPoint | null) => point?.kind 
   : { background: '', personality: '', voice: '' };
 
 export function characterWizardHasPersonalEdits(state: CharacterWizardState): boolean {
-  if (state.draft.name.trim() || state.draft.iconExplicitlyChosen) return true;
+  if (state.draft.name.trim() || state.draft.iconExplicitlyChosen || state.draft.defaultToneId || state.draft.defaultEmotionId) return true;
   const baseline = pointFields(state.appliedStartingPoint);
   return (['background', 'personality', 'voice'] as const).some(field =>
     !!state.draft[field].trim() && state.draft[field] !== baseline[field]);
@@ -204,6 +209,8 @@ export function characterWizardReducer(state: CharacterWizardState, action: Char
       const draft = { ...state.draft, [action.field]: action.value };
       return { ...state, draft, nameError: action.field === 'name' ? validateCharacterWizardName(action.value) : state.nameError };
     }
+    case 'SET_DEFAULT_GUIDANCE':
+      return { ...state, draft: { ...state.draft, [action.field]: action.value } };
     case 'SET_ICON':
       return { ...state, draft: { ...state.draft, icon: action.icon, iconExplicitlyChosen: true } };
     case 'RESET_ICON':
@@ -271,12 +278,22 @@ export function characterWizardReducer(state: CharacterWizardState, action: Char
   }
 }
 
+export function characterWizardMissingDefaultGuidance(
+  state: CharacterWizardState,
+  project: { tones: readonly Preset[]; emotions: readonly Preset[] },
+): CharacterWizardDefaultGuidanceField[] {
+  const missing: CharacterWizardDefaultGuidanceField[] = [];
+  if (state.draft.defaultToneId && !project.tones.some(preset => preset.id === state.draft.defaultToneId)) missing.push('defaultToneId');
+  if (state.draft.defaultEmotionId && !project.emotions.some(preset => preset.id === state.draft.defaultEmotionId)) missing.push('defaultEmotionId');
+  return missing;
+}
+
 export function characterWizardCreateOperation(state: CharacterWizardState): Extract<Operation, { type: 'createCharacter' }> {
   if (state.step !== 'review') throw new Error('Character creation is available from Review.');
   if (state.submission.status !== 'idle') throw new Error('This character creation is already being handled.');
   const error = validateCharacterWizardName(state.draft.name);
   if (error) throw new Error(error);
-  const { name, background, personality, voice, icon } = state.draft;
+  const { name, background, personality, voice, icon, defaultToneId, defaultEmotionId } = state.draft;
   return {
     type: 'createCharacter',
     name: name.trim(),
@@ -284,5 +301,7 @@ export function characterWizardCreateOperation(state: CharacterWizardState): Ext
     personality,
     voice,
     ...(icon ? { icon } : {}),
+    ...(defaultToneId ? { defaultToneId } : {}),
+    ...(defaultEmotionId ? { defaultEmotionId } : {}),
   };
 }
