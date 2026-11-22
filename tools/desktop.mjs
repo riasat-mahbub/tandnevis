@@ -24,7 +24,7 @@ function version(name) {
   const command = localToolchain ? join(localBin, executable(name)) : name;
   const result = spawnSync(command, ['--version'], { cwd: root, env, encoding: 'utf8', windowsHide: true });
   if (result.error || result.status !== 0) {
-    fail(`${name} is unavailable. Install Rust 1.90+ with the Windows MSVC toolchain, or restore .tools/cargo and .tools/rustup. See docs/development-setup.md.`);
+    fail(`${name} is unavailable. Install Rust 1.90+ with the Windows MSVC toolchain, or restore .tools/cargo and .tools/rustup.`);
   }
   return result.stdout.trim();
 }
