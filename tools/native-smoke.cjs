@@ -13,15 +13,21 @@ const presetPalette = ['#BE527A', '#B98116', '#C85343', '#8260AD', '#527FB0', '#
 const presetFamilyNames = ['Connection', 'Positive energy', 'Conflict', 'Unease', 'Vulnerability', 'Discovery', 'Focus'];
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
-  console.log('Usage: node tools/native-smoke.cjs [--exe path/to/shorthand-writer.exe]\nRequires a built Windows app. Launches that exact child with an isolated WebView2 profile and temporary CDP port.');
+  console.log('Usage: node tools/native-smoke.cjs [--wizard-continuation] [--exe path/to/shorthand-writer.exe]\nRequires a built Windows app. Launches that exact child with an isolated WebView2 profile and temporary CDP port.');
   process.exit(0);
 }
 const exeIndex = argv.indexOf('--exe');
-if (argv.length && (exeIndex !== 0 || argv.length !== 2 || !argv[1])) {
-  console.error('Usage: node tools/native-smoke.cjs [--exe path/to/shorthand-writer.exe]');
+const continuationIndex = argv.indexOf('--wizard-continuation');
+const validArgs = argv.length === 0 ||
+  (argv.length === 2 && exeIndex === 0 && continuationIndex === -1 && !!argv[1]) ||
+  (argv.length === 3 && exeIndex === 0 && continuationIndex === 2 && !!argv[1]) ||
+  (argv.length === 3 && continuationIndex === 0 && exeIndex === 1 && !!argv[2]);
+if (!validArgs) {
+  console.error('Usage: node tools/native-smoke.cjs [--wizard-continuation] [--exe path/to/shorthand-writer.exe]');
   process.exit(2);
 }
 const exe = path.resolve(root, exeIndex >= 0 ? argv[exeIndex + 1] ?? '' : 'src-tauri/target/release/shorthand-writer.exe');
+const focusedWizardContinuation = continuationIndex >= 0;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function rgbChannels(value) {
@@ -338,20 +344,26 @@ async function main() {
           if (options.browserView) await waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.browserView === " + JSON.stringify(options.browserView), view + ' browser view');
           if (options.browserDetail !== undefined) await waitFor("document.querySelector('[data-testid=\"character-wizard-stock-browser\"]')?.dataset.detailOpen === " + JSON.stringify(String(options.browserDetail)), view + ' browser detail');
           await waitFor(`document.querySelector('[data-testid="character-creation-wizard"]')?.dataset.wizardStep === ${JSON.stringify(expectedStep)}`, `${view} wizard step`);
+          if (options.openDetails) await evaluate(`(() => { const disclosure=document.querySelector(${JSON.stringify(options.openDetails)}); if (!disclosure) throw new Error('Wizard disclosure missing: '+${JSON.stringify(options.openDetails)}); disclosure.open=true; })()`);
           const checkKeyboardHeading = options.focusHeading && theme === 'light' && width === 1440;
           if (checkKeyboardHeading) {
             await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
             await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
             await evaluate("document.querySelector('#character-wizard-heading')?.focus({preventScroll:true})");
+            await waitFor("document.activeElement?.id === 'character-wizard-heading'", `${view} focused step heading`);
           }
           await evaluate('window.scrollTo(0,0)');
+          if (options.scrollTo) await evaluate(`document.querySelector(${JSON.stringify(options.scrollTo)})?.scrollIntoView({block:'center',inline:'nearest'})`);
           await pause(120);
           const layout = await evaluate(`(() => {
             const wizard=document.querySelector('[data-testid="character-creation-wizard"]');
             const content=wizard?.querySelector('[data-testid="character-wizard-content"]');
             const footer=wizard?.querySelector('[data-testid="character-wizard-footer"]');
             const browser=wizard?.querySelector('[data-testid="character-wizard-stock-browser"]');
+            const guidance=wizard?.querySelector('[data-testid="character-wizard-default-guidance"]');
+            const reviewGuidance=wizard?.querySelector('[data-testid="character-wizard-review-guidance"]');
             const visible=element=>Boolean(element?.getClientRects().length);
+            const inViewport=element=>{const rect=element?.getBoundingClientRect();return Boolean(rect&&rect.bottom>0&&rect.top<innerHeight&&rect.right>0&&rect.left<innerWidth);};
             return {
               step:wizard?.dataset.wizardStep,
               browserView:wizard?.dataset.browserView,
@@ -364,9 +376,19 @@ async function main() {
               profileFieldCount:content?.querySelectorAll('.wizard-profile-field').length ?? 0,
               iconGridVisible:visible(content?.querySelector('[aria-label="Character icon choices"]')),
               reviewSubmitVisible:Array.from(wizard?.querySelectorAll('button') ?? []).some(button=>visible(button)&&button.textContent.trim()==='Create character'),
-            saveReminderVisible:visible(wizard?.querySelector('.wizard-review-save-note')),
-            headingFocusVisible:document.activeElement?.id==='character-wizard-heading'&&document.activeElement.matches(':focus-visible'),
-            headingOutline:(()=>{const heading=wizard?.querySelector('#character-wizard-heading');const style=heading?getComputedStyle(heading):null;return style?{style:style.outlineStyle,width:style.outlineWidth,color:style.outlineColor}:null})(),
+              saveReminderVisible:visible(wizard?.querySelector('.wizard-review-save-note')),
+              guidanceDisclosureOpen:guidance?.open ?? false,
+              guidanceVisible:visible(guidance),
+              guidanceControlsVisible:visible(guidance?.querySelector('.wizard-default-guidance-fields')),
+              guidanceControlsInViewport:inViewport(guidance?.querySelector('.wizard-default-guidance-fields')),
+              reviewGuidanceVisible:visible(reviewGuidance),
+              reviewGuidanceInViewport:inViewport(reviewGuidance),
+              reviewGuidanceLabelled:Boolean(reviewGuidance?.getAttribute('aria-labelledby')&&document.getElementById(reviewGuidance.getAttribute('aria-labelledby'))),
+              reviewGuidanceEditLabel:reviewGuidance?.querySelector('[data-testid="character-wizard-edit-default-guidance"]')?.textContent.trim() ?? null,
+              reviewDefaultTone:reviewGuidance?.querySelector('[data-testid="character-wizard-review-default-tone"]')?.textContent.trim() ?? null,
+              reviewDefaultEmotion:reviewGuidance?.querySelector('[data-testid="character-wizard-review-default-emotion"]')?.textContent.trim() ?? null,
+              headingFocused:document.activeElement?.id==='character-wizard-heading',
+              headingOutline:(()=>{const heading=wizard?.querySelector('#character-wizard-heading');const style=heading?getComputedStyle(heading):null;return style?{style:style.outlineStyle,width:style.outlineWidth,color:style.outlineColor}:null})(),
               footerVisible:visible(footer),
               footerPosition:footer?getComputedStyle(footer).position:null,
               viewport:innerWidth,
@@ -402,9 +424,27 @@ async function main() {
             assert.equal(layout.browserVisible, false, `${view} hides the stock catalog.`);
             assert.equal(layout.reviewSubmitVisible, true, `${view} exposes Create character only on Review.`);
             assert.equal(layout.saveReminderVisible, true, `${view} explains that project Save writes the new character to disk.`);
+            assert.equal(layout.reviewGuidanceVisible, true, `${view} includes the default-guidance summary on Review.`);
+            assert.equal(layout.reviewGuidanceLabelled, true, `${view} labels the Review guidance section for assistive technology.`);
+            assert.equal(layout.reviewGuidanceEditLabel, 'Edit default guidance', `${view} names the Review edit action.`);
+          }
+          if (options.openDetails) {
+            assert.equal(layout.guidanceDisclosureOpen, true, `${view} opens its optional default-guidance disclosure.`);
+            assert.equal(layout.guidanceControlsVisible, true, `${view} exposes the default selectors and explanations.`);
+            assert.equal(layout.guidanceControlsInViewport, true, `${view} places the expanded guidance controls in the captured viewport.`);
+          }
+          if (options.assertReviewGuidance) {
+            assert.equal(layout.reviewDefaultTone, options.assertReviewGuidance.tone, `${view} includes the selected tone in Review.`);
+            assert.equal(layout.reviewDefaultEmotion, options.assertReviewGuidance.emotion, `${view} includes the selected emotion in Review.`);
+          }
+          if (options.expectReviewGuidance) {
+            assert.equal(layout.reviewGuidanceVisible, true, `${view} scrolls the default-guidance summary into view.`);
+            assert.equal(layout.reviewGuidanceInViewport, true, `${view} places the default-guidance summary in the captured viewport.`);
+            assert.equal(layout.reviewDefaultTone, options.expectReviewGuidance.tone, `${view} reviews the selected tone.`);
+            assert.equal(layout.reviewDefaultEmotion, options.expectReviewGuidance.emotion, `${view} reviews the selected emotion.`);
           }
           if (checkKeyboardHeading) {
-            assert.equal(layout.headingFocusVisible, true, `${view} captures the heading focused in keyboard modality.`);
+            assert.equal(layout.headingFocused, true, `${view} captures the exact heading focused in keyboard modality.`);
             assert.notEqual(layout.headingOutline?.style, 'none', `${view} shows a keyboard focus outline on the heading.`);
             assert.ok(Number.parseFloat(layout.headingOutline?.width) >= 1, `${view} keyboard heading outline is at least one pixel wide.`);
           }
@@ -414,8 +454,12 @@ async function main() {
           const footerReachable = await evaluate(`(() => { const rect=document.querySelector('[data-testid="character-wizard-footer"]').getBoundingClientRect(); return rect.top>=-1&&rect.bottom<=innerHeight+1; })()`);
           assert.equal(footerReachable, true, `${view} footer is reachable by normal page scrolling.`);
           await evaluate('window.scrollTo(0,0)');
+          if (options.scrollTo) await evaluate(`document.querySelector(${JSON.stringify(options.scrollTo)})?.scrollIntoView({block:'center',inline:'nearest'})`);
           await pause(80);
-          report.layout.push({ view, theme, width, height, ...layout, footerReachable });
+          const screenshotTargetSelector = options.openDetails ? '[data-testid="character-wizard-default-guidance"] .wizard-default-guidance-fields' : options.expectReviewGuidance ? options.scrollTo : null;
+          const screenshotTargetInViewport = screenshotTargetSelector ? await evaluate(`(() => { const element=document.querySelector(${JSON.stringify(screenshotTargetSelector)}); const rect=element?.getBoundingClientRect(); return Boolean(rect&&rect.bottom>0&&rect.top<innerHeight&&rect.right>0&&rect.left<innerWidth); })()`) : null;
+          if (screenshotTargetSelector) assert.equal(screenshotTargetInViewport, true, `${view} restores the intended guidance region before taking its screenshot.`);
+          report.layout.push({ view, theme, width, height, ...layout, footerReachable, screenshotTargetInViewport });
           assert.equal(layout.viewport, width, view + ' emulates the requested viewport width.');
           if (expectedStep === 'starting-point' && options.browserView === 'catalog' && width > 900) {
             assert.equal(layout.resultsVisible, true, view + ' keeps catalog results visible in the wide layout.');
@@ -450,6 +494,144 @@ async function main() {
     if (portablePackage) {
       assert.equal(path.resolve(runtime.dataDirectory).toLowerCase(), path.resolve(expectedDataDirectory).toLowerCase(), 'Portable data must live beside the selected executable.');
       report.checks.push('Portable runtime resolves writable app data beside the executable, independently of the development working directory');
+    }
+    if (focusedWizardContinuation) {
+      await waitFor("document.querySelector('.app')?.dataset.theme === 'light'", 'Platinum default for focused wizard continuation');
+      const fixture = await invoke('create_project', { path: projectPath, title: 'Native wizard continuation' });
+      let fixtureProject = fixture.project;
+      const applyFixture = async operation => {
+        fixtureProject = await invoke('apply_operation', { sessionId: fixture.sessionId, expectedRevision: fixtureProject.revision, operation });
+        return fixtureProject;
+      };
+      await applyFixture({ type: 'createChapter', title: 'Chapter One' });
+      const chapterId = fixtureProject.chapters[0].id;
+      await applyFixture({ type: 'createScene', chapterId, title: 'Continuation arrival' });
+      const sceneId = fixtureProject.scenes[0].id;
+      await applyFixture({ type: 'createBeat', sceneId, document: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A visitor waits beside the station door.' }] }] }, text: 'A visitor waits beside the station door.' });
+      await invoke('save_project', { sessionId: fixture.sessionId });
+      await evaluate(`(() => { const original=window.fetch.bind(window); window.__nativeSmokeCommands=[]; window.fetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url);const command=url.hostname==='ipc.localhost'?decodeURIComponent(url.pathname.slice(1)):null;if(command)window.__nativeSmokeCommands.push(command);if(command==='plugin:dialog|open')return new Response(JSON.stringify(${JSON.stringify(projectPath)}),{headers:{'Content-Type':'application/json','Tauri-Response':'ok'}});const response=await original(input,init);if(command==='open_project'&&response.headers.get('Tauri-Response')==='ok')window.__nativeSmokeSessionId=(await response.clone().json()).sessionId;return response;}; })()`);
+      await clickLabel('Project menu');
+      await clickLabel('Open project');
+      await waitFor("Boolean(window.__nativeSmokeSessionId)", 'focused continuation fixture opened through the native UI');
+      await waitFor("Array.from(document.querySelectorAll('button.scene-open')).some(button=>button.querySelector('h3')?.textContent==='Continuation arrival')", 'focused continuation scene on Story timeline');
+      await evaluate("(() => {const button=Array.from(document.querySelectorAll('button.scene-open')).find(item=>item.querySelector('h3')?.textContent==='Continuation arrival');if(!button||button.disabled)throw new Error('Continuation scene missing');button.click();})()");
+      await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'focused continuation scene opened');
+
+      const readUi = async () => invoke('read_project', { sessionId: await evaluate('window.__nativeSmokeSessionId') });
+      const setWizardValue = async (selector, value) => {
+        await evaluate("(() => { const element=document.querySelector(" + JSON.stringify(selector) + "); if(!element)throw new Error('Wizard field missing: '+" + JSON.stringify(selector) + "); const prototype=element instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype,'value').set.call(element," + JSON.stringify(value) + "); element.dispatchEvent(new Event('input',{bubbles:true})); })()");
+        await waitFor("document.querySelector(" + JSON.stringify(selector) + ")?.value === " + JSON.stringify(value), 'focused wizard field ' + selector);
+      };
+      const waitForWizardStep = step => waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.wizardStep === " + JSON.stringify(step), 'focused wizard step ' + step);
+      const selectWizardPreset = async (type, name) => {
+        const selector = `#character-wizard-default-${type}`;
+        const id = await evaluate(`Array.from(document.querySelector(${JSON.stringify(selector)})?.options??[]).find(option=>option.textContent.trim()===${JSON.stringify(name)})?.value??''`);
+        assert.ok(id, `The continuation project has an active ${type} preset ${name}.`);
+        await evaluate(`(() => {const select=document.querySelector(${JSON.stringify(selector)});if(!select)throw new Error('Missing '+${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(id)});select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await waitFor(`document.querySelector(${JSON.stringify(selector)})?.value===${JSON.stringify(id)}`, `focused ${type} ${name}`);
+        return id;
+      };
+      const readWizardGuidance = () => evaluate("Object.fromEntries(['tone','emotion'].map(type=>[type,document.querySelector('#character-wizard-default-'+type)?.value??null]))");
+
+      await clickLabel('New character');
+      await clickLabel('Choose a stock type');
+      await clickLabel('Preview The Miser');
+      await clickLabel('Use this type and continue');
+      await setWizardValue('#character-wizard-name', 'Guidance Sample');
+      await clickLabel('Next: Profile details');
+      await waitForWizardStep('details');
+      const neutralToneId = await evaluate("Array.from(document.querySelector('#character-wizard-default-tone')?.options??[]).find(option=>option.textContent.trim()==='Neutral')?.value??''");
+      assert.ok(neutralToneId, 'Neutral is a real tone option in the focused continuation.');
+      assert.equal(await evaluate("document.querySelector('#character-wizard-default-tone')?.options[0]?.value"), '', 'None is the empty tone option.');
+      await evaluate("(() => {const details=document.querySelector('[data-testid=\"character-wizard-default-guidance\"]');if(!details)throw new Error('Default guidance missing');details.querySelector('summary').click();})()");
+      const toneId = await selectWizardPreset('tone', 'Reflective');
+      const emotionId = await selectWizardPreset('emotion', 'Curious');
+      const selectedGuidance = { tone: toneId, emotion: emotionId };
+      assert.deepEqual(await readWizardGuidance(), selectedGuidance);
+      await setWizardValue('#character-wizard-background', 'Raised among careful traders, this character risks savings on an act of generosity.');
+      await setWizardValue('#character-wizard-personality', 'Patient with numbers, guarded with praise, and bold when someone is exploited.');
+      await setWizardValue('#character-wizard-voice', 'Measured and practical, with warmth between careful phrases.');
+      await captureWizardScreenshots('focused-wizard-details-expanded-guidance', 'details', [{ width: 1440, height: 960 }, { width: 800, height: 960 }, { width: 800, height: 600 }], ['light', 'dark'], { openDetails: '[data-testid="character-wizard-default-guidance"]', scrollTo: '.wizard-default-guidance' });
+      report.checks.push('Focused Details captures show expanded guidance at 1440x960, 800x960, and 800x600 in both themes.');
+
+      await clickLabel('Next: Review');
+      await waitForWizardStep('review');
+      const reviewGuidance = { tone: 'Reflective', emotion: 'Curious' };
+      await captureWizardScreenshots('focused-wizard-review-selected-guidance', 'review', [{ width: 1440, height: 960 }, { width: 800, height: 960 }, { width: 800, height: 600 }], ['light', 'dark'], { scrollTo: '[data-testid="character-wizard-review-guidance"]', assertReviewGuidance: reviewGuidance, expectReviewGuidance: reviewGuidance });
+      report.checks.push('Focused Review captures show selected guidance at 1440x960, 800x960, and 800x600 in both themes.');
+      const beforeGuidanceCreate = await readUi();
+      await clickLabel('Create character');
+      await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return to continuation scene after guidance creation');
+      const afterGuidanceCreate = await readUi();
+      const createdGuidanceCharacters = afterGuidanceCreate.characters.filter(character=>!beforeGuidanceCreate.characters.some(existing=>existing.id===character.id));
+      assert.equal(createdGuidanceCharacters.length, 1, 'Review creates one character from this draft.');
+      assert.equal(createdGuidanceCharacters[0].defaultToneId, toneId, 'Create keeps the selected tone ID.');
+      assert.equal(createdGuidanceCharacters[0].defaultEmotionId, emotionId, 'Create keeps the selected emotion ID.');
+      await clickLabel('Save');
+      await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'Save selected guidance character');
+      const sessionBeforeReopen = await evaluate('window.__nativeSmokeSessionId');
+      await clickLabel('Project menu');
+      await clickLabel('Open project');
+      await waitFor(`window.__nativeSmokeSessionId!==${JSON.stringify(sessionBeforeReopen)}`, 'focused project reopened through native UI');
+      const reopenedCharacter = (await readUi()).characters.find(character=>character.name==='Guidance Sample');
+      assert.equal(reopenedCharacter?.defaultToneId, toneId, 'Save/reopen preserves the selected tone ID.');
+      assert.equal(reopenedCharacter?.defaultEmotionId, emotionId, 'Save/reopen preserves the selected emotion ID.');
+      report.checks.push('Focused creation and Save/reopen preserve the selected default tone and emotion IDs.');
+      await waitFor("Array.from(document.querySelectorAll('button.scene-open')).some(button=>button.querySelector('h3')?.textContent==='Continuation arrival')", 'Story timeline after focused reopen');
+      await evaluate("(() => {const button=Array.from(document.querySelectorAll('button.scene-open')).find(item=>item.querySelector('h3')?.textContent==='Continuation arrival');if(!button||button.disabled)throw new Error('Continuation scene missing after reopen');button.click();})()");
+      await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'continuation scene restored after focused reopen');
+
+      const beforeResumeDraft = await readUi();
+      await clickLabel('New character');
+      await clickLabel('Choose a stock type');
+      await clickLabel('Preview The Miser');
+      await clickLabel('Use this type and continue');
+      await setWizardValue('#character-wizard-name', 'Draft Only');
+      await clickLabel('Next: Profile details');
+      await setWizardValue('#character-wizard-background', 'A writer-owned background carried through replacement.');
+      await setWizardValue('#character-wizard-personality', 'Private, precise, and more generous than expected.');
+      await setWizardValue('#character-wizard-voice', 'Evenly paced, with a dry aside when needed.');
+      await evaluate("(() => {const details=document.querySelector('[data-testid=\"character-wizard-default-guidance\"]');details.querySelector('summary').click();})()");
+      const resumeToneId = await selectWizardPreset('tone', 'Hopeful');
+      const resumeEmotionId = await selectWizardPreset('emotion', 'Curious');
+      const resumeGuidance = { tone: resumeToneId, emotion: resumeEmotionId };
+      await clickLabel('Name and icon');
+      await clickLabel('Change starting point');
+      await clickLabel('Preview The Con Artist');
+      await clickLabel('Use this type and continue');
+      await clickLabel('Replace profile fields');
+      await waitForWizardStep('identity');
+      await clickLabel('Profile details');
+      assert.deepEqual(await readWizardGuidance(), resumeGuidance, 'Stock replacement preserves the draft tone and emotion IDs.');
+      await clickLabel('Characters');
+      await clickLabel('Resume character draft');
+      await waitForWizardStep('details');
+      assert.deepEqual(await readWizardGuidance(), resumeGuidance, 'Resume restores both selected default IDs.');
+      await clickLabel('Cancel creation');
+      await clickLabel('Discard draft');
+      await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return after resumed draft discard');
+      assert.deepEqual(await readUi(), beforeResumeDraft, 'Discarding the resumed draft leaves the project unchanged.');
+      report.checks.push('Selected guidance survives stock replacement and navigation away/back in a resumed draft.');
+
+      const beforeBlankCreate = await readUi();
+      await clickLabel('New character');
+      await clickLabel('Start blank');
+      await setWizardValue('#character-wizard-name', 'Rowan');
+      await clickLabel('Review now');
+      await waitForWizardStep('review');
+      assert.equal(await evaluate("document.querySelector('[data-testid=\"character-wizard-review-default-tone\"]')?.textContent.trim()"), 'None', 'Blank review leaves tone unset.');
+      assert.equal(await evaluate("document.querySelector('[data-testid=\"character-wizard-review-default-emotion\"]')?.textContent.trim()"), 'None', 'Blank review leaves emotion unset.');
+      await clickLabel('Create character');
+      await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return after blank character creation');
+      const afterBlankCreate = await readUi();
+      const createdBlankCharacters = afterBlankCreate.characters.filter(character=>!beforeBlankCreate.characters.some(existing=>existing.id===character.id));
+      assert.equal(createdBlankCharacters.length, 1, 'The blank route creates exactly one character.');
+      assert.equal(createdBlankCharacters[0].defaultToneId, '', 'Blank character tone stays None.');
+      assert.equal(createdBlankCharacters[0].defaultEmotionId, '', 'Blank character emotion stays None.');
+      assert.ok(['background','personality','voice'].every(field=>createdBlankCharacters[0][field]===''), 'Blank creation keeps its optional profile fields empty.');
+      report.checks.push('Blank creation leaves the optional profile, tone, and emotion unset.');
+      report.passed = true;
+      return;
     }
     await waitFor("document.querySelector('.app')?.dataset.theme === 'light'", 'Platinum default');
     assert.equal(await evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), 'rgb(229, 235, 234)');
@@ -626,13 +808,22 @@ async function main() {
     await clickSidebarTab('Characters');
     await clickLabel('Save');
     await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'clean project before character wizard checks');
-    const characterWorkflowDiskSnapshot = await fs.readFile(projectPath);
+    let characterWorkflowDiskSnapshot = await fs.readFile(projectPath);
     const beforeCharacterWizard = await readUi();
     assert.equal(beforeCharacterWizard.characters.some(character => character.name === 'Tamsin Revised'), false, 'The project has no Tamsin record before wizard creation.');
     const setWizardValue = async (selector, value) => {
       await evaluate("(() => { const element=document.querySelector(" + JSON.stringify(selector) + "); if(!element) throw new Error('Wizard field missing: ' + " + JSON.stringify(selector) + "); const prototype=element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype,'value').set.call(element," + JSON.stringify(value) + "); element.dispatchEvent(new Event('input',{bubbles:true})); })()");
       await waitFor("document.querySelector(" + JSON.stringify(selector) + ")?.value === " + JSON.stringify(value), 'wizard field ' + selector);
     };
+    const selectWizardPreset = async (type, name) => {
+      const selector = `#character-wizard-default-${type}`;
+      const id = await evaluate(`Array.from(document.querySelector(${JSON.stringify(selector)})?.options ?? []).find(option=>option.textContent.trim()===${JSON.stringify(name)})?.value ?? ''`);
+      assert.ok(id, `The active ${type} preset ${name} is available in the wizard.`);
+      await evaluate(`(() => { const select=document.querySelector(${JSON.stringify(selector)}); if(!select) throw new Error('Wizard selector missing: '+${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(id)}); select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+      await waitFor(`document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(id)}`, `wizard default ${type} ${name}`);
+      return id;
+    };
+    const readWizardGuidance = () => evaluate("Object.fromEntries(['tone','emotion'].map(type=>[type,document.querySelector('#character-wizard-default-'+type)?.value ?? null]))");
     const readWizardProfile = () => evaluate("Object.fromEntries(['background','personality','voice'].map(field=>[field,document.querySelector('#character-wizard-'+field)?.value ?? null]))");
     const readWizardReviewedProfile = () => evaluate("Object.fromEntries(['background','personality','voice'].map(field=>{const heading=document.getElementById('character-wizard-review-'+field);return [field,heading?.closest('.wizard-review-section')?.querySelector('p')?.textContent.trim() ?? ''];}))");
     const readWizardIcon = () => evaluate("document.querySelector('.character-icon-picker-status [data-character-icon]')?.getAttribute('data-character-icon') ?? null");
@@ -644,6 +835,43 @@ async function main() {
     await clickLabel('Choose a stock type');
     await waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.browserView === 'catalog'", 'stock catalog view');
     await captureWizardScreenshots('wizard-stock-results', 'starting-point', [{ width: 800, height: 600 }], ['light', 'dark'], { browserView: 'catalog', browserDetail: 'false' });
+
+    await clickLabel('Ensemble roles');
+    await waitFor("document.querySelectorAll('.character-template-result').length === 5", 'five ensemble-role results');
+    const ensembleRoleTitles = await evaluate("Array.from(document.querySelectorAll('.character-template-result strong')).map(element=>element.textContent.trim()).sort()");
+    assert.deepEqual(ensembleRoleTitles, ['Ensemble Brains', 'Ensemble Heart', 'Ensemble Lancer', 'Ensemble Leader', 'Ensemble Powerhouse'], 'The Ensemble roles category exposes all five individual functions.');
+    await setWizardValue('input[aria-label="Search stock types"]', '5 man band');
+    await waitFor("document.querySelectorAll('.character-template-result').length === 5", 'five literal 5 man band results');
+    assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('.character-template-result strong')).map(element=>element.textContent.trim()).sort()"), ensembleRoleTitles, 'The literal “5 man band” search returns all five individual role templates.');
+    await captureWizardScreenshots('wizard-ensemble-search', 'starting-point', [{ width: 800, height: 960 }], ['light', 'dark'], { browserView: 'catalog', browserDetail: 'false' });
+    await clickLabel('Preview Ensemble Leader');
+    await clickLabel('Use this type and continue');
+    await waitForWizardStep('identity');
+    await setWizardValue('#character-wizard-name', 'Avery');
+    await clickLabel('Next: Profile details');
+    await waitForWizardStep('details');
+    assert.deepEqual(await readWizardGuidance(), { tone: '', emotion: '' }, 'Applying an Ensemble role does not choose a tone or emotion.');
+    await clickLabel('Next: Review');
+    await waitForWizardStep('review');
+    assert.equal(await evaluate("document.querySelector('[data-testid=\"character-wizard-review-default-tone\"]')?.textContent.trim()"), 'None', 'The role review keeps tone unset.');
+    assert.equal(await evaluate("document.querySelector('[data-testid=\"character-wizard-review-default-emotion\"]')?.textContent.trim()"), 'None', 'The role review keeps emotion unset.');
+    const beforeEnsembleCreate = await readUi();
+    await clickLabel('Create character');
+    await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'return to the scene after creating one ensemble-role character');
+    const afterEnsembleCreate = await readUi();
+    const newEnsembleCharacters = afterEnsembleCreate.characters.filter(character => !beforeEnsembleCreate.characters.some(existing => existing.id === character.id));
+    assert.equal(newEnsembleCharacters.length, 1, 'Selecting one ensemble role creates exactly one character, not a forced five-person group.');
+    assert.equal(newEnsembleCharacters[0].name, 'Avery', 'The role remains one writer-named character.');
+    assert.equal(newEnsembleCharacters[0].icon, 'compass', 'The selected Leader role supplies its icon.');
+    assert.ok(['background', 'personality', 'voice'].every(field=>newEnsembleCharacters[0][field].trim()), 'The selected role contributes its individual profile suggestions.');
+    assert.equal(newEnsembleCharacters[0].defaultToneId, '', 'The selected role does not assign a default tone.');
+    assert.equal(newEnsembleCharacters[0].defaultEmotionId, '', 'The selected role does not assign a default emotion.');
+    report.checks.push('The Ensemble roles category and literal “5 man band” search each return five results; applying one role creates one character with no automatic tone or emotion.');
+
+    await clickLabel('New character');
+    await waitForWizardStep('starting-point');
+    await clickLabel('Choose a stock type');
+    await waitFor("document.querySelector('[data-testid=\"character-creation-wizard\"]')?.dataset.browserView === 'catalog'", 'stock catalog reset for the next draft');
     const beforeStockPreview = await readUi();
     await clickLabel('Preview The Miser');
     assert.deepEqual(await readUi(), beforeStockPreview, 'Previewing a stock result never mutates the project.');
@@ -659,6 +887,22 @@ async function main() {
     await waitForWizardStep('details');
     await waitFor("document.activeElement?.id === 'character-wizard-heading'", 'keyboard transition focuses the profile details heading');
     await captureWizardScreenshots('wizard-details', 'details', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark'], { focusHeading: true });
+    assert.deepEqual(await readWizardGuidance(), { tone: '', emotion: '' }, 'A newly applied stock type starts with both defaults set to None.');
+    const neutralToneId = await evaluate("Array.from(document.querySelector('#character-wizard-default-tone')?.options ?? []).find(option=>option.textContent.trim()==='Neutral')?.value ?? ''");
+    assert.ok(neutralToneId, 'Neutral is an available tone preset with a real project ID.');
+    assert.equal(await evaluate("document.querySelector('#character-wizard-default-tone')?.options[0]?.value"), '', 'The None tone option has an empty ID.');
+    assert.notEqual(neutralToneId, '', 'None is distinct from the Neutral preset.');
+    assert.notEqual(neutralToneId, (await readWizardGuidance()).tone, 'The initial unset tone is not Neutral.');
+    await evaluate("(() => { const disclosure=document.querySelector('[data-testid=\"character-wizard-default-guidance\"]'); if(!disclosure)throw new Error('Default guidance disclosure missing'); disclosure.querySelector('summary').click(); })()");
+    await waitFor("document.querySelector('[data-testid=\"character-wizard-default-guidance\"]')?.open === true", 'expanded optional default guidance');
+    assert.deepEqual(await evaluate("(() => { const disclosure=document.querySelector('[data-testid=\"character-wizard-default-guidance\"]'); const selector=type=>document.querySelector('#character-wizard-default-'+type); return { summaryNamed:Boolean(disclosure?.querySelector('summary')?.textContent.trim()), summaryKeyboardReachable:disclosure?.querySelector('summary')?.tabIndex===0, toneLabelled:selector('tone')?.labels?.length===1, emotionLabelled:selector('emotion')?.labels?.length===1, toneHelpConnected:document.getElementById(selector('tone')?.getAttribute('aria-describedby'))?.id==='character-wizard-default-tone-note', emotionHelpConnected:document.getElementById(selector('emotion')?.getAttribute('aria-describedby'))?.id==='character-wizard-default-emotion-note' }; })()"), { summaryNamed: true, summaryKeyboardReachable: true, toneLabelled: true, emotionLabelled: true, toneHelpConnected: true, emotionHelpConnected: true }, 'Default guidance uses a keyboard-reachable disclosure, associated labels, and connected explanations.');
+    const selectedToneId = await selectWizardPreset('tone', 'Reflective');
+    const selectedEmotionId = await selectWizardPreset('emotion', 'Curious');
+    const chosenGuidance = { tone: selectedToneId, emotion: selectedEmotionId };
+    assert.match(await evaluate("document.querySelector('[data-testid=\"character-wizard-default-tone-preview\"]')?.innerText ?? ''"), /thoughtful pause|considered observations/i, 'The chosen tone shows its current writing guidance.');
+    assert.match(await evaluate("document.querySelector('[data-testid=\"character-wizard-default-emotion-preview\"]')?.innerText ?? ''"), /unanswered question|notice details/i, 'The chosen emotion shows its current expression guidance.');
+    await captureWizardScreenshots('wizard-details-expanded-guidance', 'details', [{ width: 1440, height: 960 }, { width: 800, height: 960 }, { width: 800, height: 600 }], ['light', 'dark'], { openDetails: '[data-testid="character-wizard-default-guidance"]', scrollTo: '.wizard-default-guidance' });
+    report.checks.push('A stock profile begins with empty tone/emotion IDs distinct from Neutral; selecting real presets shows their current guidance.');
     const initialStockProfile = await readWizardProfile();
     assert.ok(Object.values(initialStockProfile).every(value => typeof value === 'string' && value.trim()), 'The applied stock type supplies all three optional suggestions.');
     const tamsinBackground = 'Raised among careful traders, Tamsin now risks her savings on a quiet act of generosity.';
@@ -669,7 +913,8 @@ async function main() {
     await setWizardValue('#character-wizard-voice', tamsinVoice);
     await clickLabel('Next: Review');
     await waitForWizardStep('review');
-    await captureWizardScreenshots('wizard-review', 'review', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark']);
+    await captureWizardScreenshots('wizard-review', 'review', [{ width: 1440, height: 960 }, { width: 800, height: 960 }], ['light', 'dark'], { assertReviewGuidance: { tone: 'Reflective', emotion: 'Curious' } });
+    await captureWizardScreenshots('wizard-review-default-guidance', 'review', [{ width: 1440, height: 960 }, { width: 800, height: 960 }, { width: 800, height: 600 }], ['light', 'dark'], { scrollTo: '[data-testid="character-wizard-review-guidance"]', assertReviewGuidance: { tone: 'Reflective', emotion: 'Curious' }, expectReviewGuidance: { tone: 'Reflective', emotion: 'Curious' } });
     assert.equal(await evaluate("document.querySelector('#character-wizard-review-name')?.textContent.trim()"), 'Tamsin', 'Review shows the current identity.');
     await clickLabel('Edit name and icon');
     await setWizardValue('#character-wizard-name', 'Tamsin Revised');
@@ -696,6 +941,7 @@ async function main() {
     await clickLabel('Name and icon');
     await clickLabel('Profile details');
     assert.deepEqual(await readWizardProfile(), editedProfileBeforeReplacement, 'Declining a replacement retains every edited field.');
+    assert.deepEqual(await readWizardGuidance(), chosenGuidance, 'Declining a profile replacement keeps both selected defaults.');
     await clickLabel('Name and icon');
     await clickLabel('Change starting point');
     await clickLabel('Preview The Con Artist');
@@ -706,6 +952,7 @@ async function main() {
     assert.equal(await readWizardIcon(), 'hat-glasses', 'An untouched icon follows the confirmed new stock type.');
     await clickLabel('Profile details');
     const conArtistProfile = await readWizardProfile();
+    assert.deepEqual(await readWizardGuidance(), chosenGuidance, 'Applying a different stock type retains the selected tone and emotion.');
     assert.notDeepEqual(conArtistProfile, editedProfileBeforeReplacement, 'Confirmed replacement updates the applied profile fields.');
     assert.ok(Object.values(conArtistProfile).every(value => typeof value === 'string' && value.trim()), 'The replacement retains all three stock suggestions.');
     await clickLabel('Name and icon');
@@ -721,9 +968,12 @@ async function main() {
     await setWizardValue('#character-wizard-background', tamsinBackground);
     await setWizardValue('#character-wizard-personality', tamsinPersonality);
     await setWizardValue('#character-wizard-voice', tamsinRevisedVoice);
+    assert.deepEqual(await readWizardGuidance(), chosenGuidance, 'Restoring the original stock type retains the writer-selected defaults.');
     await clickLabel('Next: Review');
     await waitForWizardStep('review');
     assert.equal(await evaluate("document.querySelector('#character-wizard-review-name')?.textContent.trim()"), 'Tamsin Revised');
+    assert.equal(await evaluate("document.querySelector('[data-testid=\"character-wizard-review-default-tone\"]')?.textContent.trim()"), 'Reflective', 'Review identifies the selected tone.');
+    assert.equal(await evaluate("document.querySelector('[data-testid=\"character-wizard-review-default-emotion\"]')?.textContent.trim()"), 'Curious', 'Review identifies the selected emotion.');
     assert.match(await evaluate("document.querySelector('[data-testid=\"character-creation-wizard\"] .wizard-review-save-note')?.innerText.trim() ?? ''"), /project Save to write project changes to disk/i, 'Review reminds the user to Save before Create submits the new character.');
 
     const beforeTamsinCreate = await readUi();
@@ -733,15 +983,31 @@ async function main() {
     const afterTamsinCreate = await readUi();
     const newTamsin = afterTamsinCreate.characters.filter(character => !beforeTamsinCreate.characters.some(existing => existing.id === character.id) && character.name === 'Tamsin Revised');
     assert.equal(newTamsin.length, 1, 'Review submits exactly one new character.');
-    assert.deepEqual(newTamsin[0], { id: newTamsin[0].id, name: 'Tamsin Revised', background: tamsinBackground, personality: tamsinPersonality, voice: tamsinRevisedVoice, icon: 'coins', archived: false, defaultToneId: '', defaultEmotionId: '' }, 'Creation uses the exact reviewed fields and icon.');
+    assert.deepEqual(newTamsin[0], { id: newTamsin[0].id, name: 'Tamsin Revised', background: tamsinBackground, personality: tamsinPersonality, voice: tamsinRevisedVoice, icon: 'coins', archived: false, defaultToneId: selectedToneId, defaultEmotionId: selectedEmotionId }, 'Creation uses the exact reviewed profile, icon, and selected default IDs.');
     assert.deepEqual(afterTamsinCreate.scenes, beforeTamsinCreate.scenes, 'Returning to the original scene does not insert a character reference or alter prose.');
     assert.equal(await invoke('project_has_unsaved_changes', { sessionId: await evaluate('window.__nativeSmokeSessionId') }), true, 'Character creation stays in the working copy until Save.');
     await clickLabel('Undo project change');
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>!p.characters.some(c=>c.name==='Tamsin Revised'))", 'Undo removes the created character');
     await clickLabel('Redo project change');
-    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Tamsin Revised'&&c.icon==='coins'&&c.voice=== " + JSON.stringify(tamsinRevisedVoice) + "))", 'Redo restores the complete reviewed profile and icon');
+    await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Tamsin Revised'&&c.icon==='coins'&&c.voice=== " + JSON.stringify(tamsinRevisedVoice) + '&&c.defaultToneId===' + JSON.stringify(selectedToneId) + '&&c.defaultEmotionId===' + JSON.stringify(selectedEmotionId) + '))', 'Redo restores the complete reviewed profile, icon, and default guidance');
 
     assert.deepEqual(await fs.readFile(projectPath), characterWorkflowDiskSnapshot, 'Creation and history stay out of the project file until Save.');
+    await clickLabel('Save');
+    await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'saving the character with selected defaults');
+    const savedCharacterWorkflowDiskSnapshot = await fs.readFile(projectPath);
+    const preReopenCharacterSession = await evaluate('window.__nativeSmokeSessionId');
+    await clickLabel('Project menu');
+    await clickLabel('Open project');
+    await waitFor(`window.__nativeSmokeSessionId !== ${JSON.stringify(preReopenCharacterSession)}`, 'reopened native UI project after saving selected defaults');
+    const reopenedTamsin = (await readUi()).characters.find(character=>character.name==='Tamsin Revised');
+    assert.ok(reopenedTamsin, 'The created character remains in the project after reopen.');
+    assert.equal(reopenedTamsin.defaultToneId, selectedToneId, 'Save/reopen preserves the selected default tone ID.');
+    assert.equal(reopenedTamsin.defaultEmotionId, selectedEmotionId, 'Save/reopen preserves the selected default emotion ID.');
+    report.checks.push('A stock-derived character keeps its explicitly chosen defaults through type replacement, Undo/Redo, Save, and native UI reopen.');
+    characterWorkflowDiskSnapshot = savedCharacterWorkflowDiskSnapshot;
+    await waitFor("Boolean(document.querySelector('button.scene-open'))", 'reopened Story timeline before blank character creation');
+    await evaluate("(() => {const button=Array.from(document.querySelectorAll('button.scene-open')).find(item=>item.querySelector('h3')?.textContent==='Smoke arrival');if(!button||button.disabled)throw new Error('Smoke arrival scene missing after native reopen');button.click();})()");
+    await waitFor("Boolean(document.querySelector('.destination-view:not([hidden]) .scene-layout'))", 'reopen Smoke arrival scene before blank character creation');
     const beforeRowanCreate = await readUi();
     await clickLabel('New character');
     await clickLabel('Start blank');
@@ -773,6 +1039,10 @@ async function main() {
     await setWizardValue('#character-wizard-background', 'A writer-owned field to carry through a profile replacement.');
     await setWizardValue('#character-wizard-personality', 'Private, precise, and more generous than expected.');
     await setWizardValue('#character-wizard-voice', 'Evenly paced, with a dry aside when needed.');
+    await evaluate("(() => { const disclosure=document.querySelector('[data-testid=\"character-wizard-default-guidance\"]'); if(!disclosure)throw new Error('Default guidance disclosure missing'); disclosure.querySelector('summary').click(); })()");
+    const resumedToneId = await selectWizardPreset('tone', 'Hopeful');
+    const resumedEmotionId = await selectWizardPreset('emotion', 'Curious');
+    const resumedGuidance = { tone: resumedToneId, emotion: resumedEmotionId };
     await clickLabel('Name and icon');
     await clickLabel('Change starting point');
     await clickLabel('Preview The Con Artist');
@@ -783,11 +1053,13 @@ async function main() {
     assert.equal(await readWizardIcon(), 'crown', 'An explicitly chosen icon stays across profile replacement.');
     await clickLabel('Profile details');
     const resumedProfile = await readWizardProfile();
+    assert.deepEqual(await readWizardGuidance(), resumedGuidance, 'Changing a stock type retains the resume draft’s chosen guidance.');
     assert.ok(Object.values(resumedProfile).every(value => typeof value === 'string' && value.trim()), 'The changed stock profile is ready to resume.');
     await clickLabel('Characters');
     await clickLabel('Resume character draft');
     await waitForWizardStep('details');
     assert.deepEqual(await readWizardProfile(), resumedProfile, 'Resume restores the draft at its current step.');
+    assert.deepEqual(await readWizardGuidance(), resumedGuidance, 'Resume restores both selected default IDs.');
     await clickLabel('Name and icon');
     assert.equal(await evaluate("document.querySelector('#character-wizard-name')?.value"), 'Draft Only', 'Resume restores the draft identity.');
     assert.equal(await readWizardIcon(), 'crown', 'Resume restores the explicitly chosen icon.');
@@ -799,6 +1071,7 @@ async function main() {
     assert.deepEqual(await fs.readFile(projectPath), characterWorkflowDiskSnapshot, 'Unsubmitted draft text is never written to the project file.');
     report.checks.push('The four-step stock route captures in both themes and widths; blank and stock creation submit one reviewed operation, support safe profile replacement, preserve icon choices, return to the scene without insertion, and remain undoable/unsaved until Save.');
     report.checks.push('A resumed draft keeps its step, name, profile and custom icon; explicit discard removes only the draft and writes no project data.');
+    report.checks.push('A resumed draft retains its selected tone and emotion IDs through stock replacement and navigation away/back.');
     report.checks.push('Stock default icons follow a confirmed type change; declining preserves every writer-edited profile field and restores the applied preview.');
 
     await clickSidebarTab('Characters');
@@ -973,14 +1246,19 @@ async function main() {
       'wizard-stock-results-light-800x600.png', 'wizard-stock-results-dark-800x600.png',
       'wizard-stock-wide-light-1440x960.png', 'wizard-stock-compact-dark-800x960.png',
       'wizard-stock-detail-light-800x600.png', 'wizard-stock-detail-dark-800x600.png',
+      'wizard-ensemble-search-light-800x960.png', 'wizard-ensemble-search-dark-800x960.png',
       'wizard-identity-light-1440x960.png', 'wizard-identity-light-800x960.png',
       'wizard-identity-dark-1440x960.png', 'wizard-identity-dark-800x960.png',
       'wizard-details-light-1440x960.png', 'wizard-details-light-800x960.png',
       'wizard-details-dark-1440x960.png', 'wizard-details-dark-800x960.png',
+      'wizard-details-expanded-guidance-light-1440x960.png', 'wizard-details-expanded-guidance-light-800x960.png', 'wizard-details-expanded-guidance-light-800x600.png',
+      'wizard-details-expanded-guidance-dark-1440x960.png', 'wizard-details-expanded-guidance-dark-800x960.png', 'wizard-details-expanded-guidance-dark-800x600.png',
       'wizard-review-light-1440x960.png', 'wizard-review-light-800x960.png',
       'wizard-review-dark-1440x960.png', 'wizard-review-dark-800x960.png',
+      'wizard-review-default-guidance-light-1440x960.png', 'wizard-review-default-guidance-light-800x960.png', 'wizard-review-default-guidance-light-800x600.png',
+      'wizard-review-default-guidance-dark-1440x960.png', 'wizard-review-default-guidance-dark-800x960.png', 'wizard-review-default-guidance-dark-800x600.png',
     ].sort();
-    assert.deepEqual(wizardScreenshots, expectedWizardScreenshots, 'The initial visual batch contains exactly 22 wizard states at the agreed viewport matrix.');
+    assert.deepEqual(wizardScreenshots, expectedWizardScreenshots, 'The native visual batch contains exactly 36 wizard captures at the agreed viewport matrix.');
     await requestWindowClose(child.pid);
     if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
     assert.equal(child.exitCode, 0, 'A saved project must close normally through its native title-bar close handler.');
