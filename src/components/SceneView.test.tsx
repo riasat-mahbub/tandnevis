@@ -172,7 +172,7 @@ it('inserts optional references at the last caret without a target dialog or aut
   fireEvent.dragStart(character, { dataTransfer });
   expect(dataTransfer.setData).toHaveBeenCalledWith(CHARACTER_REFERENCE_MIME, 'character-1');
   expect(dataTransfer.effectAllowed).toBe('copy');
-  expect(fireEvent.mouseDown(character, { button: 0 })).toBe(false);
+  expect(fireEvent.mouseDown(character, { button: 0 })).toBe(true);
 
   fireEvent.click(screen.getByRole('button', { name: 'Emotion: Calm' }));
   await waitFor(() => expect(beat).toHaveTextContent('Emotion: Calm'));

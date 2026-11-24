@@ -1,0 +1,340 @@
+{
+  "executable": "D:\\writing\\shorthand-writer\\src-tauri\\target\\release\\shorthand-writer.exe",
+  "startedAt": "2026-11-24T03:19:10.634Z",
+  "checks": [
+    "Native zoom-out returns Scene → Chapter → Story and restores independent real scroll positions.",
+    "Native inline references insert between ordinary text and retain caret, editor identity, and undo history across chapter boundaries.",
+    "The original character wizard returns to the same editor; supported beat movement changes native reading order.",
+    "Story drills into a dedicated chapter canvas; the outline opens chapter or scene canvases, and Library returns to its originating chapter.",
+    "Batched desktop, tablet, and narrow captures verify light/dark layout, single-column beats, and both panel states."
+  ],
+  "screenshots": [
+    "workspace-library-drawer-desktop.png",
+    "workspace-library-drawer-narrow.png",
+    "workspace-chapter-compact.png",
+    "workspace-chapter-timeline.png",
+    "workspace-story-chapters.png",
+    "workspace-outline.png",
+    "workspace-scene-light-1440.png",
+    "workspace-scene-light-800.png",
+    "workspace-scene-light-390.png",
+    "workspace-scene-dark-1440.png",
+    "workspace-scene-dark-800.png",
+    "workspace-scene-dark-390.png",
+    "workspace-both-panels-open.png",
+    "workspace-both-panels-collapsed.png"
+  ],
+  "layout": [
+    {
+      "name": "workspace-library-drawer-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "drawerOverflow": false,
+      "editor": null,
+      "beats": []
+    },
+    {
+      "name": "workspace-library-drawer-narrow",
+      "width": 390,
+      "scrollWidth": 390,
+      "drawerOverflow": false,
+      "editor": null,
+      "beats": []
+    },
+    {
+      "name": "workspace-chapter-compact",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "drawerOverflow": false,
+      "editor": null,
+      "beats": []
+    },
+    {
+      "name": "workspace-chapter-timeline",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "drawerOverflow": false,
+      "editor": null,
+      "beats": []
+    },
+    {
+      "name": "workspace-story-chapters",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "drawerOverflow": false,
+      "editor": null,
+      "beats": []
+    },
+    {
+      "name": "workspace-outline",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 260,
+        "width": 1170,
+        "right": 1430
+      },
+      "beats": [
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        }
+      ]
+    },
+    {
+      "name": "workspace-scene-light-1440",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 260,
+        "width": 1170,
+        "right": 1430
+      },
+      "beats": [
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        }
+      ]
+    },
+    {
+      "name": "workspace-scene-light-800",
+      "width": 800,
+      "scrollWidth": 790,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 0,
+        "width": 790,
+        "right": 790
+      },
+      "beats": [
+        {
+          "left": 68,
+          "width": 698,
+          "right": 766
+        },
+        {
+          "left": 68,
+          "width": 698,
+          "right": 766
+        },
+        {
+          "left": 68,
+          "width": 698,
+          "right": 766
+        }
+      ]
+    },
+    {
+      "name": "workspace-scene-light-390",
+      "width": 390,
+      "scrollWidth": 380,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 0,
+        "width": 380,
+        "right": 380
+      },
+      "beats": [
+        {
+          "left": 50,
+          "width": 312,
+          "right": 362
+        },
+        {
+          "left": 50,
+          "width": 312,
+          "right": 362
+        },
+        {
+          "left": 50,
+          "width": 312,
+          "right": 362
+        }
+      ]
+    },
+    {
+      "name": "workspace-scene-dark-1440",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 260,
+        "width": 1170,
+        "right": 1430
+      },
+      "beats": [
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        }
+      ]
+    },
+    {
+      "name": "workspace-scene-dark-800",
+      "width": 800,
+      "scrollWidth": 790,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 0,
+        "width": 790,
+        "right": 790
+      },
+      "beats": [
+        {
+          "left": 68,
+          "width": 698,
+          "right": 766
+        },
+        {
+          "left": 68,
+          "width": 698,
+          "right": 766
+        },
+        {
+          "left": 68,
+          "width": 698,
+          "right": 766
+        }
+      ]
+    },
+    {
+      "name": "workspace-scene-dark-390",
+      "width": 390,
+      "scrollWidth": 380,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 0,
+        "width": 380,
+        "right": 380
+      },
+      "beats": [
+        {
+          "left": 50,
+          "width": 312,
+          "right": 362
+        },
+        {
+          "left": 50,
+          "width": 312,
+          "right": 362
+        },
+        {
+          "left": 50,
+          "width": 312,
+          "right": 362
+        }
+      ]
+    },
+    {
+      "name": "workspace-both-panels-open",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 260,
+        "width": 1170,
+        "right": 1430
+      },
+      "beats": [
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        },
+        {
+          "left": 379,
+          "width": 976,
+          "right": 1355
+        }
+      ]
+    },
+    {
+      "name": "workspace-both-panels-collapsed",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "drawerOverflow": false,
+      "editor": {
+        "left": 46,
+        "width": 1384,
+        "right": 1430
+      },
+      "beats": [
+        {
+          "left": 272,
+          "width": 976,
+          "right": 1248
+        },
+        {
+          "left": 272,
+          "width": 976,
+          "right": 1248
+        },
+        {
+          "left": 272,
+          "width": 976,
+          "right": 1248
+        }
+      ]
+    }
+  ],
+  "gestures": [
+    {
+      "description": "Grouped shelf reference drop into summary",
+      "source": {
+        "x": 125.578125,
+        "y": 297
+      },
+      "target": {
+        "x": 443,
+        "y": 321.140625
+      },
+      "actualDragStart": true
+    }
+  ],
+  "limitations": [
+    "OS chooser interaction requires separate verification."
+  ],
+  "passed": true,
+  "finishedAt": "2026-11-24T03:19:16.495Z"
+}

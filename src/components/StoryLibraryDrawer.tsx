@@ -46,6 +46,14 @@ export default function StoryLibraryDrawer({ open, browsing, project, locked, re
       if (previous?.isConnected && !previous.closest('[hidden]')) previous.focus({ preventScroll: true });
     };
   }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const target = dialog.current?.querySelector<HTMLInputElement>(browsing ? '.library-global-search input' : '.destination-view:not([hidden]) .definition-detail input');
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, browsing]);
   useEffect(() => { if (!open) { setSearch(''); setExpanded({}); } }, [open]);
   return <dialog ref={dialog} className="story-library-drawer" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => {
     if (event.target !== event.currentTarget) return;

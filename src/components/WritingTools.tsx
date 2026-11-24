@@ -29,7 +29,6 @@ export default function WritingTools({ project, locked, onManage, onInsert }: Pr
       style={kind === 'characters' ? undefined : presetColorStyle(effectiveColor(type as 'emotion' | 'tone', definition as Preset))}
       aria-label={`${type[0].toUpperCase() + type.slice(1)}: ${definition.name}`} disabled={locked} draggable={!locked}
       title={`Insert ${definition.name} at the writing caret, or drag into the summary or a beat`}
-      onMouseDown={event => event.preventDefault()}
       onClick={() => onInsert(type, definition)}
       onDragStart={event => {
         event.stopPropagation();

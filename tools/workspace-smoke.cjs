@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath }) {
+module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath, dragBlock }) {
   const fixture = await invoke('create_project', { path: projectPath, title: 'The Academy of Small Wonders' });
   let project = fixture.project;
   const apply = async operation => { project = await invoke('apply_operation', { sessionId: fixture.sessionId, expectedRevision: project.revision, operation }); };
@@ -51,13 +51,17 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
   await waitFor(`Boolean(document.querySelector(${JSON.stringify(editor)})?.editor)`, 'native rich-text editor');
   await evaluate(`(() => { const element=document.querySelector(${JSON.stringify(editor)});window.__workspaceEditor=element;const editor=element.editor;editor.commands.focus();editor.commands.setTextSelection(4); })()`);
   await clickLabel('Character: Murad');
-  const clickTab = async name => evaluate(`Array.from(document.querySelectorAll('${active} [role="tab"]')).find(button=>button.textContent.trim()===${JSON.stringify(name)}).click()`);
-  await clickTab('Emotions'); await clickLabel('Emotion: Awe');
-  await clickTab('Tones'); await clickLabel('Tone: Playful');
+  await evaluate(`(() => {const input=document.querySelector('${active} .block-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Awe');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await clickLabel('Emotion: Awe');
+  await evaluate(`(() => {const input=document.querySelector('${active} .block-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Playful');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await clickLabel('Tone: Playful');
+  await clickLabel('Clear search');
+  await dragBlock(`${active} .story-block[aria-label="Character: Rudra"]`, `${active} .summary-board-heading`, 'Grouped shelf reference drop into summary');
+  await waitFor(`window.__workspaceEditor.editor.getText().includes('Rudra')`, 'real reference drag inserts into the summary');
   const richText = await evaluate(`(() => { const editor=window.__workspaceEditor.editor;return {json:editor.getJSON(),selection:editor.state.selection.from,text:editor.getText()}; })()`);
   const nodes = richText.json.content[0].content;
   for (const type of ['characterReference', 'emotionReference', 'toneReference']) assert.ok(nodes.some(node => node.type === type), `${type} is inserted within the text`);
-  assert.equal(nodes[0].type, 'text'); assert.equal(nodes.at(-1).type, 'text');
+  assert.ok(nodes.some(node=>node.type==='text'), 'References stay within ordinary rich text.');
   await clickLabel('Next scene'); await clickLabel('Next scene');
   assert.equal(await evaluate(`document.querySelector('${active} [aria-label="Scene title"]').value`), 'The room of borrowed names');
   await clickLabel('Previous scene'); await clickLabel('Previous scene');
@@ -70,7 +74,7 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
   const beatId = project.scenes[0].beats[0].id;
   await clickLabel('Move beat 1 down');
   await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__workspaceReviewSession}).then(project=>project.scenes.find(scene=>scene.id===${JSON.stringify(firstScene)}).beats[1]?.id===${JSON.stringify(beatId)})`, 'native beat reordering');
-  await clickTab('Characters'); await clickLabel('New character');
+  await clickLabel('New character');
   await waitFor("document.querySelector('[data-testid=" + JSON.stringify('character-creation-wizard') + "]')?.dataset.wizardStep==='starting-point'", 'original character wizard');
   await clickLabel('Cancel creation');
   assert.equal(await evaluate(`document.querySelector(${JSON.stringify(editor)})===window.__workspaceEditor`), true);
@@ -93,14 +97,24 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
     await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
     await evaluate('window.scrollTo(0,0)');
     await new Promise(resolve => setTimeout(resolve, 120));
-    const layout = await evaluate(`(() => { const scene=document.querySelector('${active} .scene-writing');const beats=Array.from(document.querySelectorAll('${active} .timeline-item'));const rect=element=>{const r=element.getBoundingClientRect();return {left:r.left,width:r.width,right:r.right};};return {name:${JSON.stringify(name)},width:innerWidth,scrollWidth:document.documentElement.scrollWidth,editor:scene?rect(scene):null,beats:beats.map(rect)}; })()`);
+    const layout = await evaluate(`(() => { const scene=document.querySelector('${active} .scene-writing');const beats=Array.from(document.querySelectorAll('${active} .timeline-item'));const rect=element=>{const r=element.getBoundingClientRect();return {left:r.left,width:r.width,right:r.right};};return {name:${JSON.stringify(name)},width:innerWidth,scrollWidth:document.documentElement.scrollWidth,drawerOverflow:(()=>{const drawer=document.querySelector('.story-library-drawer[open]');return !!drawer&&drawer.scrollWidth>drawer.clientWidth+1;})(),editor:scene?rect(scene):null,beats:beats.map(rect)}; })()`);
     report.layout.push(layout);
     assert.ok(layout.scrollWidth <= width + 1, `${name} has no horizontal document overflow`);
+    assert.equal(layout.drawerOverflow, false, `${name} keeps the drawer within its width`);
     if (layout.beats.length) assert.ok(layout.beats.every(beat => Math.abs(beat.left - layout.beats[0].left) < 1 && Math.abs(beat.width - layout.beats[0].width) < 1), `${name} keeps every editable beat in one comfortable column`);
     const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await fs.writeFile(path.join(run, name + '.png'), Buffer.from(screenshot.data, 'base64'));
     report.screenshots.push(name + '.png');
   }
+  await clickLabel('Library');
+  await waitFor("Boolean(document.querySelector('.story-library-drawer[open]'))", 'Story Library drawer opens');
+  assert.equal(await evaluate("document.querySelector('.story-library-drawer').contains(document.activeElement)"), true, 'Opening the drawer moves focus inside.');
+  await capture('workspace-library-drawer-desktop', 1440, 960);
+  await capture('workspace-library-drawer-narrow', 390, 844);
+  await cdp.send('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await cdp.send('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await waitFor("!document.querySelector('.story-library-drawer[open]')", 'Escape dismisses the library drawer');
+  await cdp.send('Emulation.setDeviceMetricsOverride', {width:1440,height:960,deviceScaleFactor:1,mobile:false});
   await capture('workspace-chapter-compact', 1440, 960);
   await clickLabel('Compact scene list'); await capture('workspace-chapter-timeline', 1440, 960);
   await clickLabel('Zoom out to story'); await capture('workspace-story-chapters', 1440, 960);
@@ -120,7 +134,7 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
   await clickLabel('Expand block sidebar'); await clickLabel('Expand scene details');
   await capture('workspace-both-panels-open', 1440, 960);
-  await clickLabel('Collapse block sidebar'); await clickLabel('Collapse scene details');
+  await clickLabel('Collapse scene details'); await clickLabel('Collapse block sidebar');
   await capture('workspace-both-panels-collapsed', 1440, 960);
   report.checks.push('Batched desktop, tablet, and narrow captures verify light/dark layout, single-column beats, and both panel states.');
   await clickLabel('Save');

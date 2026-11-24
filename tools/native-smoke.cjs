@@ -172,14 +172,14 @@ async function main() {
     };
     const clickLabel = async name => {
       if (['Characters', 'Emotions', 'Tones'].includes(name)) {
-        await evaluate("(() => { const menu=document.querySelector('.library-menu'); if(menu&&!menu.open)menu.querySelector('summary').click(); })()");
+        await evaluate("(() => { const drawer=document.querySelector('.story-library-drawer[open]');if(drawer){drawer.querySelector('.library-all')?.click();}else{document.querySelector('[aria-label=\"Library\"]')?.click();} })()");
       }
-      const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
+      const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && !button.closest('[inert],[aria-hidden="true"]') && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
       await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
       await evaluate(`(${button}).click()`);
     };
     const keyboardActivateLabel = async name => {
-      const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
+      const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && !button.closest('[inert],[aria-hidden="true"]') && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
       await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
       // Let Settings finish restoring its focus, then reach the action through
       // actual keyboard navigation rather than racing its animation frame.
@@ -194,9 +194,8 @@ async function main() {
       await evaluate(`(${button}).click()`);
     };
     const clickSidebarTab = async name => {
-      const tab = `Array.from(document.querySelectorAll('[role="tab"]')).find(tab => tab.textContent.trim() === ${JSON.stringify(name)})`;
-      await waitFor(`Boolean(${tab})`, `${name} sidebar tab`);
-      await evaluate(`(${tab}).click()`);
+      await evaluate(`(() => {const shelf=Array.from(document.querySelectorAll('.block-shelf')).find(element=>element.getClientRects().length);const toggle=shelf?.querySelector('.shelf-toggle');if(toggle?.getAttribute('aria-expanded')==='false')toggle.click();})()`);
+      await evaluate(`(() => {const group=Array.from(document.querySelectorAll('.writing-tool-group')).find(group=>group.getClientRects().length&&group.querySelector('h3')?.textContent===${JSON.stringify(name)});const more=group?.querySelector('.group-more[aria-expanded="false"]');if(more)more.click();group?.scrollIntoView({block:'nearest'});})()`);
     };
     // Intercept a real Chromium dragstart, then deliver that browser-created
     // payload to the actual target. No synthetic DataTransfer or renderer hook.
@@ -504,7 +503,7 @@ async function main() {
       report.checks.push('Portable runtime resolves writable app data beside the executable, independently of the development working directory');
     }
     if (focusedWorkspace) {
-      await require('./workspace-smoke.cjs')({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath });
+      await require('./workspace-smoke.cjs')({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath, dragBlock });
       await requestWindowClose(child.pid);
       if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
       assert.equal(child.exitCode, 0, 'The saved workspace closes through the native close handler.');
@@ -826,7 +825,7 @@ async function main() {
     assert.ok(aweId, 'Starter Awe emotion is present.');
     assert.equal(collectReferences(beatAfterClicks.document, 'emotionReference').filter(node => node.attrs.emotionId === aweId && !node.attrs.targetOccurrenceId).length, 2, 'New emotions are independent and unbound.');
     assert.equal(collectReferences(beatAfterClicks.document, 'toneReference').length, 2, 'The beat retains both tone references.');
-    await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-inspector-body')?.hidden === true", 'optional scene details stays closed after reference insertion');
+    await waitFor("document.querySelector('.scene-settings .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-inspector-body')?.hidden === true", 'optional scene details stays closed after reference insertion');
     report.checks.push('Native keyboard click insertion adds independent emotions and multiple tones at the last focused caret without opening scene details');
     assert.equal(await evaluate("document.querySelector('.project-header-identity')?.firstElementChild?.classList.contains('project-back')"),true,'Back is the leftmost header control');
     await clickSidebarTab('Characters');
@@ -1230,7 +1229,7 @@ async function main() {
     assert.equal(collectReferences(movedBeat.document, 'toneReference').length, 3);
     report.checks.push('Actual pointer drops place all reference kinds on summary headings and beat card labels; emotions and multiple tones remain independent inline references');
     report.checks.push('Generic inline drag moves emotions and tones across boards and Ctrl-drag copies only the selected character with a fresh occurrence ID');
-    await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-inspector-body')?.hidden === true", 'reference drops do not open scene details');
+    await waitFor("document.querySelector('.scene-settings .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-inspector-body')?.hidden === true", 'reference drops do not open scene details');
     const colors=await evaluate("Object.fromEntries(['character','emotion','tone'].map(kind=>[kind,getComputedStyle(document.querySelector('.ProseMirror .block-'+kind)).backgroundColor]))");
     assert.ok(Object.values(colors).every(color => typeof color === 'string' && color.startsWith('rgb(')), 'Character, emotion, and tone references all have a computed background.');
     const roseTone = starterCatalog.tones.find(preset => preset.name === 'Tender');

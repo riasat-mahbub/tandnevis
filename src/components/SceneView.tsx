@@ -96,10 +96,9 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const discardDraft = () => { if (generationState.job) run(() => generation.discard(sessionId, scene.id, reviewPurpose).then(() => notify('Generated draft discarded.'))); };
   return <main ref={root} className={`scene-layout ${shelfCollapsed ? 'scene-layout-shelf-collapsed' : ''} ${detailsOpen ? 'scene-layout-details-open' : 'scene-layout-details-collapsed'}`}>
     <aside className={`library block-shelf ${shelfCollapsed ? 'block-shelf-collapsed' : ''}`} aria-label="Story blocks">
-      <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Tools' : 'Hide tools'}</span></button>
+      <div className="shelf-heading"><strong hidden={shelfCollapsed}>Writing tools</strong><button className="shelf-toggle quiet icon-button" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => { setShelfCollapsed(!shelfCollapsed); if (!shelfCollapsed) setDetailsOpen(false); }}>{shelfCollapsed ? <ChevronRight size={17}/> : <ChevronLeft size={17}/>}</button></div>
       {shelfCollapsed && <button className="quiet icon-button" aria-label="Search story blocks" onClick={() => { setShelfCollapsed(false); requestAnimationFrame(() => root.current?.querySelector<HTMLInputElement>('.block-search input')?.focus()); }}><Search size={18}/></button>}
       <div id={`${prefix}-shelf`} className="block-shelf-body" hidden={shelfCollapsed}>
-        <h2>Writing tools</h2>
         <WritingTools project={project} locked={locked} onManage={manage} onInsert={insertReference}/>
       </div>
     <section className="scene-settings" aria-label="Scene settings">

@@ -14,14 +14,14 @@ Choose **New project** or **Open project** from the welcome screen or the **Proj
 
 ## Shape and write a story
 
-1. In **Story**, add chapters and open a chapter card to enter its dedicated canvas. Add and arrange scenes there, then open a scene to write. **Compact scene list** provides a denser view of that chapter.
+1. In **Story**, browse numbered chapter rows with narrative excerpts and a scene outline. Open a chapter to add and arrange scenes in its connected list, then open a scene to write. **Compact scene list** provides a denser view of that chapter.
 2. Write the scene's direction in **Scene summary**. Use **Add beat** to create ordered beat cards beneath it, and write narration or dialogue in **Scene prose**.
-3. Open the separate **Library** menu for **Characters**, **Emotions**, and **Tones** to manage reusable project-wide definitions. In a scene, the block shelf inserts references within ordinary writing: click a block to insert at the last active caret, or drag it into the summary or a beat.
+3. Open **Story Library** to search **Characters**, **Emotions**, and **Tones** together in a drawer. Choose a definition or category to access its full editor, archive filters, and usage list. Escape returns to your writing. In a scene, **Writing tools** shows all three groups with one shared search and **Show all** controls. Click a block to insert at the last active caret, or drag it into the summary or a beat.
 4. To make a character, choose **New character**. The four steps are **Starting point**, **Name and icon**, optional **Profile details**, and **Review**. Start blank or adapt one of 58 stock character types, including five ensemble functions. Tone and emotion defaults are optional; **None** leaves either unset. Review the profile and choose **Create character**, then **Save** to write the project changes to disk.
 
 Reorder scenes and beats with drag and drop or the move controls. Use the **Undo** and **Redo** buttons for recent project changes. Deleted scenes, beats, chapters, and unused definitions go to **Trash**, where you can restore them.
 
-Navigate through **Story → Chapter → Scene** by opening cards. Zooming out from a scene returns to its chapter; zooming out from a chapter returns to Story. Each canvas restores its own scroll position. Click the current scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. Library returns to the writing canvas it was opened from. Both side panels can collapse, and scene details stay closed until needed. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
+Navigate through **Story → Chapter → Scene** by opening chapters and scenes. Zooming out from a scene returns to its chapter; zooming out from a chapter returns to Story. Each canvas restores its own scroll position. Click the current scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. The library drawer returns to the writing canvas it was opened from. Collapse the writing-tools shelf for more writing space; optional **Scene details** live at the bottom of that shelf. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
 
 ## Save and move between projects
 
@@ -31,7 +31,7 @@ The **Project** menu also has **Import Markdown...** and **Export outline as Mar
 
 ## Optional ChatGPT generation
 
-To generate in a scene, connect ChatGPT and verify a model in **Settings**. Generation needs an internet connection and eligible ChatGPT plan access; availability depends on your account and the current app build. **Generate scene** proposes beats from the summary. **Generate prose** drafts from the summary and beats. Review each result, then accept it into the project or discard it. You can continue writing without connecting ChatGPT.
+To generate in a scene, connect ChatGPT and verify a model in **Settings**. Generation needs an internet connection and eligible ChatGPT plan access; availability depends on your account and the current app build. **Generate beats** proposes beats from the summary. **Generate prose** drafts from the summary and beats. Compare each proposal beside your editable source; narrower windows stack the proposal below it. Accepting beats appends them, while accepting prose replaces the existing scene prose. **Close review** keeps the draft available through **Review draft**. You can continue writing without connecting ChatGPT.
 
 ## Projects and backups
 
