@@ -9,7 +9,7 @@ Reference: [tandnevis-compile-studio.html](tandnevis-compile-studio.html), retai
 - At 780px and below, use a bottom utility bar and a full-width drawer above it. Reserve content space and account for the bottom safe area.
 - Keep the existing search, editors, creation workflows, modal focus behavior, scene caret, manual Save, and pending edits. Keep Project, Settings, Undo/Redo, and save feedback in the header.
 
-Compile Book is planned below. Do not display a placeholder export button before the dialog and file-writing path work.
+The Compile Book workflow below is implemented for Markdown, plain text, and HTML. The working action is available below Story Library. PDF feasibility was investigated and remains unverified for production, so PDF is omitted from the format selector. See [implementation verification](compile-verification.md) and [PDF feasibility](compile-pdf-feasibility.md).
 
 Library relocation verification: all 167 existing tests pass, including drawer search, caret/focus restoration and creation return paths; `npm run build` passes with the existing bundle-size warning. A Chromium preview with synthetic content confirms the rail and drawer fit at 1440, 800, 780, 390 and 320px, dismissal returns trigger focus, and Story navigation preserves the mounted scene editor. Light/dark desktop and narrow screenshots were inspected. The mechanical design scan returned no findings for the changed UI files. Native packaging and export behavior were not exercised in this layout-only change.
 

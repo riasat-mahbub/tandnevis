@@ -1,0 +1,154 @@
+{
+  "executable": "D:\\writing\\shorthand-writer\\.tools\\compile-native-3fdee0100d824c45b56f195653449ec4\\Shorthand Writer.exe",
+  "startedAt": "2026-11-24T18:44:35.039Z",
+  "checks": [
+    "Portable runtime resolves writable app data beside the executable, independently of the development working directory",
+    "Opening from a scene flushes the latest queued prose into its preview without a project Save.",
+    "Close returns focus to Compile Book and preserves the same mounted scene prose editor.",
+    "A newer queued edit marks the immutable preview stale, blocks export, and appears only after Refresh preview.",
+    "Story, chapter, and scene scopes follow selected IDs; empty-scene policies work, and summaries/beats stay out of the manuscript.",
+    "Markdown overwrite and TXT retry use the real Rust writer; literal Unicode/markup survives with format-specific escaping.",
+    "HTML is UTF-8 with escaped prose, and chooser cancellation is silent without invoking the writer.",
+    "The saved Compile Book fixture closes normally through the native title-bar close handler."
+  ],
+  "screenshots": [
+    "compile-light-1440x960.png",
+    "compile-light-800x900.png",
+    "compile-light-780x900.png",
+    "compile-light-390x844.png",
+    "compile-dark-1440x960.png",
+    "compile-dark-800x900.png",
+    "compile-dark-780x900.png",
+    "compile-dark-390x844.png"
+  ],
+  "layout": [
+    {
+      "view": "compile",
+      "theme": "light",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "dialog": {
+        "left": 120,
+        "right": 1320,
+        "width": 1200
+      },
+      "bodyDisplay": "grid",
+      "configBottom": 836,
+      "previewTop": 160.796875
+    },
+    {
+      "view": "compile",
+      "theme": "light",
+      "width": 800,
+      "scrollWidth": 800,
+      "dialog": {
+        "left": 16,
+        "right": 784,
+        "width": 768
+      },
+      "bodyDisplay": "grid",
+      "configBottom": 806,
+      "previewTop": 130.796875
+    },
+    {
+      "view": "compile",
+      "theme": "light",
+      "width": 780,
+      "scrollWidth": 780,
+      "dialog": {
+        "left": 0,
+        "right": 780,
+        "width": 780
+      },
+      "bodyDisplay": "block",
+      "configBottom": 893.578125,
+      "previewTop": 893.578125
+    },
+    {
+      "view": "compile",
+      "theme": "light",
+      "width": 390,
+      "scrollWidth": 390,
+      "dialog": {
+        "left": 0,
+        "right": 390,
+        "width": 390
+      },
+      "bodyDisplay": "block",
+      "configBottom": 952.96875,
+      "previewTop": 952.96875
+    },
+    {
+      "view": "compile",
+      "theme": "dark",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "dialog": {
+        "left": 120,
+        "right": 1320,
+        "width": 1200
+      },
+      "bodyDisplay": "grid",
+      "configBottom": 836,
+      "previewTop": 160.796875
+    },
+    {
+      "view": "compile",
+      "theme": "dark",
+      "width": 800,
+      "scrollWidth": 800,
+      "dialog": {
+        "left": 16,
+        "right": 784,
+        "width": 768
+      },
+      "bodyDisplay": "grid",
+      "configBottom": 806,
+      "previewTop": 130.796875
+    },
+    {
+      "view": "compile",
+      "theme": "dark",
+      "width": 780,
+      "scrollWidth": 780,
+      "dialog": {
+        "left": 0,
+        "right": 780,
+        "width": 780
+      },
+      "bodyDisplay": "block",
+      "configBottom": 893.578125,
+      "previewTop": 893.578125
+    },
+    {
+      "view": "compile",
+      "theme": "dark",
+      "width": 390,
+      "scrollWidth": 390,
+      "dialog": {
+        "left": 0,
+        "right": 390,
+        "width": 390
+      },
+      "bodyDisplay": "block",
+      "configBottom": 952.96875,
+      "previewTop": 952.96875
+    }
+  ],
+  "gestures": [],
+  "limitations": [
+    "The export chooser result was intercepted for deterministic path, failure, retry, and cancel coverage; Windows OS Save dialog interaction still needs separate verification."
+  ],
+  "passed": true,
+  "compileExport": {
+    "chooser": "Tauri plugin dialog save result intercepted in WebView2; Windows OS Save dialog was not opened.",
+    "nativeWriter": "Real write_compiled_manuscript Tauri command",
+    "files": [
+      "D:\\writing\\shorthand-writer\\.tools\\native-smoke\\run-5uUd1B\\temporary\\Compile Book overwrite.md",
+      "D:\\writing\\shorthand-writer\\.tools\\native-smoke\\run-5uUd1B\\temporary\\Compile Book retry.txt",
+      "D:\\writing\\shorthand-writer\\.tools\\native-smoke\\run-5uUd1B\\temporary\\Compile Book export.html"
+    ],
+    "canceledFormat": "html"
+  },
+  "finishedAt": "2026-11-24T18:44:41.115Z"
+}

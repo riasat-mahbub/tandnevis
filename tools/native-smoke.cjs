@@ -13,17 +13,18 @@ const presetPalette = ['#BE527A', '#B98116', '#C85343', '#8260AD', '#527FB0', '#
 const presetFamilyNames = ['Connection', 'Positive energy', 'Conflict', 'Unease', 'Vulnerability', 'Discovery', 'Focus'];
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
-  console.log('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace] [--exe path/to/shorthand-writer.exe]\nRequires a built Windows app. Launches that exact child with an isolated WebView2 profile and temporary CDP port.');
+  console.log('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace | --compile] [--exe path/to/shorthand-writer.exe]\nRequires a built Windows app. Launches that exact child with an isolated WebView2 profile and temporary CDP port.');
   process.exit(0);
 }
 const exeIndex = argv.indexOf('--exe');
 const continuationIndex = argv.indexOf('--wizard-continuation');
 const focusedWorkspace = argv.includes('--workspace');
-const modeArgs = argv.filter(arg => arg === '--wizard-continuation' || arg === '--workspace');
+const focusedCompile = argv.includes('--compile');
+const modeArgs = argv.filter(arg => arg === '--wizard-continuation' || arg === '--workspace' || arg === '--compile');
 const remainingArgs = argv.filter(arg => !modeArgs.includes(arg));
 const validArgs = modeArgs.length <= 1 && (remainingArgs.length === 0 || remainingArgs.length === 2 && remainingArgs[0] === '--exe' && !!remainingArgs[1]);
 if (!validArgs) {
-  console.error('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace] [--exe path/to/shorthand-writer.exe]');
+  console.error('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace | --compile] [--exe path/to/shorthand-writer.exe]');
   process.exit(2);
 }
 const exe = path.resolve(root, exeIndex >= 0 ? argv[exeIndex + 1] ?? '' : 'src-tauri/target/release/shorthand-writer.exe');
@@ -507,6 +508,15 @@ async function main() {
       await requestWindowClose(child.pid);
       if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
       assert.equal(child.exitCode, 0, 'The saved workspace closes through the native close handler.');
+      report.passed = true;
+      return;
+    }
+    if (focusedCompile) {
+      await require('./compile-smoke.cjs')({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath, temporary });
+      await requestWindowClose(child.pid);
+      if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
+      assert.equal(child.exitCode, 0, 'The saved compile fixture closes through the native close handler.');
+      report.checks.push('The saved Compile Book fixture closes normally through the native title-bar close handler.');
       report.passed = true;
       return;
     }

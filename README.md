@@ -29,6 +29,14 @@ Saving is manual by default: choose **Save** or press **Ctrl+S**. To save automa
 
 The **Project** menu also has **Import Markdown...** and **Export outline as Markdown...**. Import adds Markdown as chapters, scenes, and beats; export includes the story outline and beat text. These are explicit import and export actions, not a live sync.
 
+## Compile a manuscript
+
+Choose **Compile Book** in the utility rail, or press **Ctrl/Cmd+Shift+E**, to export written scene prose as **Markdown**, **plain text**, or a standalone **HTML** document. Compilation starts with the current story, chapter, or scene. You can change that scope, include a title page or contents, show scene titles, choose scene breaks, and decide whether unfinished scenes should be skipped, included as placeholders, or block export.
+
+The preview and file use the same snapshot of your writing, including queued prose edits. Compilation does not require project Save. If the writing changes while the preview is open, choose **Refresh preview** before exporting. Chapter and scene order follow the manuscript. Summaries, beats, library definitions, and unaccepted AI drafts are excluded. Closing compilation returns to your writing without replacing the editors.
+
+Choose **Export** to select a destination in the desktop Save dialog. Canceling leaves your project untouched; a failed export keeps the preview open so you can retry. The browser preview can show compilation, but file export requires the desktop app. Native PDF export is not included in this version; the HTML document can be opened and printed separately in a browser.
+
 ## Optional ChatGPT generation
 
 To generate in a scene, connect ChatGPT and verify a model in **Settings**. Generation needs an internet connection and eligible ChatGPT plan access; availability depends on your account and the current app build. **Generate beats** proposes beats from the summary. **Generate prose** drafts from the summary and beats. Compare each proposal beside your editable source; narrower windows stack the proposal below it. Accepting beats appends them, while accepting prose replaces the existing scene prose. **Close review** keeps the draft available through **Review draft**. You can continue writing without connecting ChatGPT.

@@ -48,6 +48,14 @@ Manual Save remains the default in the app header. Navigation does not save the 
 
 Tauri 2 with React/TypeScript and Rust remains the desktop architecture. Rust commands own SQLite persistence. Markdown import/export is explicit interchange, without live two-way sync. Do not rebuild persistence or generation for a layout change.
 
+## Manuscript compilation
+
+Compile Book sits below Story Library in the utility rail and opens a focused modal with options on the left, a readable manuscript preview on the right, and persistent counts and file actions beneath. Narrow windows stack options above the preview within one scrollable body. Preserve the mounted writing editors and restore trigger focus on dismissal. Ctrl/Cmd+Shift+E opens compilation when another dialog is not active.
+
+Compile only scene prose in narrative chapter/scene order, including manual writing and accepted drafts. Story, chapter, and scene scopes use stable IDs. Title page, contents, scene headings, scene breaks, and unfinished-scene policies are explicit choices; default to Markdown and skipping empty prose. Counts distinguish selected, included, and unfinished scenes and count only written words. Plain text, Markdown, and standalone escaped HTML share the same manuscript model as the text-node preview. No summaries, beats, definitions, deleted material, generation instructions, or pending proposals enter the manuscript.
+
+Opening and refreshing compilation flush queued edits without implicitly saving the project file. Preview and export share a cloned project snapshot. Changes require an explicit refresh, and the session/revision is checked again after the native Save dialog. Cancellation is silent; export failures retain the preview for retry. A scoped Rust command safely replaces UTF-8 manuscript files. Existing outline Markdown interchange stays in Project. Native PDF remains outside the format selector until print/PDF completion and cancellation are verified in the desktop app.
+
 ## Visual system and accessibility
 
 - Platinum `#E5EBEA`, Harvest Orange `#FF7700`, primary-action orange `#B94F00`, Iron Grey `#435058`, and deep ink `#20282D` remain authoritative.
