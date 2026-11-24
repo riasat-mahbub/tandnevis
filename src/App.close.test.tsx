@@ -2,6 +2,7 @@ import './test/dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+import { openLibrary } from './test/navigation';
 import { gateway, project, session } from './test/fixtures';
 
 const native = vi.hoisted(() => ({ closeHandler: undefined as undefined | ((event: { preventDefault(): void }) => Promise<void>), destroy: vi.fn(async () => {}), unlisten: vi.fn() }));
@@ -37,7 +38,7 @@ describe('native close protection', () => {
   it('requires an explicit wizard draft decision before native close without saving the project', async () => {
     const g = gateway(); g.desktop = true;
     render(<App gateway={g} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Rae' } });

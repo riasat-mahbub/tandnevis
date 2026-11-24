@@ -14,14 +14,14 @@ Choose **New project** or **Open project** from the welcome screen or the **Proj
 
 ## Shape and write a story
 
-1. In **Story**, add chapters and scenes to build the story overview. Switch between **Timeline** and **Compact**, collapse chapters, or **Focus** one chapter. Open a scene to work on it.
+1. In **Story**, add chapters and open a chapter card to enter its dedicated canvas. Add and arrange scenes there, then open a scene to write. **Compact scene list** provides a denser view of that chapter.
 2. Write the scene's direction in **Scene summary**. Use **Add beat** to create ordered beat cards beneath it, and write narration or dialogue in **Scene prose**.
-3. Use **Characters**, **Emotions**, and **Tones** to manage reusable project-wide definitions. In a scene, the block shelf inserts references within ordinary writing: click a block to insert at the last active caret, or drag it into the summary or a beat.
+3. Open the separate **Library** menu for **Characters**, **Emotions**, and **Tones** to manage reusable project-wide definitions. In a scene, the block shelf inserts references within ordinary writing: click a block to insert at the last active caret, or drag it into the summary or a beat.
 4. To make a character, choose **New character**. The four steps are **Starting point**, **Name and icon**, optional **Profile details**, and **Review**. Start blank or adapt one of 58 stock character types, including five ensemble functions. Tone and emotion defaults are optional; **None** leaves either unset. Review the profile and choose **Create character**, then **Save** to write the project changes to disk.
 
 Reorder scenes and beats with drag and drop or the move controls. Use the **Undo** and **Redo** buttons for recent project changes. Deleted scenes, beats, chapters, and unused definitions go to **Trash**, where you can restore them.
 
-The scene header shows **Story / Chapter / Scene**. Click a chapter or scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. **Story overview** returns to your place in the overview. Both side panels can collapse, and scene details stay closed until needed. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
+Navigate through **Story → Chapter → Scene** by opening cards. Zooming out from a scene returns to its chapter; zooming out from a chapter returns to Story. Each canvas restores its own scroll position. Click the current scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. Library returns to the writing canvas it was opened from. Both side panels can collapse, and scene details stay closed until needed. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
 
 ## Save and move between projects
 

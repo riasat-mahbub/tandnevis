@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/core';
 import App from './App';
 import { deferred, gateway, project, session } from './test/fixtures';
 import type { ProjectSnapshot } from './services/project';
+import { openArrival, openChapter, openLibrary } from './test/navigation';
 
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ destroy: vi.fn(), onCloseRequested: vi.fn(async () => vi.fn()) }) }));
 afterEach(cleanup);
@@ -15,10 +16,27 @@ function narrative() {
   snapshot.scenes.push({ ...structuredClone(snapshot.scenes[1]), id: 'scene-3', chapterId: 'chapter-2', title: 'The academy', summary: 'At the academy gates.' });
   return snapshot;
 }
-const openArrival = () => fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
 const editorFor = (element: HTMLElement) => (element as HTMLElement & { editor: Editor }).editor;
 
-describe('story-first navigation', () => {
+describe('hierarchical writing canvases', () => {
+  it('drills into separate chapter and scene canvases and zooms out one parent at a time', () => {
+    render(<App gateway={gateway()} initialSession={session()}/>);
+    expect(screen.getByRole('main', { name: 'Story canvas' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Arrival .*Open scene/ })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Writing views' })).toBeNull();
+    expect(document.querySelector('.writing-view-switch')).toBeNull();
+    openChapter();
+    expect(screen.getByRole('main', { name: 'Chapter canvas: The beginning' })).toBeVisible();
+    expect(screen.queryByRole('main', { name: 'Story canvas' })).toBeNull();
+    openArrival();
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out to chapter' }));
+    expect(screen.getByRole('main', { name: 'Chapter canvas: The beginning' })).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: 'Scene summary' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out to story' }));
+    expect(screen.getByRole('main', { name: 'Story canvas' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Arrival .*Open scene/ })).toBeNull();
+  });
   it('follows chapter reading order across empty chapters and disables the end controls', () => {
     const snapshot = narrative();
     // Scene storage order must not determine narrative navigation order.
@@ -30,7 +48,7 @@ describe('story-first navigation', () => {
     expect(screen.getByRole('textbox', { name: 'Scene title' })).toHaveValue('The letter');
     fireEvent.click(screen.getByRole('button', { name: 'Next scene' }));
     expect(screen.getByRole('textbox', { name: 'Scene title' })).toHaveValue('The academy');
-    expect(screen.getByRole('button', { name: 'Jump to chapter or scene: Beyond the gate' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open chapter Beyond the gate' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Next scene' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Previous scene' }));
     expect(screen.getByRole('textbox', { name: 'Scene title' })).toHaveValue('The letter');
@@ -67,21 +85,21 @@ describe('story-first navigation', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('focuses a chapter in Story View and retains its compact presentation across a scene visit', () => {
+  it('opens a chapter from the outline and preserves its own canvas presentation', () => {
     const snapshot = narrative();
     render(<App gateway={gateway(snapshot)} initialSession={session(snapshot)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Compact' }));
     openArrival();
-    fireEvent.click(screen.getByRole('button', { name: 'Jump to chapter or scene: The beginning' }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Focus chapter Beyond the gate' }));
-    expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Expand chapter The beginning' })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('button', { name: 'Collapse chapter Beyond the gate' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to scene: Arrival' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Open chapter Beyond the gate' }));
+    expect(screen.getByRole('main', { name: 'Chapter canvas: Beyond the gate' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Compact scene list' }));
     fireEvent.click(screen.getByRole('button', { name: /^The academy .*Open scene/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Story overview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out to chapter' }));
+    expect(screen.getByRole('button', { name: 'Compact scene list' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /^The academy .*Open scene/ })).toHaveAttribute('aria-current', 'location');
     expect(screen.queryByRole('button', { name: /^Arrival .*Open scene/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show all chapters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out to story' }));
+    openChapter();
     expect(screen.getByRole('button', { name: /^Arrival .*Open scene/ })).toBeVisible();
   });
 
@@ -129,12 +147,15 @@ describe('story-first navigation', () => {
     expect(g.save).not.toHaveBeenCalled();
   });
 
-  it('restores independent scene and overview scroll positions', async () => {
+  it('restores independent story, chapter, and scene scroll positions when zooming out', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'scrollY')!;
     let scrollPosition = 420;
     Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollPosition });
     try {
       render(<App gateway={gateway()} initialSession={session()}/>);
+      openChapter();
+      await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0));
+      scrollPosition = 240;
       openArrival();
       await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0));
       scrollPosition = 600;
@@ -143,7 +164,9 @@ describe('story-first navigation', () => {
       scrollPosition = 250;
       fireEvent.click(screen.getByRole('button', { name: 'Previous scene' }));
       await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith(0, 600));
-      fireEvent.click(screen.getByRole('button', { name: 'Story overview' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Zoom out to chapter' }));
+      await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith(0, 240));
+      fireEvent.click(screen.getByRole('button', { name: 'Zoom out to story' }));
       await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith(0, 420));
     } finally { Object.defineProperty(window, 'scrollY', descriptor); }
   });
@@ -158,5 +181,25 @@ describe('story-first navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
     expect(g.apply).not.toHaveBeenCalled();
+  });
+
+  it('keeps Library outside the writing hierarchy and returns to the originating chapter', () => {
+    render(<App gateway={gateway()} initialSession={session()}/>);
+    openArrival();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out to chapter' }));
+    openLibrary('Characters');
+    expect(screen.getByRole('heading', { name: 'Characters', level: 1 })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Return to The beginning' }));
+    expect(screen.getByRole('main', { name: 'Chapter canvas: The beginning' })).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: 'Scene summary' })).toBeNull();
+  });
+
+  it('provides an empty dedicated chapter canvas without showing another chapter’s scenes', () => {
+    const snapshot = narrative();
+    render(<App gateway={gateway(snapshot)} initialSession={session(snapshot)}/>);
+    openChapter('Interlude');
+    expect(screen.getByRole('main', { name: 'Chapter canvas: Interlude' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Create the first scene' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Arrival .*Open scene/ })).toBeNull();
   });
 });

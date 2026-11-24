@@ -17,7 +17,7 @@ import type { CharacterWizardAction, CharacterWizardOrigin, CharacterWizardState
 import LibraryView from './components/LibraryView';
 import type { LibraryKind } from './components/LibraryView';
 import StoryView from './components/StoryView';
-import type { ChapterFocusRequest } from './components/StoryView';
+import ChapterView from './components/ChapterView';
 import SceneView from './components/SceneView';
 import SceneNavigation from './components/SceneNavigation';
 import SettingsView from './components/SettingsView';
@@ -34,7 +34,8 @@ import './styles.css';
 import './workspace.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway }
-type Destination = 'story' | 'scene' | LibraryKind | 'trash' | 'character-wizard';
+type WritingDestination = 'story' | 'chapter' | 'scene';
+type Destination = WritingDestination | LibraryKind | 'trash' | 'character-wizard';
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
 
 function toSettingsStatus(state: NativeChatGPTState): ChatGPTSettingsState['status'] {
@@ -127,7 +128,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [lastSceneId, setLastSceneId] = useState<string | null>(null);
   const [sceneVisits, setSceneVisits] = useState<{ sessionId: string; ids: string[] }>({ sessionId: '', ids: [] });
-  const [chapterFocusRequest, setChapterFocusRequest] = useState<ChapterFocusRequest | null>(null);
+  const [chapterId, setChapterId] = useState<string | null>(null);
+  const [chapterVisits, setChapterVisits] = useState<{ sessionId: string; ids: string[] }>({ sessionId: '', ids: [] });
   const [libraryCreationOrigin, setLibraryCreationOrigin] = useState<{ kind: LibraryKind; sceneId: string } | null>(null);
   const [destination, setDestination] = useState<Destination>('story');
   const destinationRef = useRef<Destination>('story');
@@ -137,6 +139,9 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const destinationScroll = useRef<Record<string, number>>({});
   const previousDestination = useRef<Destination>('story');
   const projectMenu = useRef<HTMLDetailsElement>(null);
+  const libraryMenu = useRef<HTMLDetailsElement>(null);
+  const writingOrigin = useRef<{ destination: WritingDestination; chapterId: string | null; sceneId: string | null }>({ destination: 'story', chapterId: null, sceneId: null });
+  const navigationFrame = useRef<number | null>(null);
   const [appearance, setAppearance] = useState<ThemePreference>(() => {
     try {
       // Make Platinum the one-time default for existing installs too. Bump the
@@ -187,8 +192,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const [notice, setNotice] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [reviewRecovery, setReviewRecovery] = useState(false);
-  const storyScroll = useRef(0);
   const scene = project?.scenes.find(s => s.id === sceneId);
+  const currentChapter = project?.chapters.find(chapter => chapter.id === chapterId);
   const locked = !!error || !ready;
   const run = (action: () => Promise<unknown>) => { void action().catch(e => setNotice(e instanceof Error ? e.message : String(e))); };
   const runChatGPT = (action: () => Promise<NativeChatGPTState>) => {
@@ -200,25 +205,47 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       try { setNativeChatGPTState(await chatGPTGateway.connectionState()); } catch { /* Keep the safe, not-ready state. */ }
     });
   };
+  const positionKey = (route: Destination) => route === 'scene' ? `scene:${sceneId}` : route === 'chapter' ? `chapter:${chapterId}` : route;
+  const rememberPosition = () => { destinationScroll.current[positionKey(destinationRef.current)] = window.scrollY; };
+  const restorePosition = (key: string, focus?: { kind: 'chapter' | 'scene'; id: string }) => {
+    if (navigationFrame.current !== null) cancelAnimationFrame(navigationFrame.current);
+    navigationFrame.current = requestAnimationFrame(() => {
+      window.scrollTo(0, destinationScroll.current[key] ?? 0);
+      if (focus) Array.from(document.querySelectorAll<HTMLButtonElement>(focus.kind === 'chapter' ? '.chapter-open' : '.scene-open[data-scene-id]')).find(element => element.dataset[focus.kind === 'chapter' ? 'chapterId' : 'sceneId'] === focus.id && !element.closest('[hidden]'))?.focus({ preventScroll: true });
+    });
+  };
+  useEffect(() => () => { if (navigationFrame.current !== null) cancelAnimationFrame(navigationFrame.current); }, []);
   const navigate = (next: Destination) => {
-    destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
-    if (destination === 'story') storyScroll.current = window.scrollY;
+    rememberPosition();
+    if (['characters', 'emotions', 'tones'].includes(next) && ['story', 'chapter', 'scene'].includes(destinationRef.current)) writingOrigin.current = { destination: destinationRef.current as WritingDestination, chapterId, sceneId };
+    if (libraryMenu.current) libraryMenu.current.open = false;
     setSettingsOpen(false); destinationRef.current = next; setDestination(next);
     if (libraryCreationOrigin && next !== libraryCreationOrigin.kind) setLibraryCreationOrigin(null);
-    requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[next === 'scene' ? `scene:${sceneId}` : next] ?? 0));
+    restorePosition(positionKey(next));
   };
-  const backToStory = () => navigate('story');
-  const focusChapter = (chapterId: string) => {
-    navigate('story');
-    setChapterFocusRequest(previous => ({ chapterId, request: (previous?.request ?? 0) + 1 }));
+  const backToStory = () => { navigate('story'); restorePosition('story', chapterId ? { kind: 'chapter', id: chapterId } : undefined); };
+  const visitChapter = (id: string) => setChapterVisits(previous => ({ sessionId: session!.sessionId, ids: previous.sessionId === session!.sessionId ? [...new Set([...previous.ids, id])] : [id] }));
+  const openChapter = (id: string) => {
+    rememberPosition();
+    const returningScene = destinationRef.current === 'scene' ? sceneId : null;
+    setChapterId(id); visitChapter(id);
+    setSettingsOpen(false); destinationRef.current = 'chapter'; setDestination('chapter');
+    restorePosition(`chapter:${id}`, returningScene ? { kind: 'scene', id: returningScene } : undefined);
   };
   const openScene = (id: string) => {
-    if (destination === 'story') storyScroll.current = window.scrollY;
-    destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
+    rememberPosition();
+    const parent = workspace.getSnapshot().project?.scenes.find(item => item.id === id)?.chapterId;
+    if (parent) { setChapterId(parent); visitChapter(parent); }
     setSceneId(id); setLastSceneId(id); destinationRef.current = 'scene'; setDestination('scene'); setSettingsOpen(false);
     setLibraryCreationOrigin(null);
     setSceneVisits(previous => ({ sessionId: session!.sessionId, ids: previous.sessionId === session!.sessionId ? [...new Set([...previous.ids, id])] : [id] }));
-    requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[`scene:${id}`] ?? 0));
+    restorePosition(`scene:${id}`);
+  };
+  const returnToWriting = () => {
+    const origin = writingOrigin.current;
+    if (origin.destination === 'scene' && project?.scenes.some(item => item.id === origin.sceneId)) openScene(origin.sceneId!);
+    else if (origin.destination !== 'story' && project?.chapters.some(item => item.id === origin.chapterId)) openChapter(origin.chapterId!);
+    else backToStory();
   };
   function startCharacterWizard(origin: CharacterWizardOrigin) {
     const activeSession = workspace.getSnapshot().session;
@@ -391,7 +418,16 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     setAppearance(value);
     try { localStorage.setItem('shorthand.appearance', value); } catch { /* The session preference still applies. */ }
   };
-  useEffect(() => { if (sceneId && project && !project.scenes.some(s => s.id === sceneId)) { setSceneId(null); setLastSceneId(null); destinationRef.current = 'story'; setDestination('story'); } }, [project, sceneId]);
+  useEffect(() => {
+    if (sceneId && project && !project.scenes.some(item => item.id === sceneId)) {
+      setSceneId(null); setLastSceneId(null);
+      if (destinationRef.current === 'scene') { if (currentChapter) openChapter(currentChapter.id); else backToStory(); }
+    }
+    if (chapterId && project && !project.chapters.some(item => item.id === chapterId)) {
+      setChapterId(null);
+      if (destinationRef.current === 'chapter' || destinationRef.current === 'scene') backToStory();
+    }
+  }, [project, sceneId, chapterId]);
   useEffect(() => {
     const current = characterWizardRef.current;
     if (!current || current.projectSessionId === session?.sessionId) return;
@@ -401,7 +437,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     replaceCharacterWizard(null);
     destinationRef.current = 'story'; setDestination('story');
     setSceneId(null); setLastSceneId(null); setLibrarySelection({ characters: null, tones: null, emotions: null });
-    setChapterFocusRequest(null); setLibraryCreationOrigin(null); setSceneVisits({ sessionId: '', ids: [] });
+    setChapterId(null); setChapterVisits({ sessionId: '', ids: [] }); writingOrigin.current = { destination: 'story', chapterId: null, sceneId: null }; setLibraryCreationOrigin(null); setSceneVisits({ sessionId: '', ids: [] });
     setCharacterProfileRequests(0); destinationScroll.current = {};
   }, [session?.sessionId]);
   useEffect(() => {
@@ -488,7 +524,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       characterCreateInFlight.current = false;
       setCharacterRecoveryResolution(null);
       replaceCharacterWizard(null);
-      setSceneId(null); setLastSceneId(null); setSceneVisits({ sessionId: '', ids: [] }); setChapterFocusRequest(null); setLibraryCreationOrigin(null); destinationRef.current = 'story'; setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCharacterProfileRequests(0); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice('');
+      setSceneId(null); setLastSceneId(null); setSceneVisits({ sessionId: '', ids: [] }); setChapterId(null); setChapterVisits({ sessionId: '', ids: [] }); writingOrigin.current = { destination: 'story', chapterId: null, sceneId: null }; setLibraryCreationOrigin(null); destinationRef.current = 'story'; setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCharacterProfileRequests(0); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice('');
     }
   }
   function retryWorkspace() {
@@ -556,10 +592,11 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   }
   const backAction = settingsOpen ? { label: 'Return to writing', run: closeSettings }
     : !project || destination === 'story' ? null
-    : destination === 'scene' ? { label: 'Back to story', run: backToStory }
+    : destination === 'chapter' ? { label: 'Back to story', run: backToStory }
+    : destination === 'scene' ? { label: 'Back to chapter', run: () => scene && openChapter(scene.chapterId) }
     : destination === 'trash' ? { label: `Back to ${previousDestination.current}`, run: () => navigate(previousDestination.current) }
     : destination === 'character-wizard' ? { label: characterWizard?.origin.kind === 'scene' ? `Return to ${characterWizard.origin.sceneTitle ?? 'scene'}` : 'Return to Characters', run: () => characterWizard && returnToWizardOrigin(characterWizard.origin) }
-    : { label: scene ? `Return to ${scene.title}` : 'Back to story', run: () => navigate(scene ? 'scene' : 'story') };
+    : { label: writingOrigin.current.destination === 'scene' && scene ? `Return to ${scene.title}` : writingOrigin.current.destination === 'chapter' && currentChapter ? `Return to ${currentChapter.title}` : 'Back to story', run: returnToWriting };
   return <div className={`app ${calm ? 'calm' : ''}`} data-theme={appearance}>
     <header className="app-header project-app-header">
       <a href="#workspace-main" className="skip-link">Skip to workspace</a>
@@ -575,8 +612,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
         </details>
         {project ? <TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/> : <span className="app-brand-name">Tandnevis</span>}
       </div>
-      {project && <nav className="project-navigation" aria-label="Project navigation"><div className="writing-view-switch" role="group" aria-label="Writing views">{(['story', 'scene'] as const).map(route => <button key={route} aria-current={!settingsOpen && destination === route ? 'page' : undefined} disabled={route === 'scene' && !lastSceneId} title={route === 'scene' && !lastSceneId ? 'Open a scene from Story first' : undefined} onClick={() => navigate(route)}>{route === 'story' && <BookOpen size={15}/>}<span>{route === 'story' ? 'Story' : 'Scene'}</span></button>)}</div><div className="library-destinations" role="group" aria-label="Reusable libraries">{(['characters', 'emotions', 'tones'] as const).map(kind => { const Icon = kind === 'characters' ? Users : kind === 'emotions' ? Heart : MessageSquare; return <button key={kind} aria-current={!settingsOpen && destination === kind ? 'page' : undefined} onClick={() => navigate(kind)}><Icon size={14}/><span>{kind[0].toUpperCase() + kind.slice(1)}</span></button>; })}</div></nav>}
       <div className="project-header-actions">
+        {project && <details ref={libraryMenu} className="project-menu library-menu" onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }}><summary aria-label="Library"><BookOpen size={16}/><span>Library</span><ChevronDown size={13}/></summary><nav className="project-menu-items" aria-label="Reusable libraries">{(['characters', 'emotions', 'tones'] as const).map(kind => { const Icon = kind === 'characters' ? Users : kind === 'emotions' ? Heart : MessageSquare; return <button key={kind} aria-current={destination === kind ? 'page' : undefined} onClick={() => navigate(kind)}><Icon size={16}/>{kind[0].toUpperCase() + kind.slice(1)}</button>; })}</nav></details>}
         {project && <><div className="project-history"><button className="icon-button quiet" aria-label="Undo project change" title="Undo project change (Ctrl/Cmd Z outside a text field)" disabled={locked || pending > 0 || !project.canUndo} onClick={() => run(() => workspace.dispatch({ type: 'undo' }))}><Undo2 size={16}/></button><button className="icon-button quiet" aria-label="Redo project change" title="Redo project change" disabled={locked || pending > 0 || !project.canRedo} onClick={() => run(() => workspace.dispatch({ type: 'redo' }))}><Redo2 size={16}/></button></div><span className="save-state" role="status">{error ? 'Save needs attention' : saving ? 'Saving...' : dirty || pending ? 'Unsaved changes' : <><Check size={13}/>Saved locally</>}</span><button className={dirty || pending ? 'primary project-save' : 'project-save'} disabled={!ready || saving || !dirty && !pending} onClick={() => run(() => workspace.save())} title={dirty || pending ? 'Save all project changes (Ctrl/Cmd S)' : 'All project changes are saved'}><Save size={15}/>Save</button></>}
         <button ref={settingsButton} className="settings-nav quiet" aria-pressed={settingsOpen} aria-label="Open Settings" onClick={() => settingsOpen ? closeSettings() : openSettings()}><SettingsIcon size={16}/><span>Settings</span></button>
       </div>
@@ -588,8 +625,9 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     {notice && <div className="notice" role="status"><span>{notice}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={15}/></button></div>}
     {!project ? <main id="main" className="welcome"><div className="welcome-mark"><Feather size={38}/></div><h1>Every story starts<br/>with a little room.</h1><p>Arrange the shape of your story.<br/>Then step into a scene and write freely.</p><section className="start-project"><label>Story name<input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Untitled story" maxLength={250}/></label><div className="button-row"><button className="primary" disabled={!gateway.desktop || !ready} onClick={() => run(() => load('create'))}><Plus size={17}/>New project</button><button disabled={!gateway.desktop || !ready} onClick={() => run(() => load('open'))}><FolderOpen size={17}/>Open project</button></div><small>{!ready ? 'Opening your project…' : gateway.desktop ? 'Choose where your local SQLite project lives. No account needed.' : 'Desktop app required. Open Shorthand Writer through Tauri to create or open a local project. This browser preview does not store manuscripts.'}</small></section></main> : <>
       <fieldset id="workspace-main" className="workspace-content" disabled={!ready}>
-        <div className="destination-view" hidden={destination !== 'story'}><StoryView key={session!.sessionId} project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run} focusRequest={chapterFocusRequest} lastSceneId={lastSceneId}/></div>
-        {project.scenes.filter(item => item.id === sceneId || sceneVisits.sessionId === session!.sessionId && sceneVisits.ids.includes(item.id)).map(item => <div key={`${session!.sessionId}:${item.id}`} className="destination-view scene-destination" hidden={destination !== 'scene' || item.id !== sceneId}><SceneView project={project} scene={item} active={destination === 'scene' && item.id === sceneId && !settingsOpen} navigation={destination === 'scene' && item.id === sceneId ? <SceneNavigation project={project} scene={item} onStory={backToStory} onFocusChapter={focusChapter} onOpenScene={openScene}/> : null} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>)}
+        <div className="destination-view" hidden={destination !== 'story'}><StoryView key={session!.sessionId} project={project} workspace={workspace} locked={locked} openChapter={openChapter} notify={setNotice} run={run} lastChapterId={chapterId}/></div>
+        {project.chapters.filter(item => item.id === chapterId || chapterVisits.sessionId === session!.sessionId && chapterVisits.ids.includes(item.id)).map(item => <div key={`${session!.sessionId}:chapter:${item.id}`} className="destination-view chapter-destination" hidden={destination !== 'chapter' || item.id !== chapterId}><ChapterView project={project} chapter={item} workspace={workspace} locked={locked} openScene={openScene} onStory={backToStory} lastSceneId={lastSceneId} notify={setNotice} run={run}/></div>)}
+        {project.scenes.filter(item => item.id === sceneId || sceneVisits.sessionId === session!.sessionId && sceneVisits.ids.includes(item.id)).map(item => <div key={`${session!.sessionId}:${item.id}`} className="destination-view scene-destination" hidden={destination !== 'scene' || item.id !== sceneId}><SceneView project={project} scene={item} active={destination === 'scene' && item.id === sceneId && !settingsOpen} navigation={destination === 'scene' && item.id === sceneId ? <SceneNavigation project={project} scene={item} onStory={backToStory} onOpenChapter={openChapter} onOpenScene={openScene}/> : null} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>)}
         {characterWizard && <div className="destination-view character-wizard-destination" hidden={destination !== 'character-wizard'}><CharacterCreationWizard state={characterWizard} tones={project.tones} emotions={project.emotions} creationReady={ready && pending === 0 && !saving && !error && !conflict} dispatch={dispatchCharacterWizard} onCreate={requestCharacterCreation} onCancel={cancelCharacterWizard}/></div>}
         {(['characters', 'emotions', 'tones'] as const).map(kind => <div key={`${project.projectId}:${kind}`} className="destination-view" hidden={destination !== kind}><LibraryView kind={kind} project={project} workspace={workspace} locked={locked} selectedId={librarySelection[kind]} onSelect={id => setLibrarySelection(selection => ({ ...selection, [kind]: id }))} createRequest={createRequests[kind]} openSelectionRequest={kind === 'characters' ? characterProfileRequests : 0} onCreateCharacter={() => startCharacterWizard({ kind: 'library' })} hasCharacterDraft={!!characterWizard && characterWizard.projectSessionId === session?.sessionId && characterWizard.submission.status !== 'succeeded'} onResumeCharacterDraft={resumeCharacterWizard} onCreated={libraryCreationOrigin?.kind === kind ? () => openScene(libraryCreationOrigin.sceneId) : undefined} onCancelCreate={libraryCreationOrigin?.kind === kind ? () => openScene(libraryCreationOrigin.sceneId) : undefined} onOpenUsage={openUsage} onOpenCharacter={id => openLibrary('characters', id)} notify={setNotice} run={run}/></div>)}
         {destination === 'trash' && <main className="recovery-screen" aria-labelledby="trash-heading"><div className="recovery-heading"><div><h1 id="trash-heading">Trash</h1><p>Restore deleted writing and unused definitions to this project.</p></div></div>{project.trash.length ? <ul className="trash-list">{project.trash.map(item => <li key={item.id}><div><strong>{item.title || 'Untitled item'}</strong><small>{item.kind} - Deleted at revision {item.deletedAtRevision}</small></div><button disabled={locked} onClick={() => run(async () => { await workspace.dispatch({ type: 'restoreTrash', trashId: item.id }); setNotice(`${item.title || item.kind} restored. Save the project to keep this change.`); })}>Restore</button></li>)}</ul> : <div className="library-empty"><h2>Trash is empty</h2><p>Deleted scenes, beats, chapters, and unused definitions can be restored here.</p></div>}</main>}

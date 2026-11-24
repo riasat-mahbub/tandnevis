@@ -1,14 +1,16 @@
 # Tandnevis — story-first writing studio
 
-The story is the dominant surface. The authoring workflow is **Story → Chapter → Scene → Summary and Beats → Generated Prose**. Keep two main writing views, a local SQLite project, and the established rich-text reference architecture. Libraries, creation wizards, optional narration, and generation support the manuscript.
+The story is the dominant surface. The authoring workflow is **Story → Chapter → Scene → Summary and Beats → Generated Prose**. Story, Chapter, and Scene are separate canvases in a genuine drill-down hierarchy. Keep the local SQLite project and established rich-text reference architecture. Libraries, creation wizards, optional narration, and generation support the manuscript.
 
 ## Writing views and navigation
 
-**Story View** shows the complete narrative, with chapter headings and ordered scene cards. Timeline presentation keeps the alternating vertical scene timeline. Compact presentation uses denser, full-width scene rows with summary excerpts and beat counts; both retain drag handles, move controls, Duplicate, Delete, and Open scene. Chapters expand and collapse independently. Focus expands one chapter and collapses the rest within Story View; it is not a third screen. Show all chapters restores the overview.
+**Story canvas** shows ordered chapter cards on the alternating vertical timeline. Opening a chapter enters its dedicated canvas. New chapter creates and opens a chapter; chapter ordering and recoverable deletion retain existing domain operations. Scene cards and scene editors do not appear inside the Story canvas.
 
-**Scene View** provides persistent Story / Chapter / Scene orientation above the editable title. Chapter and scene controls open a temporary searchable outline with nested scenes and the current selection. Chapter focus returns to the appropriate section of Story View. Previous/Next follows chapter order and each chapter's scene order, crossing chapter boundaries and skipping empty chapters. End controls are disabled.
+**Chapter canvas** shows only the selected chapter's scenes, with its own editable title, New scene, scene actions, and independent scroll position. The alternating scene timeline can switch to a compact scene list using a single density control. Clicking a scene opens its writing canvas. Zoom out returns to Story and restores the chapter card's position and keyboard focus. This is a separate canvas, not collapsed siblings on the Story screen.
 
-Story and Scene are grouped as writing destinations in the app header. Reusable libraries form a separate supporting group, always ordered Characters → Emotions → Tones. Story presentation, chapter expansion, last-opened-scene emphasis, and per-destination scroll positions survive ordinary navigation. Opened scene editors remain mounted within the current project session so pending writing, caret position, and local text undo survive scene switches. Deleted scenes and project-session changes dispose their editors. Hidden editors do not respond to focus requests.
+**Scene canvas** provides persistent Story / Chapter / Scene orientation above the editable title. Clicking the chapter or using Zoom out opens the immediate parent chapter canvas and restores its scene-card position. The current scene control opens a temporary searchable outline with nested scenes and the current selection; outline chapter entries open chapter canvases. Previous/Next follows chapter order and each chapter's scene order, crossing chapter boundaries and skipping empty chapters. End controls are disabled.
+
+There are no writing destination tabs or segmented navigation controls. The app header contains a separate Library menu, always ordered Characters → Emotions → Tones, opening the existing library workflows. Library returns to its originating Story, Chapter, or Scene canvas. Chapter presentation, last-opened-object emphasis, and per-canvas scroll positions survive ordinary navigation. Opened chapter canvases and scene editors remain mounted within the current project session so pending writing, caret position, and local text undo survive switches. Deleted objects and project-session changes dispose their canvases. Hidden editors do not respond to focus requests.
 
 ## Scene composition
 
@@ -54,6 +56,6 @@ Tauri 2 with React/TypeScript and Rust remains the desktop architecture. Rust co
 - Georgia is the manuscript/title face; platform sans is for navigation and controls. Comfortable reading width takes precedence over information density.
 - Use restrained borders and consistent small radii. Preserve playful alternating scene cards in Story View while keeping composition surfaces quiet and horizontal.
 - Every action needs an accessible name, visible focus, a keyboard path, and usable disabled/empty states. Temporary outline navigation uses native modal focus management and returns focus on dismissal. Dragging always has visible move alternatives.
-- Respect reduced motion. No permanent second outline sidebar, analytics dashboard, AI chat interface, separate Chapter editor, or mandatory metadata form.
+- Respect reduced motion. No permanent second outline sidebar, analytics dashboard, AI chat interface, destination tabs, or mandatory metadata form. The dedicated Chapter canvas is for narrative structure and scene navigation, not a replacement for scene composition.
 
 The UI uses Tandnevis as its studio name. Existing executable, package, project-format, and settings identifiers remain compatible.

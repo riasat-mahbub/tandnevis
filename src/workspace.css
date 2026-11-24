@@ -1,16 +1,20 @@
-/* Story and scene remain the two writing views. Libraries support the manuscript. */
-.project-app-header { position:sticky; top:0; z-index:20; background:var(--panel); }
-.project-navigation { align-items:center; gap:18px; }
-.writing-view-switch,.library-destinations { display:flex; align-items:center; gap:3px; }
-.writing-view-switch { padding:3px; background:var(--paper); border:1px solid var(--line); border-radius:7px; }
-.project-navigation .writing-view-switch button { min-height:35px; border:1px solid transparent; border-radius:4px; padding:7px 12px; }
-.project-navigation .writing-view-switch button[aria-current="page"] { background:var(--soft-orange); border-color:var(--accent); }
-.library-destinations { border-left:1px solid var(--line); padding-left:14px; }
-.project-navigation .library-destinations button { min-height:38px; padding:7px; font-size:12px; }
+/* Story, chapter, and scene are separate canvases in one narrative hierarchy. */
+.project-app-header { position:sticky; top:0; z-index:20; background:var(--panel); grid-template-columns:minmax(240px,1fr) auto; }
+.project-header-identity>.title-field { max-width:420px; }
+.library-menu { margin-right:8px; }
+.library-menu>.project-menu-items { left:auto; right:0; }
+.library-menu>summary { min-height:36px; padding:6px 8px; border:1px solid var(--line); border-radius:5px; }
+.library-menu>summary>svg:first-child { color:var(--ink); }
+.chapter-navigation { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding-bottom:20px; margin-bottom:28px; border-bottom:1px solid var(--line); font-size:13px; }
+.chapter-canvas-heading .title-field.large input { font-size:32px; }
+.chapter-canvas-controls { margin:-18px 0 26px; }
+.chapter-canvas-controls button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
+.chapter-open h2 { font:500 24px/1.35 Georgia,serif; margin-bottom:12px; }
+.chapter-open[aria-current="location"] { background:var(--soft-orange); }
 .scene-layout { --shelf-width:230px; --details-width:46px; display:grid; grid-template-columns:var(--shelf-width) minmax(0,1fr) var(--details-width); max-width:none; align-items:start; }
 .scene-layout-shelf-collapsed { --shelf-width:46px; }
 .scene-layout-details-open { --details-width:250px; }
-.scene-writing { width:100%; max-width:1120px; margin-inline:auto; padding:28px clamp(20px,3.4vw,58px) 70px; }
+.scene-writing { width:100%; max-width:none; margin-inline:auto; padding:28px clamp(20px,3.4vw,58px) 70px; }
 .scene-heading { gap:24px; margin-bottom:22px; }
 .scene-heading .title-field.large input { font-size:clamp(28px,2.8vw,38px); line-height:1.3; }
 .scene-navigation { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 20px; padding-bottom:18px; border-bottom:1px solid var(--line); }
@@ -74,20 +78,6 @@
 .scene-writing .add-beat { margin:25px 0 30px 44px; background:var(--panel); }
 .scene-generate-actions { margin:0 0 12px; }
 .scene-generation-hint { margin:0 0 20px; }
-.story-view-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; border-bottom:1px solid var(--line); padding:0 0 20px; }
-.story-presentation { display:flex; gap:3px; border:1px solid var(--line); border-radius:6px; padding:3px; }
-.story-presentation button { border:1px solid transparent; background:transparent; }
-.story-presentation button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
-.chapter-visibility { display:flex; gap:5px; }
-.chapter { scroll-margin-top:100px; }
-.chapter-heading { gap:10px; flex-wrap:wrap; }
-.chapter-title { flex:1; min-width:200px; gap:8px; }
-.chapter-title .title-field { flex:1; min-width:0; }
-.chapter-disclosure { justify-content:flex-start; padding:6px 2px; }
-.chapter-focused .chapter-disclosure { color:var(--ink); }
-.chapter-actions { gap:3px; }
-.chapter-actions button { min-height:32px; font-size:11px; }
-.chapter-actions button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
 .scene-open.last-opened-scene { background:var(--soft-orange); }
 .story-compact .chapter { margin-top:25px; }
 .story-compact .chapter-heading { margin-bottom:14px; padding-bottom:12px; }
@@ -121,12 +111,6 @@
 .outline-scene small { font-size:11px; flex:none; }
 .outline-scene[aria-current="location"] { background:var(--soft-orange); border-color:var(--accent); }
 .outline-empty { padding:18px 8px; color:var(--muted); }
-@media(max-width:1260px) {
-  .project-navigation { justify-content:flex-start; }
-  .block-shelf.library,.block-inspector { top:128px; max-height:calc(100dvh - 128px); }
-  .block-shelf.library { height:calc(100dvh - 128px); }
-  .chapter { scroll-margin-top:150px; }
-}
 @media(min-width:901px) and (max-width:1100px) {
   .scene-layout-details-open { --details-width:0px; }
   .scene-layout-details-open .block-inspector { position:static; grid-column:1/-1; width:100%; max-height:none; border-left:0; border-top:1px solid var(--line); }
@@ -149,16 +133,12 @@
   .scene-layout-details-open .block-inspector-body { max-width:640px; }
 }
 @media(max-width:720px) {
-  .project-app-header { position:static; }
-  .project-header-actions { gap:7px; }
-  .project-header-actions .save-state { min-width:0; }
+  .project-app-header { position:static; grid-template-columns:minmax(0,1fr); }
+  .project-header-actions { gap:4px; width:100%; justify-content:space-between; }
+  .project-header-actions .save-state { min-width:0; max-width:60px; white-space:normal; line-height:1.35; }
+  .project-header-actions .library-menu { margin-right:0; }
   .project-header-actions .settings-nav { min-width:34px; padding:6px; }
   .project-header-actions .settings-nav>span { display:none; }
-  .project-navigation { display:flex; flex-wrap:wrap; gap:8px 14px; justify-content:flex-start; }
-  .project-navigation .writing-view-switch button { font-size:12px; }
-  .project-navigation svg { display:block; }
-  .library-destinations { border-left:0; padding-left:0; flex-wrap:wrap; gap:0; }
-  .project-navigation .library-destinations button { font-size:11px; padding:6px; }
   .scene-location { gap:0; }
   .scene-location button { font-size:11px; }
   .scene-writing { padding-inline:18px; }
@@ -173,10 +153,6 @@
   .scene-writing .quick-actions { margin-left:auto; }
   .scene-writing .quick-actions button { font-size:10px; padding:4px; }
   .scene-writing .add-beat { margin-left:32px; }
-  .chapter { scroll-margin-top:20px; }
-  .chapter-title { width:100%; }
-  .chapter-actions { margin-left:0; }
-  .chapter-visibility { flex-wrap:wrap; }
   .story-compact .note-card { display:block; }
   .story-compact .card-tools { width:auto; border-right:0; border-bottom:1px solid var(--line); flex-wrap:nowrap; }
   .story-compact .quick-actions { width:auto; margin-left:auto; }

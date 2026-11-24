@@ -2,6 +2,7 @@ import './test/dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+import { openArrival, openChapter, openLibrary } from './test/navigation';
 import type { Editor } from '@tiptap/core';
 
 function setSummary(element: HTMLElement, text: string) {
@@ -18,11 +19,11 @@ afterEach(cleanup);
 describe('connected writing views', () => {
   it('puts contextual Back before the Project menu in the far-left header group', () => {
     render(<App gateway={gateway()} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     const identity = document.querySelector('.project-header-identity')!;
-    expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Back to story' }));
+    expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Back to chapter' }));
     expect(document.querySelector('.breadcrumb button')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Return to Arrival' }));
     expect(screen.queryByRole('button', { name: 'Add starter emotions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add starter tones' })).toBeNull();
@@ -33,15 +34,15 @@ describe('connected writing views', () => {
     const g = gateway(), saved = project(); saved.revision = 1; saved.scenes[0].summary = 'Keep my place.';
     vi.mocked(g.apply).mockResolvedValue(saved);
     render(<App gateway={g} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     setSummary(summary, 'Keep my place.');
-    for (const name of ['Characters', 'Tones', 'Emotions']) {
-      fireEvent.click(screen.getByRole('button', { name }));
+    for (const name of ['Characters', 'Emotions', 'Tones']) {
+      openLibrary(name);
       expect(screen.getByRole('heading', { name, level: 1 })).toBeVisible();
-      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
+      expect(document.querySelector('.library-menu button[aria-current=page]')).toHaveTextContent(name);
     }
-    fireEvent.click(screen.getByRole('button', { name: 'Scene' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Return to Arrival' }));
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
     expect(summary).toHaveTextContent('Keep my place.');
     expect(g.save).not.toHaveBeenCalled();
@@ -58,7 +59,7 @@ describe('connected writing views', () => {
       return structuredClone(created);
     });
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     const editor = (summary as HTMLElement & { editor: Editor }).editor;
     editor.commands.setTextSelection(4);
@@ -96,7 +97,7 @@ describe('connected writing views', () => {
       return structuredClone(current);
     });
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Wren' } });
@@ -105,12 +106,12 @@ describe('connected writing views', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Default tone' }), { target: { value: 'tone-wry' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tones' }));
+    openLibrary('Tones');
     fireEvent.click(screen.getAllByRole('button', { name: /Wry/ })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(g.apply).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'Resume character draft' }));
     expect(screen.getByTestId('character-wizard-create-pending')).toHaveTextContent('Project changes are still in progress');
     expect(screen.getByRole('button', { name: 'Create character' })).toBeDisabled();
@@ -138,12 +139,12 @@ describe('connected writing views', () => {
   it('resumes the same session draft from Characters and cancels back to its original scene', async () => {
     const initial = project(), g = gateway(initial);
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Juniper' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'Resume character draft' }));
     expect(screen.getByRole('textbox', { name: 'Character name' })).toHaveValue('Juniper');
     expect(g.apply).not.toHaveBeenCalled();
@@ -159,7 +160,7 @@ describe('connected writing views', () => {
     g.desktop = true;
     vi.mocked(g.chooseOpen).mockResolvedValueOnce(null);
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Maren' } });
@@ -178,7 +179,7 @@ describe('connected writing views', () => {
     g.desktop = true;
     vi.mocked(g.open).mockRejectedValueOnce(new Error('That file is not a Shorthand project.'));
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Maren' } });
@@ -197,7 +198,7 @@ describe('connected writing views', () => {
     const other = project(); other.projectId = 'project-2'; other.title = 'A different story';
     vi.mocked(g.open).mockResolvedValueOnce({ sessionId: 'session-2', project: other });
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Maren' } });
@@ -206,7 +207,7 @@ describe('connected writing views', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard draft' }));
     await waitFor(() => expect(g.open).toHaveBeenCalledOnce());
     expect(screen.queryByTestId('character-creation-wizard')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     expect(screen.queryByRole('button', { name: 'Resume character draft' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Project title' })).toHaveValue('A different story');
     expect(g.apply).not.toHaveBeenCalled();
@@ -221,7 +222,7 @@ describe('connected writing views', () => {
       return structuredClone(created);
     });
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Tamsin' } });
@@ -240,7 +241,7 @@ describe('connected writing views', () => {
     vi.mocked(g.apply).mockRejectedValueOnce(new Error('IPC connection interrupted.'));
     vi.mocked(g.read).mockResolvedValueOnce(saved);
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Rowan' } });
@@ -266,7 +267,7 @@ describe('connected writing views', () => {
     vi.mocked(g.apply).mockRejectedValueOnce(new Error('IPC connection interrupted.'));
     vi.mocked(g.read).mockResolvedValueOnce(saved);
     render(<App gateway={g} initialSession={session(initial)}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Characters' }));
+    openLibrary('Characters');
     fireEvent.click(screen.getByRole('button', { name: 'New character' }));
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Character name' }), { target: { value: 'Rowan' } });
@@ -289,7 +290,7 @@ describe('connected writing views', () => {
     created.tones.push({ id: 'tone-new', name: 'Quiet', meaning: '', guidance: '', example: '', archived: false, revision: 0 });
     vi.mocked(g.apply).mockResolvedValue(created);
     render(<App gateway={g} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: 'Tones' }));
+    openLibrary('Tones');
     fireEvent.click(screen.getAllByRole('button', { name: 'New tone' })[0]);
     fireEvent.change(screen.getByRole('textbox', { name: 'New tone name' }), { target: { value: 'Quiet' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create tone' }));
@@ -302,7 +303,7 @@ describe('connected writing views', () => {
     const g = gateway(), edit = deferred<ProjectSnapshot>();
     vi.mocked(g.apply).mockReturnValueOnce(edit.promise);
     render(<App gateway={g} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     fireEvent.click(screen.getByText('Scene prose', { selector: 'summary' }));
     const prose = screen.getByRole('textbox', { name: 'Scene prose' });
     prose.focus();
@@ -337,7 +338,7 @@ describe('connected writing views', () => {
     Object.defineProperty(window, 'scrollY', { configurable: true, value: 246 });
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     render(<App gateway={gateway()} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     expect(screen.getByRole('button', { name: 'Generate scene' })).toBeDisabled();
     fireEvent.click(screen.getAllByRole('button', { name: 'Open Settings' })[1]);
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -440,11 +441,11 @@ describe('connected writing views', () => {
     const g = gateway(), first = deferred<ProjectSnapshot>(), second = deferred<ProjectSnapshot>();
     vi.mocked(g.apply).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     render(<App gateway={g} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     setSummary(summary, 'The beginning');
     setSummary(summary, 'The beginning of a difficult conversation.');
-    fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to chapter' }));
     expect(document.querySelector('.destination-view:not([hidden]) .scene-open p')).toHaveTextContent('The beginning of a difficult conversation.');
     expect(screen.getByText('Unsaved changes')).toBeVisible();
     const saved = project(); saved.revision = 1; saved.scenes[0].summary = 'The beginning';
@@ -452,7 +453,7 @@ describe('connected writing views', () => {
     expect(document.querySelector('.destination-view:not([hidden]) .scene-open p')).toHaveTextContent('The beginning of a difficult conversation.');
     const latest = structuredClone(saved); latest.revision = 2; latest.scenes[0].summary = 'The beginning of a difficult conversation.';
     await act(async () => { second.resolve(latest); await second.promise; });
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveTextContent(latest.scenes[0].summary);
     expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, expect.objectContaining({ type: 'updateScene', sceneId: 'scene-1', summary: latest.scenes[0].summary, summaryDocument: expect.any(Object) }));
   });
@@ -470,7 +471,7 @@ describe('connected writing views', () => {
   it('keeps failed edits visible and makes recovery available', async () => {
     const g = gateway(); vi.mocked(g.apply).mockRejectedValueOnce(new Error('Read-only disk'));
     render(<App gateway={g} initialSession={session()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /^Arrival .*Open scene/ }));
+    openArrival();
     setSummary(screen.getByRole('textbox', { name: 'Scene summary' }), 'Unsaved but visible.');
     await screen.findByRole('alert'); expect(screen.getByRole('textbox', { name: 'Scene summary' })).toHaveTextContent('Unsaved but visible.');
     expect(screen.getByRole('button', { name: 'Add beat' })).toBeDisabled();
@@ -481,6 +482,7 @@ describe('connected writing views', () => {
   it('uses a single native reorder operation from a visible keyboard-accessible move button', async () => {
     const g = gateway(); const saved = project(); saved.revision = 1; saved.chapters[0].sceneIds = ['scene-2','scene-1']; vi.mocked(g.apply).mockResolvedValueOnce(saved);
     render(<App gateway={g} initialSession={session()}/>);
+    openChapter();
     fireEvent.click(screen.getByRole('button', { name: 'Move Arrival down' }));
     await waitFor(() => expect(screen.getByText('Unsaved changes')).toBeVisible());
     expect(g.save).not.toHaveBeenCalled();
@@ -494,10 +496,11 @@ describe('connected writing views', () => {
     const g = gateway(), deleted = project(); deleted.revision = 1; const original = deleted.scenes.shift()!; deleted.chapters[0].sceneIds.shift(); deleted.trash.push({ id: 'trash-1', kind: 'scene', title: 'Arrival', deletedAtRevision: 1, payload: { scene: original } });
     const restored = project(); restored.revision = 2; vi.mocked(g.apply).mockResolvedValueOnce(deleted).mockResolvedValueOnce(restored);
     render(<App gateway={g} initialSession={session()}/>);
+    openChapter();
     fireEvent.click(screen.getByRole('button', { name: 'Delete Arrival' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /^Arrival .*Open scene/ })).toBeNull());
     fireEvent.click(screen.getByLabelText('Project menu')); fireEvent.click(screen.getByRole('button', { name: 'Trash (1)' })); fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to chapter' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /^Arrival .*Open scene/ })).toBeVisible());
     expect(document.querySelector('[data-item-id="scene-1"]')).toBeTruthy();
     expect(g.apply).toHaveBeenNthCalledWith(2, 'session-1', 1, { type: 'restoreTrash', trashId: 'trash-1' });
