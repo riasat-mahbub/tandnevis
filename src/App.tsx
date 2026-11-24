@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowLeft, BookOpen, Check, ChevronDown, Feather, FolderOpen, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronDown, Feather, FolderOpen, LibraryBig, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { desktopGateway } from './services/project';
 import type { Character, ProjectGateway, ProjectSession, ProjectSnapshot } from './services/project';
@@ -605,7 +605,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const canvasDestination = libraryDestination ? writingOrigin.current.destination : destination;
   const closeLibrary = () => { setLibraryBrowserOpen(false); if (libraryDestination) returnToWriting(); };
   const libraryReturnLabel = writingOrigin.current.destination === 'scene' && scene ? `Return to ${scene.title}` : writingOrigin.current.destination === 'chapter' && currentChapter ? `Return to ${currentChapter.title}` : 'Back to story';
-  return <div className={`app ${calm ? 'calm' : ''}`} data-theme={appearance}>
+  return <div className={`app ${project ? 'app-with-project' : ''} ${calm ? 'calm' : ''}`} data-theme={appearance}>
     <header className="app-header project-app-header" aria-hidden={libraryVisible || undefined}>
       <a href="#workspace-main" className="skip-link">Skip to workspace</a>
       <div className="project-header-identity">
@@ -622,14 +622,19 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
         {project && <TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/>}
       </div>
       <div className="project-header-actions">
-        {project && <button className="story-library-trigger" aria-label="Library" aria-haspopup="dialog" aria-expanded={libraryVisible} onClick={() => {
-          if (['story', 'chapter', 'scene'].includes(destinationRef.current)) writingOrigin.current = { destination: destinationRef.current as WritingDestination, chapterId, sceneId };
-          setLibraryBrowserOpen(true);
-        }}><BookOpen size={17}/><span>Story Library</span></button>}
         {project && <><div className="project-history"><button className="icon-button quiet" aria-label="Undo project change" title="Undo project change (Ctrl/Cmd Z outside a text field)" disabled={locked || pending > 0 || !project.canUndo} onClick={() => run(() => workspace.dispatch({ type: 'undo' }))}><Undo2 size={16}/></button><button className="icon-button quiet" aria-label="Redo project change" title="Redo project change" disabled={locked || pending > 0 || !project.canRedo} onClick={() => run(() => workspace.dispatch({ type: 'redo' }))}><Redo2 size={16}/></button></div><span className="save-state" role="status">{error ? 'Save needs attention' : saving ? 'Saving...' : dirty || pending ? 'Unsaved changes' : <><Check size={13}/>Saved locally</>}</span><button className={dirty || pending ? 'primary project-save' : 'project-save'} disabled={!ready || saving || !dirty && !pending} onClick={() => run(() => workspace.save())} title={dirty || pending ? 'Save all project changes (Ctrl/Cmd S)' : 'All project changes are saved'}><Save size={15}/>Save</button></>}
         <button ref={settingsButton} className="settings-nav quiet" aria-pressed={settingsOpen} aria-label="Open Settings" onClick={() => settingsOpen ? closeSettings() : openSettings()}><SettingsIcon size={16}/><span>Settings</span></button>
       </div>
     </header>
+    <div className="project-workspace-shell">
+    {project && <nav className="utility-rail" aria-label="Project utilities" aria-hidden={libraryVisible || undefined} inert={libraryVisible}>
+      <button className="utility-story" aria-label="Story overview" aria-current={!settingsOpen && destination === 'story' ? 'page' : undefined} title="Return to the story overview" onClick={backToStory}><BookOpen size={22} aria-hidden="true"/><span>Story</span></button>
+      <button className="story-library-trigger" aria-label="Library" aria-haspopup="dialog" aria-expanded={libraryVisible} title="Story Library" onClick={() => {
+        if (['story', 'chapter', 'scene'].includes(destinationRef.current)) writingOrigin.current = { destination: destinationRef.current as WritingDestination, chapterId, sceneId };
+        setSettingsOpen(false);
+        setLibraryBrowserOpen(true);
+      }}><LibraryBig size={22} aria-hidden="true"/><span>Story Library</span></button>
+    </nav>}
     <div className="app-workspace" hidden={settingsOpen} aria-hidden={libraryVisible || undefined} inert={libraryVisible}>
     {error && <div className="error-banner" role="alert"><div><strong>{pending ? 'Your latest edits are waiting to save.' : 'The project could not be opened.'}</strong><p>{error}</p>{pending > 0 && <p>Edits stay in this window. Retry checks the current database revision before replaying anything.</p>}</div><button onClick={retryWorkspace}>Retry save</button></div>}
     {characterRecoveryResolution && <section className="conflict-review character-recovery-resolution" aria-labelledby="character-recovery-heading"><h2 id="character-recovery-heading">Choose a matching character</h2><p>More than one new profile matches this creation. No second create was sent. Choose the profile to resolve this recovery.</p>{characterRecoveryResolution.kind === 'saved' && <p>Choosing a saved character adopts the saved project version and discards waiting changes in this window.</p>}<ul>{characterRecoveryResolution.characters.map((character, index) => <li key={character.id}><button onClick={() => resolveCharacterRecoveryCandidate(character.id)}>{characterRecoveryResolution.kind === 'saved' ? 'Use saved version and open' : 'Open'} {character.name} (match {index + 1})</button></li>)}</ul></section>}
@@ -662,6 +667,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       onModelChange={chatGPTGateway.desktop ? model => runChatGPT(() => chatGPTGateway.setModel(model)) : undefined}
       onGuidanceChange={chatGPTGateway.desktop ? guidance => { setDefaultGuidance(guidance); try { localStorage.setItem('shorthand.chatgpt-guidance', guidance); } catch { /* Current session value still applies. */ } } : undefined}
       onBack={closeSettings}/>}
+    </div>
     <footer className="app-footer"><span>Tandnevis</span><span>{project ? `Local project · revision ${project.revision}` : 'Your words, on your computer.'}</span></footer>
   </div>;
 }

@@ -291,9 +291,9 @@ svg { flex-shrink:0; }
 }
 
 /* Native modal focus handling with the reference's full-height library drawer. */
-.story-library-trigger { background:var(--surface-raised); border-color:var(--muted); font-weight:600; padding:8px 13px; }
-.story-library-trigger>svg { color:var(--action); }
-.story-library-drawer { position:fixed; inset:0 0 0 auto; margin:0; width:min(800px,100%); max-width:100%; height:100dvh; max-height:100dvh; padding:0; border:0; border-left:1px solid var(--line); border-radius:0; background:var(--surface-raised); color:var(--ink); box-shadow:-12px 0 35px rgb(32 40 45 / 9%); }
+.story-library-trigger { background:var(--surface-raised); border-color:var(--line); font-weight:600; }
+.story-library-trigger>svg { color:var(--focus); }
+.story-library-drawer { position:fixed; inset:0 auto 0 var(--utility-rail-width); margin:0; width:min(800px,calc(100% - var(--utility-rail-width))); max-width:100%; height:100dvh; max-height:100dvh; padding:0; border:0; border-right:1px solid var(--line); border-radius:0; background:var(--surface-raised); color:var(--ink); box-shadow:12px 0 35px rgb(32 40 45 / 9%); overscroll-behavior:contain; }
 .story-library-drawer::backdrop { background:rgb(32 40 45 / 27%); }
 .story-library-header { display:flex; align-items:flex-start; justify-content:space-between; gap:15px; padding:24px 27px 18px; border-bottom:1px solid var(--line); background:var(--panel); }
 .story-library-header h1 { display:flex; align-items:center; gap:10px; font:400 32px/1.2 Georgia,serif; }
@@ -386,7 +386,6 @@ svg { flex-shrink:0; }
 .block-shelf-collapsed .shelf-heading { margin:0 0 10px; }
 .chapter-scene-preview>span::before { content:'\2022'; }
 @media (max-width:700px) {
-  .project-header-actions .story-library-trigger { padding:7px 8px; font-size:12px; }
   .project-history { padding-right:4px; gap:2px; }
   .project-history button { min-width:28px; padding:4px; }
   .project-header-actions .project-save { padding:7px 9px; }
@@ -395,3 +394,27 @@ svg { flex-shrink:0; }
   .project-header-actions .settings-nav { min-width:28px; padding:4px; }
 }
 @media (max-width:900px) { .block-shelf-collapsed .shelf-heading { margin:0; } }
+
+/* Project utilities stay beside the canvas; narrow windows use a bottom bar. */
+.app { --utility-rail-width:78px; --utility-bar-height:65px; }
+.project-workspace-shell { display:grid; grid-template-columns:minmax(0,1fr); flex:1; min-width:0; }
+.app-with-project .project-workspace-shell { grid-template-columns:var(--utility-rail-width) minmax(0,1fr); }
+.project-workspace-shell>.app-workspace,.project-workspace-shell>.settings-page { grid-column:-2; grid-row:1; min-width:0; }
+.utility-rail { grid-column:1; grid-row:1; position:sticky; top:64px; height:calc(100dvh - 64px); display:flex; flex-direction:column; justify-content:space-between; gap:12px; align-self:start; padding:14px 7px 20px; background:var(--panel); border-right:1px solid var(--line); }
+.utility-rail button { width:100%; min-height:62px; flex-direction:column; gap:5px; padding:9px 2px; font-size:11px; font-weight:600; white-space:normal; }
+.utility-story { background:transparent; border-color:transparent; }
+.utility-story[aria-current="page"] { background:var(--soft-orange); border-color:var(--line); }
+.utility-rail button>svg { flex:none; }
+.app-with-project .app-footer { margin-inline-start:var(--utility-rail-width); }
+@media (max-width:1100px) {
+  .utility-rail { top:0; }
+}
+@media (max-width:780px) {
+  .app-with-project .project-workspace-shell { grid-template-columns:minmax(0,1fr); }
+  .utility-rail { position:fixed; inset:auto 0 0; height:calc(var(--utility-bar-height) + env(safe-area-inset-bottom,0px)); flex-direction:row; align-items:center; justify-content:center; padding:5px 12px calc(5px + env(safe-area-inset-bottom,0px)); gap:8px; border-right:0; border-top:1px solid var(--line); z-index:19; }
+  .utility-rail button { width:auto; min-height:50px; flex-direction:row; padding:8px 11px; font-size:12px; }
+  .utility-rail button>svg { width:18px; height:18px; }
+  .app-with-project { padding-bottom:calc(var(--utility-bar-height) + env(safe-area-inset-bottom,0px)); }
+  .app-with-project .app-footer { margin-inline-start:0; }
+  .story-library-drawer { inset:0; width:100%; height:calc(100dvh - var(--utility-bar-height) - env(safe-area-inset-bottom,0px)); max-height:calc(100dvh - var(--utility-bar-height) - env(safe-area-inset-bottom,0px)); border-right:0; }
+}
