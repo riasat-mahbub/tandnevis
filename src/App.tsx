@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowLeft, BookOpen, Check, ChevronDown, Feather, FolderOpen, LibraryBig, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronDown, Feather, FileOutput, FolderOpen, LibraryBig, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { desktopGateway } from './services/project';
 import type { Character, ProjectGateway, ProjectSession, ProjectSnapshot } from './services/project';
@@ -16,6 +16,11 @@ import {
 import type { CharacterWizardAction, CharacterWizardOrigin, CharacterWizardState } from './services/character-wizard';
 import LibraryView from './components/LibraryView';
 import StoryLibraryDrawer from './components/StoryLibraryDrawer';
+import CompileDialog from './components/CompileDialog';
+import { defaultCompileOptions } from './services/compile';
+import type { CompileOptions } from './services/compile';
+import { desktopCompileExportGateway } from './services/compile-export';
+import type { CompileExportGateway } from './services/compile-export';
 import type { LibraryKind } from './components/LibraryView';
 import StoryView from './components/StoryView';
 import ChapterView from './components/ChapterView';
@@ -34,7 +39,7 @@ import type { ApplicationRuntimeInfo, RuntimeGateway } from './services/runtime'
 import './styles.css';
 import './workspace.css';
 
-interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway }
+interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway; compileService?: CompileExportGateway }
 type WritingDestination = 'story' | 'chapter' | 'scene';
 type Destination = WritingDestination | LibraryKind | 'trash' | 'character-wizard';
 const PLATINUM_DEFAULT_VERSION = 'platinum-light-v3';
@@ -73,7 +78,7 @@ function matchingCreatedCharacters(project: ProjectSnapshot, attempt: CharacterC
     && character.defaultEmotionId === (operation.defaultEmotionId ?? ''));
 }
 
-export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService, runtimeService }: Props) {
+export default function App({ gateway = desktopGateway, initialSession, chatGPTService, generationService, runtimeService, compileService = desktopCompileExportGateway }: Props) {
   const [chatGPTGateway] = useState(() => chatGPTService ?? desktopChatGPTGateway);
   const [runtimeGateway] = useState(() => runtimeService ?? desktopRuntimeGateway);
   const [autosave, setAutosave] = useState(() => { try { return localStorage.getItem('shorthand.autosave') === 'true'; } catch { return false; } });
@@ -141,6 +146,9 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const previousDestination = useRef<Destination>('story');
   const projectMenu = useRef<HTMLDetailsElement>(null);
   const [libraryBrowserOpen, setLibraryBrowserOpen] = useState(false);
+  const [compileSessionId, setCompileSessionId] = useState<string | null>(null);
+  const [compilePreferences, setCompilePreferences] = useState<{ sessionId: string; options: CompileOptions } | null>(null);
+  const compileButton = useRef<HTMLButtonElement>(null);
   const writingOrigin = useRef<{ destination: WritingDestination; chapterId: string | null; sceneId: string | null }>({ destination: 'story', chapterId: null, sceneId: null });
   const navigationFrame = useRef<number | null>(null);
   const [appearance, setAppearance] = useState<ThemePreference>(() => {
@@ -605,8 +613,29 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const canvasDestination = libraryDestination ? writingOrigin.current.destination : destination;
   const closeLibrary = () => { setLibraryBrowserOpen(false); if (libraryDestination) returnToWriting(); };
   const libraryReturnLabel = writingOrigin.current.destination === 'scene' && scene ? `Return to ${scene.title}` : writingOrigin.current.destination === 'chapter' && currentChapter ? `Return to ${currentChapter.title}` : 'Back to story';
+  const compileVisible = !!project && compileSessionId === session?.sessionId;
+  const modalVisible = libraryVisible || compileVisible;
+  const openCompile = () => {
+    const state = workspace.getSnapshot();
+    if (!state.session || !state.project || !state.ready || document.querySelector('dialog[open]')) return;
+    closeProjectMenu();
+    const scope = !settingsOpen && destination === 'scene' ? 'scene' : !settingsOpen && destination === 'chapter' ? 'chapter' : 'story';
+    const defaults = defaultCompileOptions(state.project, { scope, chapterId: chapterId ?? undefined, sceneId: sceneId ?? undefined });
+    setCompilePreferences(previous => ({ sessionId: state.session!.sessionId, options: { ...(previous?.sessionId === state.session!.sessionId ? previous.options : defaults), scope: defaults.scope, chapterId: defaults.chapterId, sceneId: defaults.sceneId } }));
+    setCompileSessionId(state.session.sessionId);
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== 'e' || document.querySelector('dialog[open]') || unsavedPrompt || wizardBoundaryPrompt || !session) return;
+      event.preventDefault();
+      compileButton.current?.focus({ preventScroll: true });
+      openCompile();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   return <div className={`app ${project ? 'app-with-project' : ''} ${calm ? 'calm' : ''}`} data-theme={appearance}>
-    <header className="app-header project-app-header" aria-hidden={libraryVisible || undefined}>
+    <header className="app-header project-app-header" aria-hidden={modalVisible || undefined} inert={modalVisible}>
       <a href="#workspace-main" className="skip-link">Skip to workspace</a>
       <div className="project-header-identity">
         {backAction && <button className="project-back quiet icon-button" aria-label={backAction.label} title={backAction.label} onClick={backAction.run}><ArrowLeft size={18}/></button>}
@@ -627,15 +656,18 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       </div>
     </header>
     <div className="project-workspace-shell">
-    {project && <nav className="utility-rail" aria-label="Project utilities" aria-hidden={libraryVisible || undefined} inert={libraryVisible}>
+    {project && <nav className="utility-rail" aria-label="Project utilities" aria-hidden={modalVisible || undefined} inert={modalVisible}>
       <button className="utility-story" aria-label="Story overview" aria-current={!settingsOpen && destination === 'story' ? 'page' : undefined} title="Return to the story overview" onClick={backToStory}><BookOpen size={22} aria-hidden="true"/><span>Story</span></button>
+      <div className="utility-bottom">
       <button className="story-library-trigger" aria-label="Library" aria-haspopup="dialog" aria-expanded={libraryVisible} title="Story Library" onClick={() => {
         if (['story', 'chapter', 'scene'].includes(destinationRef.current)) writingOrigin.current = { destination: destinationRef.current as WritingDestination, chapterId, sceneId };
         setSettingsOpen(false);
         setLibraryBrowserOpen(true);
       }}><LibraryBig size={22} aria-hidden="true"/><span>Story Library</span></button>
+      <button ref={compileButton} className="compile-trigger" aria-label="Compile Book" aria-haspopup="dialog" aria-expanded={compileVisible} title="Compile Book (Ctrl/Cmd+Shift+E)" disabled={!ready} onClick={openCompile}><FileOutput size={22} aria-hidden="true"/><span>Compile Book</span></button>
+      </div>
     </nav>}
-    <div className="app-workspace" hidden={settingsOpen} aria-hidden={libraryVisible || undefined} inert={libraryVisible}>
+    <div className="app-workspace" hidden={settingsOpen} aria-hidden={modalVisible || undefined} inert={modalVisible}>
     {error && <div className="error-banner" role="alert"><div><strong>{pending ? 'Your latest edits are waiting to save.' : 'The project could not be opened.'}</strong><p>{error}</p>{pending > 0 && <p>Edits stay in this window. Retry checks the current database revision before replaying anything.</p>}</div><button onClick={retryWorkspace}>Retry save</button></div>}
     {characterRecoveryResolution && <section className="conflict-review character-recovery-resolution" aria-labelledby="character-recovery-heading"><h2 id="character-recovery-heading">Choose a matching character</h2><p>More than one new profile matches this creation. No second create was sent. Choose the profile to resolve this recovery.</p>{characterRecoveryResolution.kind === 'saved' && <p>Choosing a saved character adopts the saved project version and discards waiting changes in this window.</p>}<ul>{characterRecoveryResolution.characters.map((character, index) => <li key={character.id}><button onClick={() => resolveCharacterRecoveryCandidate(character.id)}>{characterRecoveryResolution.kind === 'saved' ? 'Use saved version and open' : 'Open'} {character.name} (match {index + 1})</button></li>)}</ul></section>}
     {conflict && <section className="conflict-review"><button onClick={() => setReviewRecovery(!reviewRecovery)}>Review saved version and recovery copy</button>{reviewRecovery && <><p>The database is at revision {conflict.revision}. Your waiting version is shown below. Save or copy it before choosing the saved version; choosing it discards the waiting changes in this window.</p><div className="recovery-columns"><label>Waiting version — select all to copy<textarea readOnly rows={12} value={JSON.stringify(project, null, 2)} onFocus={e => e.target.select()}/></label><label>Saved database version<textarea readOnly rows={12} value={JSON.stringify(conflict, null, 2)} onFocus={e => e.target.select()}/></label></div><button onClick={acceptSavedVersion}>Use saved version and discard waiting changes</button></>}</section>}
@@ -668,6 +700,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       onGuidanceChange={chatGPTGateway.desktop ? guidance => { setDefaultGuidance(guidance); try { localStorage.setItem('shorthand.chatgpt-guidance', guidance); } catch { /* Current session value still applies. */ } } : undefined}
       onBack={closeSettings}/>}
     </div>
+    {compileVisible && compilePreferences && <CompileDialog key={session!.sessionId} sessionId={session!.sessionId} workspace={workspace} options={compilePreferences.options} onOptionsChange={options => setCompilePreferences({ sessionId: session!.sessionId, options })} exportGateway={compileService} onClose={() => setCompileSessionId(null)} onRecover={() => setCompileSessionId(null)}/>}
     <footer className="app-footer"><span>Tandnevis</span><span>{project ? `Local project · revision ${project.revision}` : 'Your words, on your computer.'}</span></footer>
   </div>;
 }

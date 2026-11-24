@@ -243,7 +243,7 @@ const htmlStyles = `
     h1 { font-size: 2.25rem; }
     h2 { font-size: 1.7rem; }
     h3 { font-size: 1.35rem; }
-    p { margin: 0 0 1em; white-space: normal; }
+    p { margin: 0 0 1em; white-space: pre-wrap; overflow-wrap: anywhere; }
     .title-page { min-height: 75vh; display: grid; place-items: center; text-align: center; break-after: page; }
     .title-page h1 { max-width: 18ch; }
     .contents { margin: 2rem 0 4rem; break-after: page; }
