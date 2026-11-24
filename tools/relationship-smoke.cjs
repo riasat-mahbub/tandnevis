@@ -27,10 +27,24 @@ module.exports = async function reviewRelationships({ invoke, evaluate, clickLab
   await waitFor('Boolean(window.__relationshipSession)', 'relationship fixture opened');
   const active = '.destination-view:not([hidden])';
   const panel = `${active} .relationship-panel`;
-  const openPanel = async () => {
-    await evaluate(`(() => {const panel=document.querySelector(${JSON.stringify(panel)}); if(!panel.open)panel.querySelector('summary').click();panel.scrollIntoView({block:'start'});})()`);
-    await waitFor(`document.querySelector(${JSON.stringify(panel + ' .relationship-body')})`, 'relationship panel opened');
+  const captureEntry = async kind => {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
+    await evaluate('window.scrollTo(0,0)');
+    const selector = `${active} .${kind}-heading-actions button`;
+    await waitFor(`Array.from(document.querySelectorAll(${JSON.stringify(selector)})).some(b=>b.textContent.trim()==='Character graph')`, `${kind} Character graph header button`);
+    const visible = await evaluate(`(() => {const b=Array.from(document.querySelectorAll(${JSON.stringify(selector)})).find(b=>b.textContent.trim()==='Character graph');const r=b.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;})()`);
+    assert.equal(visible, true, `The ${kind} Character graph action is visible beside its title.`);
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    const filename = `relationships-entry-${kind}-1440.png`;
+    await fs.writeFile(path.join(run, filename), Buffer.from(screenshot.data, 'base64')); report.screenshots.push(filename);
   };
+  const openPanel = async () => {
+    await clickLabel('Character graph');
+    await waitFor(`document.querySelector(${JSON.stringify(panel + ' .relationship-body')})`, 'relationship panel opened');
+    assert.equal(await evaluate(`document.querySelector(${JSON.stringify(panel)})?.open`), true, 'The visible Character graph header button opens the graph.');
+    assert.equal(await evaluate(`document.activeElement===document.querySelector(${JSON.stringify(panel + ' > summary')})`), true, 'Opening the graph moves keyboard focus to its heading.');
+  };
+  await captureEntry('story');
   await openPanel();
   await evaluate(`(() => {const select=document.querySelector('[aria-label="Relationship story position"]');select.value=${JSON.stringify(current)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await waitFor(`document.querySelector(${JSON.stringify(panel)})?.textContent.includes('Values his skill; still wary.')`, 'earlier state inherited');
@@ -64,6 +78,7 @@ module.exports = async function reviewRelationships({ invoke, evaluate, clickLab
   await clickLabel('Open chapter Learning to listen');
   await evaluate(`Array.from(document.querySelectorAll('.scene-open')).find(b=>b.querySelector('h3')?.textContent==='The difficult task').click()`);
   await waitFor(`document.querySelector(${JSON.stringify('.scene-destination:not([hidden]) .scene-heading')})`, 'scene writing canvas');
+  await captureEntry('scene');
   await openPanel();
   await clickLabel('After');
   const established = `Array.from(document.querySelectorAll(${JSON.stringify(panel + ' button')})).find(b=>b.textContent==='Mark established')`;

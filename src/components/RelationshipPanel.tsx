@@ -10,6 +10,7 @@ import './RelationshipPanel.css';
 
 interface Props {
   project: ProjectSnapshot; workspace: Workspace; locked: boolean; sceneId?: string;
+  openRequest?: number;
   run: (action: () => Promise<unknown>) => void;
 }
 export default function RelationshipPanel(props: Props) {
@@ -17,9 +18,17 @@ export default function RelationshipPanel(props: Props) {
   const [phase, setPhase] = useState<'before' | 'after'>('before');
   const [expanded, setExpanded] = useState(false);
   const [visited, setVisited] = useState(false);
+  const panel = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!props.openRequest || !panel.current) return;
+    setVisited(true);
+    panel.current.open = true;
+    panel.current.scrollIntoView({ block: 'start' });
+    panel.current.querySelector('summary')?.focus({ preventScroll: true });
+  }, [props.openRequest]);
   const sceneId = props.sceneId ?? (props.project.scenes.some(s => s.id === scene) ? scene : '');
-  return <details className={`relationship-panel ${expanded ? 'relationship-expanded' : ''}`} onToggle={e => { if (e.currentTarget.open) setVisited(true); }}>
-    <summary>Character relationships <span>Before and after each scene</span></summary>
+  return <details ref={panel} className={`relationship-panel ${expanded ? 'relationship-expanded' : ''}`} onToggle={e => { if (e.currentTarget.open) setVisited(true); }}>
+    <summary>Character graph <span>Relationships before and after each scene</span></summary>
     {visited && <div className="relationship-body">
       <div className="relationship-toolbar">
         {props.sceneId === undefined && <label>Story position<select aria-label="Relationship story position" value={sceneId} onChange={e => setScene(e.target.value)}><option value="">Initial story relationships</option>{orderedScenes(props.project).map(s => <option key={s.id} value={s.id}>{props.project.chapters.find(c => c.id === s.chapterId)?.title} · {s.title}</option>)}</select></label>}

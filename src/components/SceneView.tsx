@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
-import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, SlidersHorizontal } from 'lucide-react';
+import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, SlidersHorizontal, Network } from 'lucide-react';
 import type { Character, Operation, Preset, ProjectSnapshot, Scene } from '../services/project';
 import { emptyDocument } from '../services/project';
 import { buildSceneGenerationContext } from '../services/generation-context';
@@ -23,6 +23,7 @@ interface Props { project: ProjectSnapshot; scene: Scene; workspace: Workspace; 
 export default function SceneView({ project, scene, workspace, sessionId, generation, generationReady, generationModel, generationModelLabel, defaultGuidance, locked, active: visible = true, navigation, adjacentNavigation, manageCharacters, manageLibrary, openSettings, notify, run }: Props) {
   const [shelfCollapsed, setShelfCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [graphRequest, setGraphRequest] = useState(0);
   const [draftPurpose, setDraftPurpose] = useState<GenerationPurpose>('prose');
   const [reviewOpen, setReviewOpen] = useState(true);
   const root = useRef<HTMLElement>(null);
@@ -119,7 +120,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
       </div>
       <div className="scene-heading">
         <TitleField value={scene.title} label="Scene title" large disabled={locked} onSave={title => edit({ type: 'updateScene', sceneId: scene.id, title })}/>
-        {adjacentNavigation}
+        <div className="scene-heading-actions"><button onClick={() => setGraphRequest(request => request + 1)}><Network size={16} aria-hidden="true"/>Character graph</button>{adjacentNavigation}</div>
       </div>
       {reviewVisible && <div className="review-banner"><div><h2>{reviewPurpose === 'beats' ? 'Review proposed beats' : 'Review prose draft'}</h2><span className="muted">Draft not applied</span></div><button onClick={() => setReviewOpen(false)}>Close review</button></div>}
       <div className={`scene-review-grid ${reviewVisible ? 'scene-review-visible' : ''}`}>
@@ -129,7 +130,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
         <div className="summary-board-heading"><h2 id={`${prefix}-summary-label`}>Scene summary</h2><span className="muted">Freeform direction</span></div>
         <BeatEditor beat={summary} index={-1} scope="summary" ariaLabel="Scene summary" placeholder="Describe the scene. Add optional character, emotion, or tone references when useful." characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateScene', sceneId: scene.id, summary: text, summaryDocument: document, toneId: '', tone: '' })} onFocus={selectEditor} onSelection={selectEditor}/>
       </section>
-      <RelationshipPanel project={project} workspace={workspace} locked={locked} sceneId={scene.id} run={run}/>
+      <RelationshipPanel project={project} workspace={workspace} locked={locked} sceneId={scene.id} run={run} openRequest={graphRequest}/>
       <div className="sequence-heading"><h2>The beats</h2><span className="muted">{scene.beats.length} beat{scene.beats.length === 1 ? '' : 's'} - One moment, then the next.</span></div>
       {scene.beats.length ? <Timeline ids={scene.beats.map(b => b.id)} group={`Beats in ${scene.id}`} onReorder={ids => { edit({ type: 'reorderBeats', sceneId: scene.id, ids }); notify('Beat order updated.'); }}>{scene.beats.map((beat, index) => <TimelineItem key={beat.id} id={beat.id} index={index} count={scene.beats.length} group={`Beats in ${scene.id}`} label={`beat ${index + 1}`} disabled={locked} onMove={delta => { edit({ type: 'reorderBeats', sceneId: scene.id, ids: moved(scene.beats.map(b => b.id), beat.id, delta) }); notify(`Beat moved to position ${index + delta + 1}.`); }} actions={<><button disabled={locked} aria-label={`Duplicate beat ${index + 1}`} onClick={() => run(async () => { const before = new Set(scene.beats.map(b => b.id)); const p = await workspace.dispatch({ type: 'duplicateBeat', beatId: beat.id }); focusBeat(p.scenes.find(s => s.id === scene.id)!.beats.find(b => !before.has(b.id))?.id); })}><Copy size={13}/>Duplicate</button><button disabled={locked} className="danger" aria-label={`Delete beat ${index + 1}`} onClick={() => run(async () => { await workspace.dispatch({ type: 'deleteBeat', beatId: beat.id }); focusBeat(scene.beats[index + 1]?.id ?? scene.beats[index - 1]?.id); notify('Beat moved to Trash.'); })}><Trash2 size={13}/>Delete</button></>}><div className="beat-content" data-board-id={beat.id} data-reference-drop-board><span className="beat-label">Beat {index + 1}</span><BeatEditor beat={beat} index={index} characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateBeat', beatId: beat.id, document, text })} onFocus={selectEditor} onSelection={selectEditor}/></div><div className="insert-row"><button className="quiet" disabled={locked} onClick={() => run(() => addBeat(beat.id))}><Plus size={12}/>Insert beat after</button></div></TimelineItem>)}</Timeline> : <div className="empty-beats"><p>Give this scene its first moment.</p><p className="muted">Write freely. No character blocks are required.</p></div>}
       <button className="add-beat" disabled={locked} onClick={() => run(() => addBeat())}><Plus size={16}/>Add beat</button>

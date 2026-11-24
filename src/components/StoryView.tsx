@@ -1,4 +1,5 @@
-import { BookOpen, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { BookOpen, ChevronRight, Network, Plus, Trash2 } from 'lucide-react';
 import type { ProjectSnapshot } from '../services/project';
 import type { Workspace } from '../services/workspace';
 import { moved } from '../services/workspace';
@@ -11,6 +12,7 @@ interface Props {
   notify: (message: string) => void; run: (action: () => Promise<unknown>) => void;
 }
 export default function StoryView({ project, workspace, locked, openChapter, lastChapterId, notify, run }: Props) {
+  const [graphRequest, setGraphRequest] = useState(0);
   async function createChapter() {
     const before = new Set(project.chapters.map(chapter => chapter.id));
     const next = await workspace.dispatch({ type: 'createChapter', title: `Chapter ${project.chapters.length + 1}` });
@@ -18,8 +20,8 @@ export default function StoryView({ project, workspace, locked, openChapter, las
     if (created) openChapter(created.id);
   }
   return <main className="story-view story-canvas" aria-label="Story canvas">
-    <div className="story-heading"><div><h1>{project.title}</h1><p className="muted">{project.chapters.length} chapters · {project.scenes.length} scenes</p></div><button className="primary" disabled={locked} onClick={() => run(createChapter)}><Plus size={16}/>New chapter</button></div>
-    <RelationshipPanel project={project} workspace={workspace} locked={locked} run={run}/>
+    <div className="story-heading"><div><h1>{project.title}</h1><p className="muted">{project.chapters.length} chapters · {project.scenes.length} scenes</p></div><div className="story-heading-actions"><button onClick={() => setGraphRequest(request => request + 1)}><Network size={16} aria-hidden="true"/>Character graph</button><button className="primary" disabled={locked} onClick={() => run(createChapter)}><Plus size={16}/>New chapter</button></div></div>
+    <RelationshipPanel project={project} workspace={workspace} locked={locked} run={run} openRequest={graphRequest}/>
     {project.chapters.length > 0 && <div className="chapter-table-labels" aria-hidden="true"><span>Chapter</span><span>Narrative</span><span>Scene outline</span></div>}
     {project.chapters.length ? <Timeline ids={project.chapters.map(chapter => chapter.id)} group="Story chapters" onReorder={ids => run(() => workspace.dispatch({ type: 'reorderChapters', ids }))}>
       {project.chapters.map((chapter, index) => {

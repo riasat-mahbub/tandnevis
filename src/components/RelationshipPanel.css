@@ -1,5 +1,8 @@
 .relationship-panel { --relationship-highlight:var(--action); margin:24px 0 32px; border-block:1px solid var(--line); color:var(--ink); scroll-margin-top:145px; }
 .app[data-theme=dark] .relationship-panel { --relationship-highlight:var(--accent); }
+.story-heading-actions,.scene-heading-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.story-heading-actions { flex-shrink:0; }
+@media(max-width:600px) { .story-heading-actions { flex-shrink:1; } }
 .relationship-panel>summary { padding:16px 0; cursor:pointer; font-weight:600; }
 .relationship-panel>summary>span { margin-left:12px; font-size:12px; font-weight:400; color:var(--muted); }
 .relationship-body { padding:4px 0 20px; }

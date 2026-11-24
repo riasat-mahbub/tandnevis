@@ -25,7 +25,7 @@ Navigate through **Story → Chapter → Scene** by opening chapters and scenes.
 
 ## Character relationships
 
-Open **Character relationships** on the Story canvas to establish initial relationships or choose a scene and inspect **Before / After**. The same panel is available inside each scene. Add directed attitudes or family ties, or explicitly shared relationships. Selecting character boxes focuses the graph on one or several people; the list shows full descriptions. Zoom, pan, Fit, movable labels, and **Save SVG** support larger maps.
+Choose **Character graph** beside the story title on the Story canvas to open the relationship map. Each Scene also has a **Character graph** button beside its title. The button opens the graph, scrolls it into view, and focuses its heading. Establish initial story relationships or choose a scene and inspect **Before / After**. Add directed attitudes or family ties, or explicitly shared relationships. Selecting character boxes focuses the graph on one or several people; the list shows full descriptions. Zoom, pan, Fit, movable labels, and **Save SVG** support larger maps.
 
 Before inherits earlier scenes in chapter/scene order. Editing Before records an entry correction at that scene; editing After records its outcome. Unchanged relationships carry forward. **Clear at this point** clears a relationship from that point onward; **Use inherited state** removes a local override. After edits start as **Planned**; **Mark established** records that the result has been reviewed. These edits support project Undo/Redo and require Save in manual mode.
 
