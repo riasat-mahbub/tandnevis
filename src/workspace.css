@@ -228,3 +228,28 @@ svg { flex-shrink:0; }
   .chapter-ordinal { font-size:30px; }
   .chapter-narrative h2 { font-size:23px; }
 }
+
+/* Scenes in a chapter read in one connected column. */
+.chapter-canvas { max-width:1100px; }
+.chapter-canvas-heading .title-field.large input { font:400 40px/1.2 Georgia,serif; }
+.chapter-navigation { border:0; padding:0; margin-bottom:25px; }
+.chapter-canvas>.timeline { padding-left:38px; gap:18px; }
+.chapter-canvas>.timeline::before { left:11px; }
+.chapter-canvas .timeline-item,.chapter-canvas .timeline-item.right { width:100%; align-self:stretch; }
+.chapter-canvas .timeline-item::before,.chapter-canvas .timeline-item.right::before { left:-27px; right:auto; width:27px; }
+.chapter-canvas .timeline-number,.chapter-canvas .timeline-item.right .timeline-number { left:-40px; right:auto; }
+.chapter-canvas .note-card { border:1px solid var(--line); border-radius:8px; background:var(--surface-raised); }
+.chapter-canvas .note-card::before { content:none; }
+.chapter-canvas .scene-open { padding:18px 24px 23px; }
+.chapter-canvas .scene-open h3 { font:400 26px/1.3 Georgia,serif; }
+.chapter-canvas .scene-open p { color:var(--muted); max-width:75ch; margin:10px 0 17px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.chapter-canvas .card-tools { background:transparent; border:0; padding:5px 12px; }
+.chapter-canvas.story-compact .scene-open { padding:12px 18px; }
+.chapter-canvas.story-compact .scene-open h3 { font-size:21px; }
+.chapter-canvas.story-compact .scene-open p { -webkit-line-clamp:1; margin-block:5px; }
+@media (max-width:700px) {
+  .chapter-canvas-heading .title-field.large input { font-size:30px; }
+  .chapter-canvas .scene-open { padding:14px 16px; }
+  .chapter-canvas .scene-open h3 { font-size:23px; }
+  .chapter-canvas .card-tools { flex-wrap:wrap; padding:5px; }
+}
