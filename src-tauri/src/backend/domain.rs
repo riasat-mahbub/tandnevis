@@ -11,6 +11,10 @@ pub fn new_id() -> String {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSnapshot {
+    #[serde(default)]
+    pub relationship_changes: Vec<super::relationships::RelationshipChange>,
+    #[serde(default)]
+    pub relationship_cast: HashMap<String, Vec<String>>,
     pub project_id: String,
     pub title: String,
     pub revision: u64,
@@ -296,6 +300,9 @@ pub struct ImportedSource {
     deny_unknown_fields
 )]
 pub enum Operation {
+    SetRelationship { change: super::relationships::RelationshipChange },
+    RemoveRelationshipChange { change_id: String },
+    SetRelationshipCast { scene_id: String, character_ids: Vec<String> },
     RenameProject {
         title: String,
     },
@@ -874,6 +881,8 @@ impl ProjectSnapshot {
             .push(format!("{}:catalog-v{}", kind.as_str(), catalog.version));
     }
     fn character_is_used(&self, id: &str) -> bool {
+        if self.relationship_changes.iter().any(|r| r.source_id == id || r.target_id == id)
+            || self.relationship_cast.values().any(|ids| ids.iter().any(|v| v == id)) { return true; }
         self.scenes.iter().any(|s| {
             s.summary_document
                 .as_ref()
@@ -910,6 +919,8 @@ impl ProjectSnapshot {
     pub fn empty(name: String) -> Result<Self> {
         title(&name)?;
         Ok(Self {
+            relationship_changes: vec![],
+            relationship_cast: HashMap::new(),
             project_id: new_id(),
             title: name,
             revision: 0,
@@ -955,6 +966,15 @@ impl ProjectSnapshot {
     }
     pub fn apply(&mut self, operation: Operation) -> Result<()> {
         match operation {
+            Operation::SetRelationship { change } => self.set_relationship(change)?,
+            Operation::RemoveRelationshipChange { change_id } => {
+                let index = self.relationship_changes.iter().position(|r| r.id == change_id).ok_or("Relationship change does not exist.")?;
+                self.relationship_changes.remove(index);
+            }
+            Operation::SetRelationshipCast { scene_id, character_ids } => {
+                self.scene_mut(&scene_id)?;
+                self.relationship_cast.insert(scene_id, character_ids);
+            }
             Operation::RenameProject { title: name } => {
                 title(&name)?;
                 self.title = name;
@@ -1070,6 +1090,9 @@ impl ProjectSnapshot {
                     .position(|id| id == &scene_id)
                     .ok_or("Scene order is invalid.")?;
                 chapter.scene_ids.insert(pos + 1, scene.id.clone());
+                let copies: Vec<_> = self.relationship_changes.iter().filter(|r| r.scene_id == scene_id).cloned().map(|mut r| { r.id = new_id(); r.scene_id = scene.id.clone(); r.status = "planned".into(); r }).collect();
+                self.relationship_changes.extend(copies);
+                if let Some(cast) = self.relationship_cast.get(&scene_id).cloned() { self.relationship_cast.insert(scene.id.clone(), cast); }
                 self.scenes.push(scene);
             }
             Operation::ReorderScenes { chapter_id, ids } => {
@@ -1428,6 +1451,7 @@ impl ProjectSnapshot {
         self.validate()
     }
     pub fn validate(&self) -> Result<()> {
+        self.validate_relationships()?;
         title(&self.title)?;
         let mut ids = HashSet::new();
         let mut add = |id: &str| -> Result<()> {
@@ -1438,6 +1462,7 @@ impl ProjectSnapshot {
             Ok(())
         };
         add(&self.project_id)?;
+        for change in &self.relationship_changes { add(&change.id)?; }
         let mut ordered_scenes = HashSet::new();
         for c in &self.chapters {
             add(&c.id)?;

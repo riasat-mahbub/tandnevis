@@ -1,6 +1,7 @@
 //! Native command boundary. The renderer receives an opaque token for the currently
 //! open project and can submit typed domain operations, never SQL or filesystem reads.
 mod domain;
+mod relationships;
 pub mod generation;
 mod storage;
 

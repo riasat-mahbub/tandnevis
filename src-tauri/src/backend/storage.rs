@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
@@ -809,9 +809,14 @@ fn migrate_in_transaction(tx: &rusqlite::Transaction<'_>, mut version: i32) -> R
             6 => {
                 // Character icons live in project-extension JSON; no table rewrite is needed.
                 // This gate keeps older binaries from discarding the new optional field.
-                tx.pragma_update(None, "user_version", SCHEMA_VERSION)
+                tx.pragma_update(None, "user_version", 7)
                     .map_err(sql)?;
-                SCHEMA_VERSION
+                7
+            }
+            7 => {
+                // Relationship history is stored in extensions. Older binaries must not discard it.
+                tx.pragma_update(None, "user_version", 8).map_err(sql)?;
+                8
             }
             _ => {
                 return Err(format!(
@@ -943,6 +948,8 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
         )
         .map_err(sql)?;
     let mut project = ProjectSnapshot {
+        relationship_changes: vec![],
+        relationship_cast: std::collections::HashMap::new(),
         project_id,
         title,
         revision,
@@ -1110,6 +1117,8 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
         .map_err(sql)?;
     if let Some(extras) = extras {
         let v: serde_json::Value = decode(extras)?;
+        project.relationship_changes = serde_json::from_value(v.get("relationshipChanges").cloned().unwrap_or_else(|| serde_json::json!([]))).map_err(|e| e.to_string())?;
+        project.relationship_cast = serde_json::from_value(v.get("relationshipCast").cloned().unwrap_or_else(|| serde_json::json!({}))).map_err(|e| e.to_string())?;
         project.tones = serde_json::from_value(v["tones"].clone()).map_err(|e| e.to_string())?;
         project.emotions =
             serde_json::from_value(v["emotions"].clone()).map_err(|e| e.to_string())?;
@@ -1281,7 +1290,7 @@ fn persist(connection: &Connection, project: &ProjectSnapshot, cursor: i64) -> R
                 .map(|d| (s.id.clone(), d.clone()))
         })
         .collect();
-    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults,"characterIcons":character_icons});
+    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults,"characterIcons":character_icons,"relationshipChanges":project.relationship_changes,"relationshipCast":project.relationship_cast});
     connection.execute("INSERT INTO project_extensions(singleton,data) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET data=excluded.data",[encode(&extensions)?]).map_err(sql)?;
     Ok(())
 }

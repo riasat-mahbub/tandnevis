@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { JSONContent } from '@tiptap/core';
+import type { RelationshipChange } from './relationships';
 
 export interface Narration { pointOfView: string; tense: string; instructions: string }
 export interface Beat { id: string; document: JSONContent; text: string }
@@ -11,9 +12,12 @@ export type PresetKind = 'tone' | 'emotion';
 export interface Preset { id: string; name: string; meaning: string; guidance: string; example: string; color?: string; archived: boolean; revision: number }
 export interface TrashEntry { id: string; kind: string; title: string; deletedAtRevision: number; payload: unknown }
 export interface ImportedSource { id: string; markdown: string; importedAtRevision: number }
-export interface ProjectSnapshot { projectId: string; title: string; revision: number; chapters: Chapter[]; scenes: Scene[]; characters: Character[]; tones: Preset[]; emotions: Preset[]; starterTypes: string[]; trash: TrashEntry[]; importSources: ImportedSource[]; canUndo: boolean; canRedo: boolean }
+export interface ProjectSnapshot { projectId: string; title: string; revision: number; chapters: Chapter[]; scenes: Scene[]; characters: Character[]; tones: Preset[]; emotions: Preset[]; starterTypes: string[]; trash: TrashEntry[]; importSources: ImportedSource[]; canUndo: boolean; canRedo: boolean; relationshipChanges?: RelationshipChange[]; relationshipCast?: Record<string, string[]> }
 export interface ProjectSession { sessionId: string; project: ProjectSnapshot }
 export type Operation =
+  | { type: 'setRelationship'; change: Omit<RelationshipChange, 'id'> }
+  | { type: 'removeRelationshipChange'; changeId: string }
+  | { type: 'setRelationshipCast'; sceneId: string; characterIds: string[] }
   | { type: 'renameProject'; title: string }
   | { type: 'createChapter'; title: string }
   | { type: 'renameChapter'; chapterId: string; title: string }

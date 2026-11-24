@@ -29,6 +29,85 @@ fn apply_json(db: &mut Database, value: serde_json::Value) -> ProjectSnapshot {
 }
 
 #[test]
+fn relationship_changes_save_reopen_undo_and_preserve_direction_and_scene_history() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let first = p.scenes[0].id.clone();
+    let chapter = p.chapters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createScene", "chapterId":chapter, "title":"Later"}));
+    let second = p.scenes[1].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter", "name":"A"}));
+    let a = p.characters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter", "name":"B"}));
+    let b = p.characters[1].id.clone();
+    db.save().unwrap();
+    let set = |source: &str, target: &str, scene_id: &str, phase: &str, description: &str, status: &str| json!({"type":"setRelationship", "change":{"sourceId":source,"targetId":target,"kind":"attitude","mutual":false,"sceneId":scene_id,"phase":phase,"description":description,"status":status}});
+    apply_json(&mut db, set(&a, &b, "", "before", "Distrust", "established"));
+    apply_json(&mut db, set(&b, &a, "", "before", "Affection", "established"));
+    let p = apply_json(&mut db, set(&a, &b, &first, "after", "Reluctant respect", "planned"));
+    assert_eq!(p.relationship_states(&first).unwrap().before.iter().find(|r| r.source_id == a).unwrap().description, "Distrust");
+    let inherited = p.relationship_states(&second).unwrap().before;
+    assert_eq!(inherited.iter().find(|r| r.source_id == a).unwrap().description, "Reluctant respect");
+    assert_eq!(inherited.iter().find(|r| r.source_id == b).unwrap().description, "Affection");
+    assert!(Database::open(file.path()).unwrap().read().unwrap().relationship_changes.is_empty());
+    assert_eq!(apply(&mut db, Undo).relationship_changes.len(), 2);
+    assert_eq!(apply(&mut db, Redo).relationship_changes.len(), 3);
+    let p = apply_json(&mut db, json!({"type":"setRelationshipCast","sceneId":first,"characterIds":[a,b]}));
+    let before_invalid = p.clone();
+    let bad: domain::Operation = serde_json::from_value(set(&a, &a, &first, "after", "Invalid", "planned")).unwrap();
+    assert!(db.apply(p.revision, bad).is_err());
+    assert_eq!(db.read().unwrap(), before_invalid);
+    assert!(db.apply(p.revision, DeleteCharacter { character_id: a.clone() }).is_err());
+    db.save().unwrap();
+    assert_eq!(Database::open(file.path()).unwrap().read().unwrap(), db.read().unwrap());
+    let p = apply(&mut db, DeleteScene { scene_id: first.clone() });
+    assert_eq!(p.relationship_states(&second).unwrap().before.iter().find(|r| r.source_id == a).unwrap().description, "Distrust");
+    let trash_id = p.trash.last().unwrap().id.clone();
+    let p = apply(&mut db, RestoreTrash { trash_id });
+    assert_eq!(p.relationship_states(&second).unwrap().before.iter().find(|r| r.source_id == a).unwrap().description, "Reluctant respect");
+    let p = apply(&mut db, ReorderScenes { chapter_id: chapter, ids: vec![second.clone(), first.clone()] });
+    assert_eq!(p.relationship_states(&second).unwrap().before.iter().find(|r| r.source_id == a).unwrap().description, "Distrust");
+    let p = apply_json(&mut db, set(&a, &b, &first, "before", "Corrected entry", "established"));
+    assert_eq!(p.relationship_states(&first).unwrap().before.iter().find(|r| r.source_id == a).unwrap().description, "Corrected entry");
+    let p = apply_json(&mut db, set(&a, &b, &first, "after", "", "established"));
+    assert_eq!(p.relationship_changes.len(), 4);
+    assert!(p.relationship_states(&first).unwrap().after.iter().find(|r| r.source_id == a).unwrap().description.is_empty());
+    let original_ids: Vec<_> = p.relationship_changes.iter().map(|r| r.id.clone()).collect();
+    let p = apply(&mut db, DuplicateScene { scene_id: first.clone() });
+    let copied = p.scenes.last().unwrap();
+    let copies: Vec<_> = p.relationship_changes.iter().filter(|r| r.scene_id == copied.id).collect();
+    assert_eq!(copies.len(), 2);
+    assert!(copies.iter().all(|r| r.status == "planned" && !original_ids.contains(&r.id)));
+    assert_eq!(p.relationship_cast.get(&copied.id).unwrap().len(), 2);
+}
+
+#[test]
+fn v7_relationship_migration_happens_on_save_and_shared_ties_are_explicit() {
+    let file = ProjectFile::new();
+    drop(file.create());
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    connection.pragma_update(None, "user_version", 7).unwrap();
+    drop(connection);
+    let original = std::fs::read(file.path()).unwrap();
+    let mut db = Database::open(file.path()).unwrap().working_copy().unwrap();
+    assert!(db.read().unwrap().relationship_changes.is_empty());
+    assert_eq!(std::fs::read(file.path()).unwrap(), original);
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"A"}));
+    let a = p.characters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"B"}));
+    let b = p.characters[1].id.clone();
+    for (source, target) in [(&a, &b), (&b, &a)] {
+        apply_json(&mut db, json!({"type":"setRelationship","change":{"sourceId":source,"targetId":target,"kind":"family","mutual":true,"sceneId":"","phase":"before","description":"Siblings","status":"established"}}));
+    }
+    assert_eq!(db.read().unwrap().relationship_changes.len(), 1);
+    db.save().unwrap();
+    let disk = rusqlite::Connection::open(file.path()).unwrap();
+    assert_eq!(disk.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 8);
+    assert_eq!(Database::open(file.path()).unwrap().read().unwrap().relationship_changes.len(), 1);
+}
+
+#[test]
 fn new_projects_include_complete_general_starters_without_an_add_action() {
     let file = ProjectFile::new();
     let mut db = file.create().working_copy().unwrap();
@@ -1675,7 +1754,7 @@ fn schema_v1_migrates_on_save_without_losing_story_or_undo_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 7);
+    assert_eq!(version, 8);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row
