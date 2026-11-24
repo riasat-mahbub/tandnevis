@@ -12,6 +12,7 @@
     "allow-project-commands",
     "allow-chatgpt-commands",
     "allow-scene-generation-commands",
-    "allow-runtime-info-command"
+    "allow-runtime-info-command",
+    "allow-compiled-manuscript-export"
   ]
 }

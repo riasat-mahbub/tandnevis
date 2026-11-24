@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-write-compiled-manuscript"
+description = "Enables the write_compiled_manuscript command without any pre-configured scope."
+commands.allow = ["write_compiled_manuscript"]
+
+[[permission]]
+identifier = "deny-write-compiled-manuscript"
+description = "Denies the write_compiled_manuscript command without any pre-configured scope."
+commands.deny = ["write_compiled_manuscript"]

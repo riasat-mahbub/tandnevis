@@ -34,6 +34,7 @@ pub fn run() {
             backend::close_project,
             backend::import_markdown_file,
             backend::export_markdown_file,
+            backend::write_compiled_manuscript,
             backend::generation::start_scene_generation,
             backend::generation::stop_scene_generation,
             backend::generation::scene_generation_jobs,

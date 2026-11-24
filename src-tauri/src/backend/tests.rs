@@ -1462,6 +1462,46 @@ fn markdown_export_atomically_replaces_an_existing_selected_file() {
 }
 
 #[test]
+fn compiled_manuscript_export_atomically_overwrites_unicode_path() {
+    let path = std::env::temp_dir().join(format!("shorthand-故事-{}.html", new_id()));
+    std::fs::write(&path, "Previous manuscript").unwrap();
+    write_compiled_manuscript_file(&path, "<p>雪と café</p>").unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "<p>雪と café</p>");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn compiled_manuscript_export_failure_removes_temporary_file() {
+    let directory = std::env::temp_dir().join(format!("shorthand-compile-failure-{}", new_id()));
+    std::fs::create_dir(&directory).unwrap();
+    let destination = directory.join("blocked.txt");
+    std::fs::create_dir(&destination).unwrap();
+
+    assert!(write_compiled_manuscript_file(&destination, "Cannot replace a directory").is_err());
+    let remaining: Vec<_> = std::fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(remaining, vec![destination.clone()]);
+
+    std::fs::remove_dir(destination).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}
+
+#[test]
+fn compiled_manuscript_path_requires_absolute_supported_extension() {
+    assert!(compiled_manuscript_path("relative/story.md").is_err());
+    assert!(
+        compiled_manuscript_path(&std::env::temp_dir().join("story.pdf").to_string_lossy())
+            .is_err()
+    );
+    assert!(
+        compiled_manuscript_path(&std::env::temp_dir().join("story.HTML").to_string_lossy())
+            .is_ok()
+    );
+}
+
+#[test]
 fn opening_another_project_invalidates_old_session_without_losing_persistence() {
     let first = ProjectFile::new();
     let second = ProjectFile::new();

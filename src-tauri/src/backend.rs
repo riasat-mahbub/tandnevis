@@ -7,6 +7,7 @@ mod storage;
 use domain::{new_id, Operation, ProjectSnapshot, Result};
 use serde::Serialize;
 use std::{
+    fs::OpenOptions,
     io::{Read, Write},
     path::Path,
     sync::{Arc, Mutex},
@@ -226,6 +227,81 @@ pub async fn export_markdown_file(
         })
     })
     .await
+}
+
+#[tauri::command]
+pub async fn write_compiled_manuscript(path: String, contents: String) -> Result<()> {
+    blocking(move || {
+        let path = compiled_manuscript_path(&path)?;
+        write_compiled_manuscript_file(path, &contents)
+    })
+    .await
+}
+
+fn compiled_manuscript_path(path: &str) -> Result<&Path> {
+    let path = Path::new(path);
+    if !path.is_absolute()
+        || !path.extension().is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("md")
+                || extension.eq_ignore_ascii_case("txt")
+                || extension.eq_ignore_ascii_case("html")
+        })
+    {
+        return Err("Choose an absolute Markdown, plain text, or HTML export path.".into());
+    }
+    Ok(path)
+}
+
+fn write_compiled_manuscript_file(path: &Path, contents: &str) -> Result<()> {
+    let temporary = path.with_file_name(format!(".shorthand-compiled-manuscript-{}.tmp", new_id()));
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .map_err(|e| format!("Could not create compiled manuscript: {e}"))?;
+    let result = (|| {
+        file.write_all(contents.as_bytes())
+            .map_err(|e| format!("Could not write compiled manuscript: {e}"))?;
+        file.sync_all()
+            .map_err(|e| format!("Could not save compiled manuscript: {e}"))?;
+        drop(file);
+        replace_compiled_file(&temporary, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(temporary);
+    }
+    result
+}
+
+#[cfg(windows)]
+fn replace_compiled_file(temporary: &Path, destination: &Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::{
+        core::PCWSTR,
+        Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        },
+    };
+    let temporary: Vec<u16> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    unsafe {
+        MoveFileExW(
+            PCWSTR::from_raw(temporary.as_ptr()),
+            PCWSTR::from_raw(destination.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    }
+    .map_err(|error| format!("Could not finish writing compiled manuscript: {error}"))
+}
+
+#[cfg(not(windows))]
+fn replace_compiled_file(temporary: &Path, destination: &Path) -> Result<()> {
+    std::fs::rename(temporary, destination)
+        .map_err(|error| format!("Could not finish writing compiled manuscript: {error}"))
 }
 
 fn write_markdown(path: &Path, markdown: &str) -> Result<()> {

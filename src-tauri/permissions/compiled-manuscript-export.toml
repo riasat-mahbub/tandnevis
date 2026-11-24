@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-compiled-manuscript-export"
+description = "Allow writing a UTF-8 compiled manuscript to a user-selected export path."
+commands.allow = ["write_compiled_manuscript"]

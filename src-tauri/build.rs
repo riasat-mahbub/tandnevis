@@ -10,6 +10,7 @@ fn main() {
             "close_project",
             "import_markdown_file",
             "export_markdown_file",
+            "write_compiled_manuscript",
             "chatgpt_connection_state",
             "chatgpt_acknowledge_usage",
             "chatgpt_connect",
