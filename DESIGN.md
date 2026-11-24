@@ -4,19 +4,19 @@ The story is the dominant surface. The authoring workflow is **Story → Chapter
 
 ## Writing views and navigation
 
-**Story canvas** shows ordered chapter cards on the alternating vertical timeline. Opening a chapter enters its dedicated canvas. New chapter creates and opens a chapter; chapter ordering and recoverable deletion retain existing domain operations. Scene cards and scene editors do not appear inside the Story canvas.
+**Story canvas** shows numbered chapter rows with a narrative excerpt and up to three scene titles. Derive excerpts from existing scene summaries: chapters have no persisted description field. Opening a chapter enters its dedicated canvas. New chapter creates and opens a chapter; chapter ordering and recoverable deletion retain existing domain operations. Scene cards and scene editors do not appear inside the Story canvas.
 
-**Chapter canvas** shows only the selected chapter's scenes, with its own editable title, New scene, scene actions, and independent scroll position. The alternating scene timeline can switch to a compact scene list using a single density control. Clicking a scene opens its writing canvas. Zoom out returns to Story and restores the chapter card's position and keyboard focus. This is a separate canvas, not collapsed siblings on the Story screen.
+**Chapter canvas** shows only the selected chapter's scenes in a connected, single-column list, with its own editable title, New scene, scene actions, and independent scroll position. A density control offers a compact version. Clicking a scene opens its writing canvas. Zoom out returns to Story and restores the chapter row's position and keyboard focus.
 
 **Scene canvas** provides persistent Story / Chapter / Scene orientation above the editable title. Clicking the chapter or using Zoom out opens the immediate parent chapter canvas and restores its scene-card position. The current scene control opens a temporary searchable outline with nested scenes and the current selection; outline chapter entries open chapter canvases. Previous/Next follows chapter order and each chapter's scene order, crossing chapter boundaries and skipping empty chapters. End controls are disabled.
 
-There are no writing destination tabs or segmented navigation controls. The app header contains a separate Library menu, always ordered Characters → Emotions → Tones, opening the existing library workflows. Library returns to its originating Story, Chapter, or Scene canvas. Chapter presentation, last-opened-object emphasis, and per-canvas scroll positions survive ordinary navigation. Opened chapter canvases and scene editors remain mounted within the current project session so pending writing, caret position, and local text undo survive switches. Deleted objects and project-session changes dispose their canvases. Hidden editors do not respond to focus requests.
+There are no writing destination tabs or segmented navigation controls. The app header opens a Story Library drawer with grouped search in Characters → Emotions → Tones order and access to the existing full editors. Dismissal restores the originating canvas and trigger focus. Chapter presentation, last-opened-object emphasis, and per-canvas scroll positions survive ordinary navigation. Opened chapter canvases and scene editors remain mounted within the current project session so pending writing, caret position, and local text undo survive switches. Deleted objects and project-session changes dispose their canvases. Hidden editors do not respond to focus requests.
 
 ## Scene composition
 
-Desktop uses a 230px block shelf, a dominant flexible editor, and a collapsed 46px inspector rail. Either side can collapse independently. Opening Scene details reveals optional point of view, tense, and instructions; medium windows place expanded details beneath the editor. Narrow windows initially collapse the shelf into a small toolbar with category shortcuts, with details below the writing.
+Desktop uses a collapsible 260px writing-tools shelf and a dominant flexible editor. Optional Scene details (point of view, tense, instructions) live in a shelf disclosure. Narrow windows initially collapse the shelf to a small toolbar. Breadcrumbs and generation actions occupy a sticky scene toolbar; Previous/Next sit beside the editable title.
 
-The centre contains scene context and title, a rich-text summary, an ordered beat timeline, Add beat, context preview and generation review, and Scene prose. Editable beat cards use one comfortable column, subtle numbered positions, a vertical connector, visible reordering alternatives, Duplicate/Delete, and insertion points. Alternation belongs to Story View, not extended beat editing. Writing surfaces use quiet neutrals with restrained one-pixel borders.
+The centre contains scene context and title, a rich-text summary, an ordered beat timeline, Add beat, context preview and generation review, and Scene prose. Editable beat cards use one comfortable column, subtle numbered positions, a vertical connector, visible reordering alternatives, Duplicate/Delete, and insertion points. Writing surfaces use quiet neutrals with restrained one-pixel borders. Draft review puts the editable source beside the proposal and stacks on narrow windows; closing review retains the draft.
 
 ### Text and inline references
 
@@ -26,9 +26,9 @@ Dragging a shelf reference inserts it at the drop position, including editor bla
 
 ### Block shelf
 
-Use stacked, icon-labeled **Characters → Emotions → Tones** tabs with readable 14px labels, consistent hit targets, a filled active state, visible focus, and Up/Down as well as Left/Right/Home/End keyboard access. The collapsed rail provides named category shortcuts.
+Show stacked, icon-labeled **Characters → Emotions → Tones** groups with one shared search and New/Manage controls for each category. Initially show a bounded selection with Show all/Show fewer controls; searches reveal all matches. The collapsed rail provides search and expand controls.
 
-Below navigation, show only the active category's description: “Who is involved.”, “What they feel.”, or “How the writing sounds.” Then show category search, Manage/New controls, and an independently scrollable palette. Manage opens the existing full library; New opens the existing wizard or preset-creation workflow. The shelf is for inserting references, not editing definitions.
+Keep group meaning and preset color families readable. Manage opens the existing full library; New opens the existing wizard or preset-creation workflow. The shelf is for inserting references, not editing definitions. Its content scrolls independently of the manuscript.
 
 Characters retain sage backgrounds. Emotion/Tone presets share the effective-colour system and seven named families: Connection, Positive energy, Conflict, Unease, Vulnerability, Discovery, and Focus. Custom colours appear last. Preset colour is visual only. Icons, labels, and inline type names preserve meaning independently of colour.
 
@@ -42,7 +42,7 @@ Creation from a scene remembers the originating editor. The character wizard and
 
 ## Generation and persistence
 
-Generate scene sits beside the summary and proposes editable beats. Generate prose follows composition and produces narrative prose. Both keep the existing connection/model checks, context construction, streaming, recovery, review, acceptance, outdated-draft acknowledgement, copy, retry, and discard behavior. Neither replaces the source composition. Existing independent inline guidance and legacy summary-tone migration remain supported.
+Generate beats and Generate prose sit in the scene toolbar. Both keep the existing connection/model checks, context construction, streaming, recovery, review, acceptance, outdated-draft acknowledgement, copy, retry, and discard behavior. Beat acceptance appends; prose acceptance replaces only the scene prose. Existing independent inline guidance and legacy summary-tone migration remain supported.
 
 Manual Save remains the default in the app header. Navigation does not save the project. Preserve queued edits, local text undo, project Undo/Redo, save failures, conflict recovery, and unsaved-change protections on close and project changes. New/Open, Markdown interchange, and Trash remain in Project. Deleted scenes, chapters, and beats remain recoverable through existing mechanisms.
 
@@ -54,7 +54,7 @@ Tauri 2 with React/TypeScript and Rust remains the desktop architecture. Rust co
 - Enabled primary actions use white text on `#B94F00`, hover `#A64700`, and pressed `#933F00`. Disabled actions use readable neutrals. Orange highlights selection and important feedback sparingly.
 - Preserve light, dark, system, and Calm preferences; fresh installs default to light Platinum.
 - Georgia is the manuscript/title face; platform sans is for navigation and controls. Comfortable reading width takes precedence over information density.
-- Use restrained borders and consistent small radii. Preserve playful alternating scene cards in Story View while keeping composition surfaces quiet and horizontal.
+- Use restrained borders and consistent small radii. Story rows, chapter scenes, and beat editors follow a quiet vertical reading order.
 - Every action needs an accessible name, visible focus, a keyboard path, and usable disabled/empty states. Temporary outline navigation uses native modal focus management and returns focus on dismissal. Dragging always has visible move alternatives.
 - Respect reduced motion. No permanent second outline sidebar, analytics dashboard, AI chat interface, destination tabs, or mandatory metadata form. The dedicated Chapter canvas is for narrative structure and scene navigation, not a replacement for scene composition.
 
