@@ -1,6 +1,6 @@
-# Shorthand Writer
+# Tandnevis
 
-Shorthand Writer is a local desktop app for shaping a story with chapters, scenes, and ordered beats, then writing editable prose for each scene. You can write and manage projects offline; ChatGPT generation is optional.
+Tandnevis is a local desktop writing studio for shaping a story with chapters, scenes, and ordered beats, then writing editable prose for each scene. You can write and manage projects offline; ChatGPT generation is optional. Existing Windows packages and project files retain their Shorthand Writer names for compatibility.
 
 ![Story overview and character setup screens in Shorthand Writer.](assets/feature-tour.gif)
 
@@ -14,12 +14,14 @@ Choose **New project** or **Open project** from the welcome screen or the **Proj
 
 ## Shape and write a story
 
-1. In **Story**, add chapters and scenes to build the story overview. Open a scene to work on it.
+1. In **Story**, add chapters and scenes to build the story overview. Switch between **Timeline** and **Compact**, collapse chapters, or **Focus** one chapter. Open a scene to work on it.
 2. Write the scene's direction in **Scene summary**. Use **Add beat** to create ordered beat cards beneath it, and write narration or dialogue in **Scene prose**.
-3. Use **Characters**, **Tones**, and **Emotions** to manage reusable project-wide definitions. In a scene, click a block or drag it into the summary or a beat to insert a reference.
+3. Use **Characters**, **Emotions**, and **Tones** to manage reusable project-wide definitions. In a scene, the block shelf inserts references within ordinary writing: click a block to insert at the last active caret, or drag it into the summary or a beat.
 4. To make a character, choose **New character**. The four steps are **Starting point**, **Name and icon**, optional **Profile details**, and **Review**. Start blank or adapt one of 58 stock character types, including five ensemble functions. Tone and emotion defaults are optional; **None** leaves either unset. Review the profile and choose **Create character**, then **Save** to write the project changes to disk.
 
 Reorder scenes and beats with drag and drop or the move controls. Use the **Undo** and **Redo** buttons for recent project changes. Deleted scenes, beats, chapters, and unused definitions go to **Trash**, where you can restore them.
+
+The scene header shows **Story / Chapter / Scene**. Click a chapter or scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. **Story overview** returns to your place in the overview. Both side panels can collapse, and scene details stay closed until needed. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
 
 ## Save and move between projects
 
