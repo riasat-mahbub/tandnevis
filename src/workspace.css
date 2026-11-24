@@ -373,3 +373,27 @@ svg { flex-shrink:0; }
 .library-feedback p { margin:0; flex:1; overflow-wrap:anywhere; }
 .library-feedback[role="alert"] { color:var(--danger-ink); background:var(--danger-bg); }
 .story-library-header { position:sticky; top:0; z-index:2; }
+
+/* Comparison preserves the mounted source editors while a proposal is reviewed. */
+.scene-review-grid { max-width:1020px; margin:0 auto; min-width:0; }
+.scene-review-visible { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; max-width:none; align-items:start; }
+.scene-composition,.scene-draft-review { min-width:0; }
+.scene-draft-review { position:sticky; top:150px; }
+.review-banner { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-bottom:17px; border-bottom:1px solid var(--line); margin-bottom:22px; }
+.review-banner>div { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.review-banner h2 { font:400 24px Georgia,serif; }
+.review-source-heading h2 { font-size:14px; margin-bottom:6px; }
+.review-source-heading p { font-size:12px; margin-bottom:18px; }
+.scene-composition>.scene-prose-editor { margin-top:29px; }
+.scene-composition .summary-note { margin-bottom:28px; }
+.scene-review-visible .beat-prose .tiptap { font-size:15px; }
+.scene-review-visible .beat-content { padding-inline:16px; }
+.scene-review-visible .quick-actions { flex-wrap:wrap; }
+.scene-draft-review .generation-panel { margin:0; border:1px solid var(--line); background:var(--panel); padding:18px; }
+.scene-draft-review .generation-draft,.scene-draft-review .generation-beat-proposals { max-height:none; }
+.scene-draft-review .generation-draft { border:0; padding:0; background:transparent; }
+.generation-acceptance-note { color:var(--muted); font-size:12px; line-height:1.6; }
+@media (max-width:1150px) {
+  .scene-review-visible { display:block; }
+  .scene-draft-review { position:static; margin-top:28px; }
+}

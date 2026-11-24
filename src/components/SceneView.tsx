@@ -23,6 +23,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const [shelfCollapsed, setShelfCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [draftPurpose, setDraftPurpose] = useState<GenerationPurpose>('prose');
+  const [reviewOpen, setReviewOpen] = useState(true);
   const root = useRef<HTMLElement>(null);
   const visibleRef = useRef(visible); visibleRef.current = visible;
   const prefix = useId();
@@ -71,7 +72,10 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const preview = useMemo(() => { try { const context = buildSceneGenerationContext(project, scene.id); return { context, error: context.unresolvedReferences.length ? 'A character definition is missing. Repair its reference before generating.' : '' }; } catch (error) { return { context: null, error: error instanceof Error ? error.message : String(error) }; } }, [project, scene.id]);
   const proseState = useSyncExternalStore(listener => generation.subscribe(sessionId, scene.id, listener), () => generation.getState(sessionId, scene.id), () => generation.getState(sessionId, scene.id));
   const beatsState = useSyncExternalStore(listener => generation.subscribe(sessionId, scene.id, listener, 'beats'), () => generation.getState(sessionId, scene.id, 'beats'), () => generation.getState(sessionId, scene.id, 'beats'));
-  const reviewPurpose: GenerationPurpose = draftPurpose === 'prose' && proseState.status === 'idle' && beatsState.status !== 'idle' ? 'beats' : draftPurpose === 'beats' && beatsState.status === 'idle' && proseState.status !== 'idle' ? 'prose' : draftPurpose;
+  const proseReviewable = !['idle', 'accepted', 'discarded'].includes(proseState.status);
+  const beatsReviewable = !['idle', 'accepted', 'discarded'].includes(beatsState.status);
+  const reviewPurpose: GenerationPurpose = draftPurpose === 'prose' && !proseReviewable && beatsReviewable ? 'beats' : draftPurpose === 'beats' && !beatsReviewable && proseReviewable ? 'prose' : draftPurpose;
+  const reviewVisible = reviewOpen && (proseReviewable || beatsReviewable);
   const generationState = reviewPurpose === 'beats' ? beatsState : proseState;
   const currentFingerprint = useMemo(() => preview.context ? generationInputFingerprint(preview.context, defaultGuidance, reviewPurpose) : '', [preview.context, defaultGuidance, reviewPurpose]);
   useEffect(() => { for (const purpose of ['prose', 'beats'] as const) void generation.load(sessionId, scene.id, purpose).catch(error => generation.failBeforeStart(sessionId, scene.id, error, purpose)); }, [generation, scene.id, sessionId]);
@@ -81,7 +85,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const generationUnavailable = preview.error || (!generation.gateway.desktop ? 'Scene generation is available in the desktop app.' : !generationReady ? 'Connect and verify ChatGPT in Settings to generate.' : '');
   const startGeneration = (purpose: GenerationPurpose = reviewPurpose) => {
     if (!generationModel || preview.error) return;
-    setDraftPurpose(purpose);
+    setDraftPurpose(purpose); setReviewOpen(true);
     void workspace.flush().then(() => { const state = workspace.getSnapshot(); if (!state.ready || state.session?.sessionId !== sessionId) throw new Error('The selected project is switching. Try generating again after it opens.'); return generation.start(sessionId, scene.id, generationModel, defaultGuidance, purpose); }).catch(error => generation.failBeforeStart(sessionId, scene.id, error, purpose));
   };
   const acceptDraft = (acknowledgeOutdated: boolean) => {
@@ -109,6 +113,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
         <div className="scene-generate-actions" aria-label="Scene generation">
           <button className="primary" disabled={locked || !generationReady || !!generationUnavailable || !hasSummary || active} title={generationUnavailable || (!hasSummary ? 'Describe the scene first.' : 'Propose editable beats from the summary')} onClick={() => startGeneration('beats')}><ListPlus size={15}/>Generate beats</button>
           <button disabled={locked || !generationReady || !!generationUnavailable || !hasDirection || active} title={generationUnavailable || (!hasDirection ? 'Write a summary or a beat first.' : 'Draft prose from the summary and beats')} onClick={() => startGeneration('prose')}><Sparkles size={15}/>Generate prose</button>
+          {(proseReviewable || beatsReviewable) && !reviewOpen && <button onClick={() => setReviewOpen(true)}>Review draft</button>}
           {!generationReady && <button className="quiet" onClick={openSettings}>Open Settings</button>}
         </div>
       </div>
@@ -116,6 +121,10 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
         <TitleField value={scene.title} label="Scene title" large disabled={locked} onSave={title => edit({ type: 'updateScene', sceneId: scene.id, title })}/>
         {adjacentNavigation}
       </div>
+      {reviewVisible && <div className="review-banner"><div><h2>{reviewPurpose === 'beats' ? 'Review proposed beats' : 'Review prose draft'}</h2><span className="muted">Draft not applied</span></div><button onClick={() => setReviewOpen(false)}>Close review</button></div>}
+      <div className={`scene-review-grid ${reviewVisible ? 'scene-review-visible' : ''}`}>
+      <div className="scene-composition">
+        <div className="review-source-heading" hidden={!reviewVisible}><h2>{reviewPurpose === 'beats' ? 'Current scene direction' : 'Current manuscript'}</h2><p className="muted">Your writing remains editable while you compare the proposal.</p></div>
       <section className="summary-note summary-board" aria-labelledby={`${prefix}-summary-label`} data-board-id={summary.id} data-reference-drop-board>
         <div className="summary-board-heading"><h2 id={`${prefix}-summary-label`}>Scene summary</h2><span className="muted">Freeform direction</span></div>
         <BeatEditor beat={summary} index={-1} scope="summary" ariaLabel="Scene summary" placeholder="Describe the scene. Add optional character, emotion, or tone references when useful." characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateScene', sceneId: scene.id, summary: text, summaryDocument: document, toneId: '', tone: '' })} onFocus={selectEditor} onSelection={selectEditor}/>
@@ -126,11 +135,13 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
 
       {generationUnavailable && <p className="scene-generation-hint">{generationUnavailable}</p>}
       <details className="generation-preview"><summary>Preview scene context</summary><p className="muted">Only this scene's summary, ordered beats, optional narration, and references are included.</p>{preview.error ? <p role="alert">{preview.error}</p> : <pre>{preview.context?.readableContext}</pre>}</details>
-      {(proseState.status !== 'idle' || beatsState.status !== 'idle') && <div className="scene-draft-review">
-        {proseState.status !== 'idle' && beatsState.status !== 'idle' && <div className="draft-review-switch" aria-label="Draft to review"><button aria-pressed={reviewPurpose === 'beats'} onClick={() => setDraftPurpose('beats')}>Scene beats draft</button><button aria-pressed={reviewPurpose === 'prose'} onClick={() => setDraftPurpose('prose')}>Prose draft</button></div>}
-        <GenerationPanel purpose={reviewPurpose} hideStartAction ready={generationReady && !preview.error} hasSavedBeats={reviewPurpose === 'beats' ? hasSummary : hasDirection} modelLabel={generationModelLabel} status={generationState.status} draftText={generationState.draftText} currentFingerprint={currentFingerprint} requestFingerprint={generationState.job?.inputFingerprint} currentProse={scene.prose} requestBaseProse={generationState.job?.requestSnapshot.baseProse} errorMessage={generationState.errorMessage} reason={generationUnavailable || undefined} onGenerate={() => startGeneration()} onStop={() => run(() => generation.stop(sessionId, scene.id, reviewPurpose))} onAccept={acknowledgeOutdated => run(() => acceptDraft(acknowledgeOutdated))} onCopy={copyDraft} onDiscard={discardDraft} onRetry={() => startGeneration()} onOpenSettings={openSettings}/>
-      </div>}
       <SceneProseEditor value={scene.prose} disabled={locked} onChange={prose => edit({ type: 'updateScene', sceneId: scene.id, prose })}/>
+      </div>
+      <aside className="scene-draft-review" aria-label="Draft proposal" hidden={!reviewVisible}>
+        {proseReviewable && beatsReviewable && <div className="draft-review-switch" aria-label="Draft to review"><button aria-pressed={reviewPurpose === 'beats'} onClick={() => setDraftPurpose('beats')}>Scene beats draft</button><button aria-pressed={reviewPurpose === 'prose'} onClick={() => setDraftPurpose('prose')}>Prose draft</button></div>}
+        <GenerationPanel purpose={reviewPurpose} hideStartAction ready={generationReady && !preview.error} hasSavedBeats={reviewPurpose === 'beats' ? hasSummary : hasDirection} modelLabel={generationModelLabel} status={generationState.status} draftText={generationState.draftText} currentFingerprint={currentFingerprint} requestFingerprint={generationState.job?.inputFingerprint} currentProse={scene.prose} requestBaseProse={generationState.job?.requestSnapshot.baseProse} errorMessage={generationState.errorMessage} reason={generationUnavailable || undefined} onGenerate={() => startGeneration()} onStop={() => run(() => generation.stop(sessionId, scene.id, reviewPurpose))} onAccept={acknowledgeOutdated => run(() => acceptDraft(acknowledgeOutdated))} onCopy={copyDraft} onDiscard={discardDraft} onRetry={() => startGeneration()} onOpenSettings={openSettings}/>
+      </aside>
+      </div>
     </section>
 
   </main>;

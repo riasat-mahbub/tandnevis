@@ -187,7 +187,7 @@ it('opens with the title and rich summary before the beats, with no separate sce
   expect(summary).toHaveAttribute('contenteditable', 'true');
   expect(summary).toHaveTextContent('Someone comes home.');
   const heading = document.querySelector('.scene-heading')!;
-  expect(heading.nextElementSibling).toBe(summary.closest('.summary-board'));
+  expect(heading.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(summary.compareDocumentPosition(screen.getByRole('textbox', { name: 'Freeform text for beat 1' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByRole('combobox', { name: 'Scene tone block' })).toBeNull();
   expect(document.querySelector('.scene-generate-actions')).toContainElement(screen.getByRole('button', { name: 'Generate prose' }));
@@ -252,4 +252,12 @@ it('shows recovered beat proposals even when this scene has no prose draft', asy
   render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generation} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
   expect(await screen.findByRole('heading', { name: 'Draft beats' })).toBeVisible();
   expect(screen.getByText('Maya opens the infirmary door.')).toBeVisible();
+  const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+  fireEvent.click(screen.getByRole('button', { name: 'Close review' }));
+  expect(screen.queryByRole('heading', { name: 'Draft beats' })).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+  expect(generation.getState('session-1', 'scene-1', 'beats').status).toBe('completed');
+  fireEvent.click(screen.getByRole('button', { name: 'Review draft' }));
+  expect(screen.getByText('Maya opens the infirmary door.')).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { AlertCircle, Check, Copy, LoaderCircle, Sparkles, Square, Trash2 } from 'lucide-react';
 import type { GenerationPurpose } from '../services/generation';
 import './GenerationPanel.css';
@@ -87,6 +87,7 @@ export default function GenerationPanel({
   onOpenSettings,
 }: GenerationPanelProps) {
   const [reviewedPair, setReviewedPair] = useState('');
+  const prefix = useId();
   const active = activeStatuses.includes(status);
   const directionsChanged = !!requestFingerprint && requestFingerprint !== currentFingerprint;
   const proseChanged = purpose === 'prose' && requestBaseProse !== undefined && currentProse !== undefined && requestBaseProse !== currentProse;
@@ -97,9 +98,9 @@ export default function GenerationPanel({
   const showDraft = ['starting', 'stopping', 'streaming', 'completed', 'stopped', 'failed', 'interrupted'].includes(status);
   const hasDraft = draftText.trim().length > 0;
   const beats = purpose === 'beats' ? proposedBeats(draftText) : null;
-  const headingId = `generation-${purpose}-heading`;
-  const draftLabelId = `generation-${purpose}-draft-label`;
-  const disabledReasonId = `generation-${purpose}-disabled-reason`;
+  const headingId = `${prefix}-generation-${purpose}-heading`;
+  const draftLabelId = `${prefix}-generation-${purpose}-draft-label`;
+  const disabledReasonId = `${prefix}-generation-${purpose}-disabled-reason`;
 
   let disabledReason = reason;
   if (!ready) disabledReason ||= 'Connect and verify ChatGPT in Settings to generate this scene.';
@@ -145,6 +146,7 @@ export default function GenerationPanel({
     </div>}
 
     {errorMessage && <p className="generation-error" role="alert">{errorMessage}</p>}
+    {showDraft && purpose === 'prose' && <p className="generation-acceptance-note">Accepting this draft replaces the existing scene prose. Your summary and beats stay unchanged.</p>}
 
     {isOutdated && showDraft && <div className="generation-outdated" role="alert">
       <strong>Based on earlier direction</strong>
