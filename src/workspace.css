@@ -253,3 +253,42 @@ svg { flex-shrink:0; }
   .chapter-canvas .scene-open h3 { font-size:23px; }
   .chapter-canvas .card-tools { flex-wrap:wrap; padding:5px; }
 }
+
+/* A two-column desk keeps optional guidance in the tools shelf. */
+.scene-layout { --shelf-width:260px; grid-template-columns:var(--shelf-width) minmax(0,1fr); max-width:none; }
+.scene-layout.scene-layout-shelf-collapsed { --shelf-width:46px; grid-template-columns:var(--shelf-width) minmax(0,1fr); }
+.scene-writing { padding:0 34px 65px; }
+.scene-toolbar { position:sticky; top:64px; z-index:10; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin:0 -34px 28px; padding:14px 30px; background:var(--paper); border-bottom:1px solid var(--line); }
+.scene-toolbar .scene-navigation { border:0; padding:0; flex:1; }
+.scene-toolbar .scene-generate-actions { margin:0; }
+.scene-toolbar .scene-generate-actions button { font-size:13px; min-height:36px; }
+.scene-heading { display:flex; flex-direction:row; align-items:center; justify-content:space-between; gap:16px; max-width:1020px; margin:0 auto 24px; }
+.scene-heading>.title-field { flex:1; min-width:0; }
+.scene-writing>.summary-note,.scene-writing>.sequence-heading,.scene-writing>.timeline,.scene-writing>.scene-prose-editor { max-width:1020px; margin-inline:auto; }
+.scene-writing .summary-note { margin-bottom:28px; }
+.scene-writing .summary-board .beat-prose .tiptap { min-height:65px; }
+.scene-writing .beat-prose .tiptap { line-height:1.76; min-height:65px; }
+.scene-settings { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
+.scene-settings>.inspector-toggle { width:100%; border:0; background:transparent; justify-content:flex-start; padding:6px 0; font-size:13px; }
+.scene-settings .block-inspector-body label { display:grid; gap:5px; margin-top:12px; }
+.scene-settings .block-inspector-body>h2 { font-size:14px; margin-top:14px; }
+.scene-settings .block-inspector-body>p { font-size:12px; }
+.scene-settings textarea { background:var(--surface-raised); font-size:12px; }
+.block-shelf-collapsed .scene-settings .inspector-toggle>span { display:none; }
+.scene-prose-editor { border-top:1px solid var(--line); padding-top:22px; margin-top:30px; }
+.scene-prose-editor h2 { font:400 24px Georgia,serif; margin-bottom:12px; }
+.scene-prose-editor textarea { font:17px/1.76 Georgia,serif; background:var(--surface-raised); padding:18px 22px; }
+@media (max-width:1100px) { .scene-toolbar { position:static; } }
+@media (max-width:900px) {
+  .scene-layout { display:flex; flex-direction:column; }
+  .scene-writing { padding:0 24px 50px; }
+  .scene-toolbar { margin:0 -24px 24px; padding:14px 24px; }
+  .scene-heading { flex-wrap:wrap; }
+  .block-shelf.library { max-height:65dvh; overflow:auto; }
+  .block-shelf-collapsed .scene-settings { border:0; margin:0; padding:0; }
+}
+@media (max-width:700px) {
+  .scene-writing { padding-inline:18px; }
+  .scene-toolbar { margin-inline:-18px; padding-inline:18px; }
+  .scene-heading>.title-field { flex-basis:100%; }
+}

@@ -145,7 +145,7 @@ it('previews only the selected scene beats and character directions', async () =
     run={action => { void action().catch(() => {}); }}
   />);
 
-  expect(screen.getByRole('button', { name: 'Generate scene' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Generate beats' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Generate prose' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Open Settings' })).toBeEnabled();
   expect(screen.getByText('Scene generation is available in the desktop app.')).toBeVisible();
@@ -252,7 +252,7 @@ it('routes the two top actions to different generation purposes without saving t
   const start = vi.fn(async () => { throw new Error('Synthetic request ended'); });
   const generation = new GenerationSession({ ...generationSession().gateway, desktop: true, start });
   render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generation} generationReady generationModel="test-model" defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
-  fireEvent.click(screen.getByRole('button', { name: 'Generate scene' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Generate beats' }));
   await waitFor(() => expect(start).toHaveBeenCalledWith('session-1', 'scene-1', 'test-model', '', expect.any(Function), 'beats'));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Generate prose' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Generate prose' }));

@@ -339,7 +339,7 @@ describe('connected writing views', () => {
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     render(<App gateway={gateway()} initialSession={session()}/>);
     openArrival();
-    expect(screen.getByRole('button', { name: 'Generate scene' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Generate beats' })).toBeDisabled();
     fireEvent.click(screen.getAllByRole('button', { name: 'Open Settings' })[1]);
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
     expect(document.querySelector('.app-workspace')).toHaveAttribute('hidden');

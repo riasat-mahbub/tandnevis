@@ -13,27 +13,30 @@ interface Props {
 export default function SceneNavigation({ project, scene, onOpenScene, onStory, onOpenChapter }: Props) {
   const [outlineOpen, setOutlineOpen] = useState(false);
   const chapter = project.chapters.find(item => item.id === scene.chapterId);
-  const orderedIds = project.chapters.flatMap(item => item.sceneIds);
-  const index = orderedIds.indexOf(scene.id);
-  const previous = project.scenes.find(item => item.id === orderedIds[index - 1]);
-  const next = project.scenes.find(item => item.id === orderedIds[index + 1]);
   return <>
     <nav className="scene-navigation" aria-label="Scene navigation">
       <div className="scene-location">
+        <button aria-label="Zoom out to chapter" onClick={() => onOpenChapter(scene.chapterId)}><ZoomOut size={15}/><span>Zoom out</span></button>
         <button className="quiet" onClick={onStory} title="Zoom out to your story"><BookOpen size={15}/>Story overview</button>
         <ChevronRight size={13} aria-hidden="true"/>
         <button className="quiet" aria-label={`Open chapter ${chapter?.title ?? 'Chapter'}`} onClick={() => onOpenChapter(scene.chapterId)}>{chapter?.title ?? 'Chapter'}</button>
         <ChevronRight size={13} aria-hidden="true"/>
         <button className="quiet current-scene" aria-current="location" aria-haspopup="dialog" aria-label={`Jump to scene: ${scene.title}`} onClick={() => setOutlineOpen(true)}>{scene.title}<ChevronDown size={13}/></button>
       </div>
-      <div className="adjacent-scenes">
-        <button aria-label="Zoom out to chapter" onClick={() => onOpenChapter(scene.chapterId)}><ZoomOut size={15}/><span>Chapter</span></button>
-        <button aria-label="Previous scene" title={previous ? `Previous: ${previous.title}` : 'This is the first scene'} disabled={!previous} onClick={() => previous && onOpenScene(previous.id)}><ArrowLeft size={15}/><span>Previous</span></button>
-        <button aria-label="Next scene" title={next ? `Next: ${next.title}` : 'This is the last scene'} disabled={!next} onClick={() => next && onOpenScene(next.id)}><span>Next</span><ArrowRight size={15}/></button>
-      </div>
     </nav>
     {outlineOpen && <StoryOutline project={project} sceneId={scene.id} onClose={() => setOutlineOpen(false)} onOpenScene={id => { setOutlineOpen(false); onOpenScene(id); }} onOpenChapter={id => { setOutlineOpen(false); onOpenChapter(id); }} />}
   </>;
+}
+
+export function AdjacentScenes({ project, scene, onOpenScene }: Pick<Props, 'project' | 'scene' | 'onOpenScene'>) {
+  const ids = project.chapters.flatMap(chapter => chapter.sceneIds);
+  const index = ids.indexOf(scene.id);
+  const previous = project.scenes.find(item => item.id === ids[index - 1]);
+  const next = project.scenes.find(item => item.id === ids[index + 1]);
+  return <div className="adjacent-scenes">
+    <button aria-label="Previous scene" title={previous ? `Previous: ${previous.title}` : 'This is the first scene'} disabled={!previous} onClick={() => previous && onOpenScene(previous.id)}><ArrowLeft size={15}/><span>Previous</span></button>
+    <button aria-label="Next scene" title={next ? `Next: ${next.title}` : 'This is the last scene'} disabled={!next} onClick={() => next && onOpenScene(next.id)}><span>Next</span><ArrowRight size={15}/></button>
+  </div>;
 }
 
 function StoryOutline({ project, sceneId, onClose, onOpenScene, onOpenChapter }: {
