@@ -97,7 +97,7 @@ export default function LibraryView({ kind, project, workspace, locked, selected
     if (!selectedId || !definitions.some(item => item.id === selectedId)) { const next = filtered[0]?.id ?? null; if (next !== selectedId) onSelect(next); }
   }, [selectedId, definitions, filtered, onSelect]);
   useEffect(() => { if (createRequest && kind !== 'characters') beginCreate(); }, [createRequest, kind]);
-  useEffect(() => { if (openSelectionRequest && kind === 'characters') setDetailOpen(true); }, [openSelectionRequest, kind]);
+  useEffect(() => { if (openSelectionRequest) setDetailOpen(true); }, [openSelectionRequest, kind, selectedId]);
   useEffect(() => { if (creating) createInput.current?.focus({ preventScroll: true }); }, [creating]);
 
   const edit = (operation: Operation) => { void workspace.dispatch(operation).catch(() => {}); };

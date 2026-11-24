@@ -24,7 +24,7 @@ describe('connected writing views', () => {
     expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Back to chapter' }));
     expect(document.querySelector('.breadcrumb button')).toBeNull();
     openLibrary('Characters');
-    expect(identity.firstElementChild).toBe(screen.getByRole('button', { name: 'Return to Arrival' }));
+    expect(screen.getByRole('dialog', { name: 'Story Library' })).toContainElement(screen.getByRole('button', { name: 'Return to Arrival' }));
     expect(screen.queryByRole('button', { name: 'Add starter emotions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add starter tones' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Return to Arrival' }));
@@ -38,9 +38,11 @@ describe('connected writing views', () => {
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     setSummary(summary, 'Keep my place.');
     for (const name of ['Characters', 'Emotions', 'Tones']) {
-      openLibrary(name);
+      if (screen.queryByRole('dialog', { name: 'Story Library' })) fireEvent.click(screen.getByRole('button', { name: 'All definitions' }));
+      else fireEvent.click(screen.getByLabelText('Library'));
+      fireEvent.click(screen.getByRole('button', { name }));
       expect(screen.getByRole('heading', { name, level: 1 })).toBeVisible();
-      expect(document.querySelector('.library-menu button[aria-current=page]')).toHaveTextContent(name);
+      expect(screen.getByRole('dialog', { name: 'Story Library' })).toBeVisible();
     }
     fireEvent.click(screen.getByRole('button', { name: 'Return to Arrival' }));
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
@@ -209,6 +211,7 @@ describe('connected writing views', () => {
     expect(screen.queryByTestId('character-creation-wizard')).toBeNull();
     openLibrary('Characters');
     expect(screen.queryByRole('button', { name: 'Resume character draft' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to story' }));
     expect(screen.getByRole('textbox', { name: 'Project title' })).toHaveValue('A different story');
     expect(g.apply).not.toHaveBeenCalled();
   });
@@ -304,7 +307,6 @@ describe('connected writing views', () => {
     vi.mocked(g.apply).mockReturnValueOnce(edit.promise);
     render(<App gateway={g} initialSession={session()}/>);
     openArrival();
-    fireEvent.click(screen.getByText('Scene prose', { selector: 'summary' }));
     const prose = screen.getByRole('textbox', { name: 'Scene prose' });
     prose.focus();
     fireEvent.change(prose, { target: { value: 'A thought worth keeping.' } });

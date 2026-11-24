@@ -19,6 +19,28 @@ function narrative() {
 const editorFor = (element: HTMLElement) => (element as HTMLElement & { editor: Editor }).editor;
 
 describe('hierarchical writing canvases', () => {
+  it('searches the library drawer and restores the writing caret and trigger on dismissal', () => {
+    const snapshot = project(), g = gateway(snapshot);
+    render(<App gateway={g} initialSession={session(snapshot)}/>);
+    openArrival();
+    const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    const editor = editorFor(summary);
+    act(() => { editor.commands.setTextSelection(5); });
+    const selection = editor.state.selection.from;
+    const trigger = screen.getByLabelText('Library');
+    trigger.focus(); fireEvent.click(trigger);
+    const drawer = screen.getByRole('dialog', { name: 'Story Library' });
+    expect(within(drawer).getByRole('searchbox', { name: 'Search all definitions' })).toHaveFocus();
+    fireEvent.change(within(drawer).getByRole('searchbox'), { target: { value: 'Maya' } });
+    expect(within(drawer).getByRole('button', { name: /Maya/ })).toBeVisible();
+    expect(within(drawer).getAllByText('No matching definitions.')).toHaveLength(2);
+    fireEvent(drawer, new Event('cancel', { bubbles: true, cancelable: true }));
+    expect(screen.queryByRole('dialog', { name: 'Story Library' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+    expect(editor.state.selection.from).toBe(selection);
+    expect(trigger).toHaveFocus();
+    expect(g.save).not.toHaveBeenCalled();
+  });
   it('drills into separate chapter and scene canvases and zooms out one parent at a time', () => {
     render(<App gateway={gateway()} initialSession={session()}/>);
     expect(screen.getByRole('main', { name: 'Story canvas' })).toBeVisible();

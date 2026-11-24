@@ -10,6 +10,9 @@ export function openArrival() {
 }
 
 export function openLibrary(name: string) {
-  fireEvent.click(screen.getByLabelText('Library'));
+  if (screen.queryByRole('dialog', { name: 'Story Library' })) {
+    const all = screen.queryByRole('button', { name: 'All definitions' });
+    if (all) fireEvent.click(all);
+  } else fireEvent.click(screen.getByLabelText('Library'));
   fireEvent.click(screen.getByRole('button', { name }));
 }
