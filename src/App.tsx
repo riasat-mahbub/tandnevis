@@ -29,6 +29,7 @@ import { GenerationSession } from './services/generation-session';
 import { desktopRuntimeGateway } from './services/runtime';
 import type { ApplicationRuntimeInfo, RuntimeGateway } from './services/runtime';
 import './styles.css';
+import './workspace.css';
 
 interface Props { gateway?: ProjectGateway; initialSession?: ProjectSession; chatGPTService?: ChatGPTGateway; generationService?: GenerationGateway; runtimeService?: RuntimeGateway }
 type Destination = 'story' | 'scene' | LibraryKind | 'trash' | 'character-wizard';

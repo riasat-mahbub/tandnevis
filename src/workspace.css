@@ -1,0 +1,44 @@
+/* Story and scene remain the two writing views. Libraries support the manuscript. */
+.story-view-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; border-bottom:1px solid var(--line); padding:0 0 20px; }
+.story-presentation { display:flex; gap:3px; border:1px solid var(--line); border-radius:6px; padding:3px; }
+.story-presentation button { border:1px solid transparent; background:transparent; }
+.story-presentation button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
+.chapter-visibility { display:flex; gap:5px; }
+.chapter { scroll-margin-top:100px; }
+.chapter-heading { gap:10px; flex-wrap:wrap; }
+.chapter-title { flex:1; min-width:200px; gap:8px; }
+.chapter-title .title-field { flex:1; min-width:0; }
+.chapter-disclosure { justify-content:flex-start; padding:6px 2px; }
+.chapter-focused .chapter-disclosure { color:var(--ink); }
+.chapter-actions { gap:3px; }
+.chapter-actions button { min-height:32px; font-size:11px; }
+.chapter-actions button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
+.scene-open.last-opened-scene { background:var(--soft-orange); }
+.story-compact .chapter { margin-top:25px; }
+.story-compact .chapter-heading { margin-bottom:14px; padding-bottom:12px; }
+.story-compact .timeline { gap:9px; padding-left:32px; }
+.story-compact .timeline::before { left:0; }
+.story-compact .timeline-item,.story-compact .timeline-item.right { width:100%; align-self:auto; margin-left:0; }
+.story-compact .timeline-item::before,.story-compact .timeline-item.right::before { left:-32px; right:auto; width:32px; }
+.story-compact .timeline-number,.story-compact .timeline-item.right .timeline-number { left:-46px; right:auto; }
+.story-compact .note-card::before { content:none; }
+.story-compact .note-card { display:flex; align-items:stretch; border-radius:5px; }
+.story-compact .card-tools { flex:none; flex-wrap:wrap; align-content:center; width:145px; padding:7px; border-bottom:0; border-right:1px solid var(--line); }
+.story-compact .quick-actions { width:100%; margin:0; }
+.story-compact .scene-open { min-width:0; padding:12px 16px; }
+.story-compact .scene-open h3 { font-size:18px; margin-bottom:3px; }
+.story-compact .scene-open p { margin:0; font-size:13px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; overflow:hidden; }
+.story-compact .scene-facts { margin-top:7px; }
+.story-compact .chapter-add { margin:16px 0 24px 32px; }
+@media(max-width:1260px) {
+  .chapter { scroll-margin-top:150px; }
+}
+@media(max-width:720px) {
+  .chapter { scroll-margin-top:20px; }
+  .chapter-title { width:100%; }
+  .chapter-actions { margin-left:0; }
+  .chapter-visibility { flex-wrap:wrap; }
+  .story-compact .note-card { display:block; }
+  .story-compact .card-tools { width:auto; border-right:0; border-bottom:1px solid var(--line); flex-wrap:nowrap; }
+  .story-compact .quick-actions { width:auto; margin-left:auto; }
+}
