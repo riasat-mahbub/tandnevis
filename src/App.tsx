@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronRight, Feather, FolderOpen, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronDown, Feather, FolderOpen, Plus, Redo2, Save, Settings as SettingsIcon, Trash2, Undo2, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { desktopGateway } from './services/project';
 import type { Character, ProjectGateway, ProjectSession, ProjectSnapshot } from './services/project';
@@ -17,7 +17,9 @@ import type { CharacterWizardAction, CharacterWizardOrigin, CharacterWizardState
 import LibraryView from './components/LibraryView';
 import type { LibraryKind } from './components/LibraryView';
 import StoryView from './components/StoryView';
+import type { ChapterFocusRequest } from './components/StoryView';
 import SceneView from './components/SceneView';
+import SceneNavigation from './components/SceneNavigation';
 import SettingsView from './components/SettingsView';
 import UnsavedDialog from './components/UnsavedDialog';
 import type { ChatGPTSettingsState, ThemePreference } from './components/SettingsView';
@@ -124,6 +126,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   function changeAutosave(value: boolean) { setAutosave(value); workspace.setAutosave(value); try { localStorage.setItem('shorthand.autosave', String(value)); } catch { /* Session choice remains active. */ } }
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [lastSceneId, setLastSceneId] = useState<string | null>(null);
+  const [sceneVisits, setSceneVisits] = useState<{ sessionId: string; ids: string[] }>({ sessionId: '', ids: [] });
+  const [chapterFocusRequest, setChapterFocusRequest] = useState<ChapterFocusRequest | null>(null);
   const [destination, setDestination] = useState<Destination>('story');
   const destinationRef = useRef<Destination>('story');
   const [librarySelection, setLibrarySelection] = useState<Record<LibraryKind, string | null>>({ characters: null, tones: null, emotions: null });
@@ -184,7 +188,6 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
   const [reviewRecovery, setReviewRecovery] = useState(false);
   const storyScroll = useRef(0);
   const scene = project?.scenes.find(s => s.id === sceneId);
-  const chapter = project?.chapters.find(c => c.id === scene?.chapterId);
   const locked = !!error || !ready;
   const run = (action: () => Promise<unknown>) => { void action().catch(e => setNotice(e instanceof Error ? e.message : String(e))); };
   const runChatGPT = (action: () => Promise<NativeChatGPTState>) => {
@@ -203,10 +206,15 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[next === 'scene' ? `scene:${sceneId}` : next] ?? 0));
   };
   const backToStory = () => navigate('story');
+  const focusChapter = (chapterId: string) => {
+    navigate('story');
+    setChapterFocusRequest(previous => ({ chapterId, request: (previous?.request ?? 0) + 1 }));
+  };
   const openScene = (id: string) => {
     if (destination === 'story') storyScroll.current = window.scrollY;
     destinationScroll.current[destination === 'scene' ? `scene:${sceneId}` : destination] = window.scrollY;
     setSceneId(id); setLastSceneId(id); destinationRef.current = 'scene'; setDestination('scene'); setSettingsOpen(false);
+    setSceneVisits(previous => ({ sessionId: session!.sessionId, ids: previous.sessionId === session!.sessionId ? [...new Set([...previous.ids, id])] : [id] }));
     requestAnimationFrame(() => window.scrollTo(0, destinationScroll.current[`scene:${id}`] ?? 0));
   };
   function startCharacterWizard(origin: CharacterWizardOrigin) {
@@ -389,6 +397,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     replaceCharacterWizard(null);
     destinationRef.current = 'story'; setDestination('story');
     setSceneId(null); setLastSceneId(null); setLibrarySelection({ characters: null, tones: null, emotions: null });
+    setChapterFocusRequest(null); setSceneVisits({ sessionId: '', ids: [] });
     setCharacterProfileRequests(0); destinationScroll.current = {};
   }, [session?.sessionId]);
   useEffect(() => {
@@ -475,7 +484,7 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
       characterCreateInFlight.current = false;
       setCharacterRecoveryResolution(null);
       replaceCharacterWizard(null);
-      setSceneId(null); setLastSceneId(null); destinationRef.current = 'story'; setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCharacterProfileRequests(0); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice('');
+      setSceneId(null); setLastSceneId(null); setSceneVisits({ sessionId: '', ids: [] }); setChapterFocusRequest(null); destinationRef.current = 'story'; setDestination('story'); setLibrarySelection({ characters: null, tones: null, emotions: null }); setCharacterProfileRequests(0); setCreateRequests({ characters: 0, tones: 0, emotions: 0 }); destinationScroll.current = {}; setNotice('');
     }
   }
   function retryWorkspace() {
@@ -575,8 +584,8 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     {notice && <div className="notice" role="status"><span>{notice}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={15}/></button></div>}
     {!project ? <main id="main" className="welcome"><div className="welcome-mark"><Feather size={38}/></div><h1>Every story starts<br/>with a little room.</h1><p>Arrange the shape of your story.<br/>Then step into a scene and write freely.</p><section className="start-project"><label>Story name<input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Untitled story" maxLength={250}/></label><div className="button-row"><button className="primary" disabled={!gateway.desktop || !ready} onClick={() => run(() => load('create'))}><Plus size={17}/>New project</button><button disabled={!gateway.desktop || !ready} onClick={() => run(() => load('open'))}><FolderOpen size={17}/>Open project</button></div><small>{!ready ? 'Opening your project…' : gateway.desktop ? 'Choose where your local SQLite project lives. No account needed.' : 'Desktop app required. Open Shorthand Writer through Tauri to create or open a local project. This browser preview does not store manuscripts.'}</small></section></main> : <>
       <fieldset id="workspace-main" className="workspace-content" disabled={!ready}>
-        <div className="destination-view" hidden={destination !== 'story'}><StoryView project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run}/></div>
-        {scene && <div className="destination-view" hidden={destination !== 'scene'}><div className="breadcrumb"><span>{chapter?.title}<ChevronRight size={13}/>{scene.title}</span></div><SceneView key={`${project.projectId}:${scene.id}`} project={project} scene={scene} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>}
+        <div className="destination-view" hidden={destination !== 'story'}><StoryView key={session!.sessionId} project={project} workspace={workspace} locked={locked} openScene={openScene} notify={setNotice} run={run} focusRequest={chapterFocusRequest} lastSceneId={lastSceneId}/></div>
+        {project.scenes.filter(item => item.id === sceneId || sceneVisits.sessionId === session!.sessionId && sceneVisits.ids.includes(item.id)).map(item => <div key={`${session!.sessionId}:${item.id}`} className="destination-view scene-destination" hidden={destination !== 'scene' || item.id !== sceneId}><SceneView project={project} scene={item} active={destination === 'scene' && item.id === sceneId && !settingsOpen} navigation={destination === 'scene' && item.id === sceneId ? <SceneNavigation project={project} scene={item} onStory={backToStory} onFocusChapter={focusChapter} onOpenScene={openScene}/> : null} workspace={workspace} sessionId={session!.sessionId} generation={generationSession} generationReady={generationSession.gateway.desktop && nativeChatGPTState?.ready === true && !!nativeChatGPTState.selectedModel && !locked} generationModel={nativeChatGPTState?.selectedModel ?? undefined} generationModelLabel={nativeChatGPTState?.models.find(model => model.slug === nativeChatGPTState.selectedModel)?.displayName} defaultGuidance={defaultGuidance} locked={locked} notify={setNotice} run={run} openSettings={openSettings} manageCharacters={id => openLibrary('characters', id)} manageLibrary={openLibrary}/></div>)}
         {characterWizard && <div className="destination-view character-wizard-destination" hidden={destination !== 'character-wizard'}><CharacterCreationWizard state={characterWizard} tones={project.tones} emotions={project.emotions} creationReady={ready && pending === 0 && !saving && !error && !conflict} dispatch={dispatchCharacterWizard} onCreate={requestCharacterCreation} onCancel={cancelCharacterWizard}/></div>}
         {(['characters', 'emotions', 'tones'] as const).map(kind => <div key={`${project.projectId}:${kind}`} className="destination-view" hidden={destination !== kind}><LibraryView kind={kind} project={project} workspace={workspace} locked={locked} selectedId={librarySelection[kind]} onSelect={id => setLibrarySelection(selection => ({ ...selection, [kind]: id }))} createRequest={createRequests[kind]} openSelectionRequest={kind === 'characters' ? characterProfileRequests : 0} onCreateCharacter={() => startCharacterWizard({ kind: 'library' })} hasCharacterDraft={!!characterWizard && characterWizard.projectSessionId === session?.sessionId && characterWizard.submission.status !== 'succeeded'} onResumeCharacterDraft={resumeCharacterWizard} onOpenUsage={openUsage} onOpenCharacter={id => openLibrary('characters', id)} notify={setNotice} run={run}/></div>)}
         {destination === 'trash' && <main className="recovery-screen" aria-labelledby="trash-heading"><div className="recovery-heading"><div><h1 id="trash-heading">Trash</h1><p>Restore deleted writing and unused definitions to this project.</p></div></div>{project.trash.length ? <ul className="trash-list">{project.trash.map(item => <li key={item.id}><div><strong>{item.title || 'Untitled item'}</strong><small>{item.kind} - Deleted at revision {item.deletedAtRevision}</small></div><button disabled={locked} onClick={() => run(async () => { await workspace.dispatch({ type: 'restoreTrash', trashId: item.id }); setNotice(`${item.title || item.kind} restored. Save the project to keep this change.`); })}>Restore</button></li>)}</ul> : <div className="library-empty"><h2>Trash is empty</h2><p>Deleted scenes, beats, chapters, and unused definitions can be restored here.</p></div>}</main>}

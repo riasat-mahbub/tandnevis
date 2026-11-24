@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, Users, Heart, MessageSquare, SlidersHorizontal } from 'lucide-react';
 import type { Character, Operation, Preset, ProjectSnapshot, Scene } from '../services/project';
@@ -19,13 +20,15 @@ import SceneProseEditor from './SceneProseEditor';
 import { TitleField } from './Fields';
 import { Timeline, TimelineItem } from './Timeline';
 
-interface Props { project: ProjectSnapshot; scene: Scene; workspace: Workspace; sessionId: string; generation: GenerationSession; generationReady: boolean; generationModel?: string; generationModelLabel?: string; defaultGuidance: string; locked: boolean; manageCharacters: (id?: string) => void; manageLibrary?: (kind: 'characters' | 'tones' | 'emotions', id?: string) => void; openSettings: () => void; notify: (message: string) => void; run: (action: () => Promise<unknown>) => void }
-export default function SceneView({ project, scene, workspace, sessionId, generation, generationReady, generationModel, generationModelLabel, defaultGuidance, locked, manageCharacters, manageLibrary, openSettings, notify, run }: Props) {
+interface Props { project: ProjectSnapshot; scene: Scene; workspace: Workspace; sessionId: string; generation: GenerationSession; generationReady: boolean; generationModel?: string; generationModelLabel?: string; defaultGuidance: string; locked: boolean; active?: boolean; navigation?: ReactNode; manageCharacters: (id?: string) => void; manageLibrary?: (kind: 'characters' | 'tones' | 'emotions', id?: string) => void; openSettings: () => void; notify: (message: string) => void; run: (action: () => Promise<unknown>) => void }
+export default function SceneView({ project, scene, workspace, sessionId, generation, generationReady, generationModel, generationModelLabel, defaultGuidance, locked, active: visible = true, navigation, manageCharacters, manageLibrary, openSettings, notify, run }: Props) {
   const [search, setSearch] = useState('');
   const [activeBlockTab, setActiveBlockTab] = useState<LibraryKind>('characters');
   const [shelfCollapsed, setShelfCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [draftPurpose, setDraftPurpose] = useState<GenerationPurpose>('prose');
+  const root = useRef<HTMLElement>(null);
+  const visibleRef = useRef(visible); visibleRef.current = visible;
   const prefix = useId();
   const editorRef = useRef<Editor | null>(null), editors = useRef(new Map<string, Editor>());
   const blockTabs = useRef<Partial<Record<LibraryKind, HTMLButtonElement>>>({});
@@ -38,17 +41,23 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   }, []);
   useEffect(() => {
     const focus = (event: Event) => {
+      if (!visible) return;
       const { beatId, occurrenceId } = (event as CustomEvent<{ beatId: string; occurrenceId?: string }>).detail;
       const editor = editors.current.get(beatId); if (!editor) return;
       editor.commands.focus();
       if (occurrenceId) { const target = characterTargets(editor).find(t => t.occurrenceId === occurrenceId); if (target) editor.commands.setNodeSelection(target.pos); }
-      selectEditor(editor); document.querySelector(`[data-item-id="${beatId}"]`)?.scrollIntoView({ block: 'center' });
+      selectEditor(editor); root.current?.querySelector(`[data-board-id="${beatId}"]`)?.scrollIntoView({ block: 'center' });
     };
     window.addEventListener('shorthand:focus-beat', focus); return () => window.removeEventListener('shorthand:focus-beat', focus);
-  }, [selectEditor]);
+  }, [selectEditor, visible]);
+  useEffect(() => {
+    if (!visible || !editorRef.current || editorRef.current.isDestroyed) return;
+    const frame = requestAnimationFrame(() => editorRef.current?.commands.focus(undefined, { scrollIntoView: false }));
+    return () => cancelAnimationFrame(frame);
+  }, [visible]);
   const edit = (op: Operation) => { void workspace.dispatch(op).catch(() => {}); };
   const currentEditor = () => editorRef.current && !editorRef.current.isDestroyed ? editorRef.current : editors.current.get(summary.id);
-  const focusBeat = (id?: string) => requestAnimationFrame(() => { if (id) { editors.current.get(id)?.commands.focus('end'); document.querySelector(`[data-item-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }); } else document.getElementById('add-beat')?.focus(); });
+  const focusBeat = (id?: string) => requestAnimationFrame(() => { if (!visibleRef.current) return; if (id) { editors.current.get(id)?.commands.focus('end'); root.current?.querySelector(`[data-item-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }); } else root.current?.querySelector<HTMLButtonElement>('.add-beat')?.focus(); });
   async function addBeat(afterId?: string) {
     const current = workspace.getSnapshot().project!.scenes.find(s => s.id === scene.id)!, before = new Set(current.beats.map(b => b.id));
     const p = await workspace.dispatch({ type: 'createBeat', sceneId: scene.id, document: emptyDocument, text: '' });
@@ -110,7 +119,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
     event.preventDefault(); activateBlockTab(blockTabOrder[next], true);
   };
   const activeDefinitionsCount = activeBlockTab === 'characters' ? filteredCharacters.length : activeBlockTab === 'emotions' ? filteredEmotions.length : filteredTones.length;
-  return <main id="main" className={`scene-layout ${shelfCollapsed ? 'scene-layout-shelf-collapsed' : ''} ${detailsOpen ? 'scene-layout-details-open' : 'scene-layout-details-collapsed'}`}>
+  return <main ref={root} className={`scene-layout ${shelfCollapsed ? 'scene-layout-shelf-collapsed' : ''} ${detailsOpen ? 'scene-layout-details-open' : 'scene-layout-details-collapsed'}`}>
     <aside className={`library block-shelf ${shelfCollapsed ? 'block-shelf-collapsed' : ''}`} aria-label="Story blocks">
       <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Blocks' : 'Hide blocks'}</span></button>
       {shelfCollapsed && <div className="block-category-rail" aria-label="Block shortcuts">{blockTabOrder.map(kind => { const Icon = blockTabIcons[kind]; return <button key={kind} className="quiet icon-button" aria-label={`Show ${blockTabTitles[kind].toLowerCase()} blocks`} aria-pressed={activeBlockTab === kind} title={blockTabTitles[kind]} onClick={() => { activateBlockTab(kind); setShelfCollapsed(false); }}><Icon size={18}/></button>; })}</div>}
@@ -140,6 +149,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
     </aside>
     <section className="scene-writing" aria-label="Scene writing">
       <div className="scene-heading">
+        {navigation}
         <TitleField value={scene.title} label="Scene title" large disabled={locked} onSave={title => edit({ type: 'updateScene', sceneId: scene.id, title })}/>
       </div>
       <section className="summary-note summary-board" aria-labelledby={`${prefix}-summary-label`} data-board-id={summary.id} data-reference-drop-board>
@@ -148,7 +158,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
       </section>
       <div className="sequence-heading"><h2>The beats</h2><span className="muted">{scene.beats.length} beat{scene.beats.length === 1 ? '' : 's'} - One moment, then the next.</span></div>
       {scene.beats.length ? <Timeline ids={scene.beats.map(b => b.id)} group={`Beats in ${scene.id}`} onReorder={ids => { edit({ type: 'reorderBeats', sceneId: scene.id, ids }); notify('Beat order updated.'); }}>{scene.beats.map((beat, index) => <TimelineItem key={beat.id} id={beat.id} index={index} count={scene.beats.length} group={`Beats in ${scene.id}`} label={`beat ${index + 1}`} disabled={locked} onMove={delta => { edit({ type: 'reorderBeats', sceneId: scene.id, ids: moved(scene.beats.map(b => b.id), beat.id, delta) }); notify(`Beat moved to position ${index + delta + 1}.`); }} actions={<><button disabled={locked} aria-label={`Duplicate beat ${index + 1}`} onClick={() => run(async () => { const before = new Set(scene.beats.map(b => b.id)); const p = await workspace.dispatch({ type: 'duplicateBeat', beatId: beat.id }); focusBeat(p.scenes.find(s => s.id === scene.id)!.beats.find(b => !before.has(b.id))?.id); })}><Copy size={13}/>Duplicate</button><button disabled={locked} className="danger" aria-label={`Delete beat ${index + 1}`} onClick={() => run(async () => { await workspace.dispatch({ type: 'deleteBeat', beatId: beat.id }); focusBeat(scene.beats[index + 1]?.id ?? scene.beats[index - 1]?.id); notify('Beat moved to Trash.'); })}><Trash2 size={13}/>Delete</button></>}><div className="beat-content" data-board-id={beat.id} data-reference-drop-board><span className="beat-label">Beat {index + 1}</span><BeatEditor beat={beat} index={index} characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateBeat', beatId: beat.id, document, text })} onFocus={selectEditor} onSelection={selectEditor}/></div><div className="insert-row"><button className="quiet" disabled={locked} onClick={() => run(() => addBeat(beat.id))}><Plus size={12}/>Insert beat after</button></div></TimelineItem>)}</Timeline> : <div className="empty-beats"><p>Give this scene its first moment.</p><p className="muted">Write freely. No character blocks are required.</p></div>}
-      <button id="add-beat" className="add-beat" disabled={locked} onClick={() => run(() => addBeat())}><Plus size={16}/>Add beat</button>
+      <button className="add-beat" disabled={locked} onClick={() => run(() => addBeat())}><Plus size={16}/>Add beat</button>
       <div className="scene-generate-actions" aria-label="Scene generation"><button disabled={locked || !generationReady || !!generationUnavailable || !hasDirection || active} title={generationUnavailable || (!hasDirection ? 'Write a summary or a beat first.' : 'Write prose from the summary and beats')} onClick={() => startGeneration('prose')}><Sparkles size={15}/>Generate prose</button>{!generationReady && <button className="quiet" onClick={openSettings}>Open Settings</button>}</div>
       {generationUnavailable && <p className="scene-generation-hint">{generationUnavailable}</p>}
       <details className="generation-preview"><summary>Preview scene context</summary><p className="muted">Only this scene's summary, ordered beats, optional narration, and references are included.</p>{preview.error ? <p role="alert">{preview.error}</p> : <pre>{preview.context?.readableContext}</pre>}</details>
