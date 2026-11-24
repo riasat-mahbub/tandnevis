@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArrowLeft, Copy, Plus, Search, Trash2, Users, Heart, Waves } from 'lucide-react';
+import { Archive, ArrowLeft, Copy, Plus, Search, Trash2, Users, Heart, MessageSquare } from 'lucide-react';
 import type { Character, Operation, Preset, PresetKind, ProjectSnapshot } from '../services/project';
 import type { Workspace } from '../services/workspace';
 import { TitleField } from './Fields';
@@ -90,7 +90,7 @@ export default function LibraryView({ kind, project, workspace, locked, selected
   const usages = useMemo(() => selected ? libraryUsages(project, kind, selected.id) : [], [project, kind, selected]);
   const presetKind: PresetKind | undefined = kind === 'characters' ? undefined : kind === 'tones' ? 'tone' : 'emotion';
   const singular = singulars[kind];
-  const Icon = kind === 'characters' ? Users : kind === 'tones' ? Waves : Heart;
+  const Icon = kind === 'characters' ? Users : kind === 'tones' ? MessageSquare : Heart;
 
   useEffect(() => {
     if (!selectedId || !definitions.some(item => item.id === selectedId)) { const next = filtered[0]?.id ?? null; if (next !== selectedId) onSelect(next); }

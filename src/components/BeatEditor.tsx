@@ -209,7 +209,7 @@ function CharacterChip({ node, selected, getPos }: NodeViewProps) {
   const { characters } = useContext(Definitions);
   const character = characters.find(c => c.id === node.attrs.characterId);
   const label = character?.name ?? node.attrs.label;
-  return <NodeViewWrapper as="span" className={`character-chip story-block block-character ${selected ? 'block-selected' : ''}`} data-occurrence-id={node.attrs.occurrenceId} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Character reference · drag to move, Ctrl-drag to copy"><CharacterIcon icon={character?.icon} size={13}/>{[label, node.attrs.emotion && `Emotion: ${node.attrs.emotion}`, node.attrs.delivery && `Delivery: ${node.attrs.delivery}`].filter(Boolean).join(' · ')}</NodeViewWrapper>;
+  return <NodeViewWrapper as="span" className={`character-chip story-block block-character ${selected ? 'block-selected' : ''}`} data-occurrence-id={node.attrs.occurrenceId} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Character reference · drag to move, Ctrl-drag to copy"><CharacterIcon icon={character?.icon} size={13}/><span className="sr-only">Character: </span>{[label, node.attrs.emotion && `Emotion: ${node.attrs.emotion}`, node.attrs.delivery && `Delivery: ${node.attrs.delivery}`].filter(Boolean).join(' · ')}</NodeViewWrapper>;
 }
 function EmotionChip({ node, selected, getPos }: NodeViewProps) {
   const { emotions } = useContext(Definitions);

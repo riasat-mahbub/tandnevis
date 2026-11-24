@@ -1,4 +1,31 @@
 /* Story and scene remain the two writing views. Libraries support the manuscript. */
+.project-app-header { position:sticky; top:0; z-index:20; background:var(--panel); }
+.block-shelf.library { position:sticky; top:77px; height:calc(100dvh - 77px); max-height:calc(100dvh - 77px); padding:18px 14px; overflow:hidden; display:flex; flex-direction:column; border-bottom:0; }
+.block-shelf .shelf-toggle { flex:none; min-height:34px; margin-bottom:18px; font-size:12px; }
+.block-shelf-body { min-height:0; display:flex; flex:1; flex-direction:column; }
+.block-shelf-body>h2 { font-size:13px; font-weight:600; margin:0 8px 12px; }
+.block-tabs { grid-template-columns:minmax(0,1fr); gap:5px; margin:0 0 14px; border:0; }
+.block-tabs>[role="tab"] { justify-content:flex-start; gap:10px; min-height:42px; padding:9px 11px; border:1px solid transparent; border-radius:5px; font-size:14px; white-space:normal; text-align:left; }
+.block-tabs>[role="tab"][aria-selected="true"] { background:var(--soft-orange); border-color:var(--accent); color:var(--ink); font-weight:600; }
+.block-tabs>[role="tab"]:hover { background:var(--soft); }
+.block-tabs>[role="tab"]:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.block-tab-panel { display:flex; flex-direction:column; min-height:0; flex:1; }
+.block-category-description { margin:0 6px 12px; color:var(--muted); font-size:12px; }
+.block-search { margin:0 0 8px; gap:6px; }
+.block-search input { min-height:38px; font-size:13px; }
+.block-panel-heading { flex:none; display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; gap:0; padding-bottom:12px; margin:0; }
+.block-panel-heading button { min-height:32px; font-size:11px; padding:4px 0; }
+.block-manage { text-decoration:underline; text-underline-offset:3px; }
+.block-palette { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:4px; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.block-shelf .block-collection,.block-shelf .preset-color-groups { max-height:none; overflow:visible; margin:0; padding:0; scrollbar-gutter:auto; }
+.block-shelf .preset-color-groups { gap:19px; }
+.preset-color-group-heading { font-size:11px; margin-bottom:5px; }
+.block-collection .story-block { font-size:12px; min-height:35px; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+.block-collection .story-block>svg { flex:none; }
+.block-category-rail { display:flex; flex-direction:column; gap:8px; align-items:center; }
+.block-category-rail button { min-width:34px; min-height:38px; }
+.block-category-rail button[aria-pressed="true"] { background:var(--soft-orange); border-color:var(--accent); }
+.block-shelf-collapsed.library { padding:18px 5px; }
 .story-view-controls { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; border-bottom:1px solid var(--line); padding:0 0 20px; }
 .story-presentation { display:flex; gap:3px; border:1px solid var(--line); border-radius:6px; padding:3px; }
 .story-presentation button { border:1px solid transparent; background:transparent; }
@@ -31,9 +58,22 @@
 .story-compact .scene-facts { margin-top:7px; }
 .story-compact .chapter-add { margin:16px 0 24px 32px; }
 @media(max-width:1260px) {
+  .block-shelf.library { height:calc(100dvh - 128px); }
   .chapter { scroll-margin-top:150px; }
 }
+@media(max-width:900px) {
+  .block-shelf.library { position:static; width:100%; height:auto; max-height:none; padding:10px 18px; border-bottom:1px solid var(--line); }
+  .block-shelf .shelf-toggle { width:auto; min-width:130px; margin:0 0 10px; }
+  .block-shelf-collapsed.library { flex-direction:row; align-items:center; justify-content:space-between; gap:12px; }
+  .block-shelf-collapsed .shelf-toggle { margin:0; }
+  .block-category-rail { flex-direction:row; gap:9px; }
+  .block-shelf-body { padding-top:10px; }
+  .block-shelf-body>h2 { display:none; }
+  .block-palette { max-height:230px; flex:auto; }
+  .block-shelf .block-collection,.block-shelf .preset-color-groups { max-height:none; }
+}
 @media(max-width:720px) {
+  .project-app-header { position:static; }
   .chapter { scroll-margin-top:20px; }
   .chapter-title { width:100%; }
   .chapter-actions { margin-left:0; }

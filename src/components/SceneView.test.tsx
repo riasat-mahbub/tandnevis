@@ -51,6 +51,14 @@ it('shows only one category, scopes search, and keeps one dynamic manage link', 
   expect(screen.getByPlaceholderText('Search tones')).toHaveValue('');
   fireEvent.click(screen.getByRole('button', { name: 'Manage Tones' }));
   expect(manageLibrary).toHaveBeenCalledWith('tones', undefined);
+  expect(screen.getByRole('tablist', { name: 'Block categories' })).toHaveAttribute('aria-orientation', 'vertical');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Tones' }), { key: 'ArrowUp' });
+  expect(screen.getByRole('tab', { name: 'Emotions' })).toHaveFocus();
+  expect(screen.getByText('What they feel.')).toBeVisible();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Emotions' }), { key: 'ArrowDown' });
+  expect(screen.getByRole('tab', { name: 'Tones' })).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', { name: 'New tone' }));
+  expect(manageLibrary).toHaveBeenLastCalledWith('tones', 'new');
 });
 
 it('groups preset shelf blocks by effective color and keeps custom colors last', () => {

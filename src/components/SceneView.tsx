@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Editor } from '@tiptap/core';
-import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus } from 'lucide-react';
+import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, Users, Heart, MessageSquare } from 'lucide-react';
 import type { Character, Operation, Preset, ProjectSnapshot, Scene } from '../services/project';
 import { emptyDocument } from '../services/project';
 import { buildSceneGenerationContext } from '../services/generation-context';
@@ -23,9 +23,10 @@ interface Props { project: ProjectSnapshot; scene: Scene; workspace: Workspace; 
 export default function SceneView({ project, scene, workspace, sessionId, generation, generationReady, generationModel, generationModelLabel, defaultGuidance, locked, manageCharacters, manageLibrary, openSettings, notify, run }: Props) {
   const [search, setSearch] = useState('');
   const [activeBlockTab, setActiveBlockTab] = useState<LibraryKind>('characters');
-  const [shelfCollapsed, setShelfCollapsed] = useState(false);
+  const [shelfCollapsed, setShelfCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [draftPurpose, setDraftPurpose] = useState<GenerationPurpose>('prose');
+  const prefix = useId();
   const editorRef = useRef<Editor | null>(null), editors = useRef(new Map<string, Editor>());
   const blockTabs = useRef<Partial<Record<LibraryKind, HTMLButtonElement>>>({});
   const tones = project.tones ?? [], emotions = project.emotions ?? [];
@@ -89,6 +90,8 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const dragPreset = (event: React.DragEvent, kind: 'tone' | 'emotion', preset: Preset) => { event.stopPropagation(); event.dataTransfer.setData(PRESET_REFERENCE_MIME, JSON.stringify({ kind, id: preset.id })); event.dataTransfer.effectAllowed = 'copy'; };
   const blockTabOrder: LibraryKind[] = ['characters', 'emotions', 'tones'];
   const blockTabTitles: Record<LibraryKind, string> = { characters: 'Characters', emotions: 'Emotions', tones: 'Tones' };
+  const blockTabIcons = { characters: Users, emotions: Heart, tones: MessageSquare };
+  const blockTabDescriptions = { characters: 'Who is involved.', emotions: 'What they feel.', tones: 'How the writing sounds.' };
   const filteredCharacters = project.characters.filter(character => !character.archived && matches(character.name));
   const filteredEmotions = emotions.filter(preset => !preset.archived && matches(preset.name));
   const filteredTones = tones.filter(preset => !preset.archived && matches(preset.name));
@@ -100,8 +103,8 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   };
   const onBlockTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, current: LibraryKind) => {
     const index = blockTabOrder.indexOf(current);
-    const next = event.key === 'ArrowRight' ? (index + 1) % blockTabOrder.length
-      : event.key === 'ArrowLeft' ? (index + blockTabOrder.length - 1) % blockTabOrder.length
+    const next = ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % blockTabOrder.length
+      : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + blockTabOrder.length - 1) % blockTabOrder.length
       : event.key === 'Home' ? 0 : event.key === 'End' ? blockTabOrder.length - 1 : -1;
     if (next < 0) return;
     event.preventDefault(); activateBlockTab(blockTabOrder[next], true);
@@ -109,16 +112,18 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const activeDefinitionsCount = activeBlockTab === 'characters' ? filteredCharacters.length : activeBlockTab === 'emotions' ? filteredEmotions.length : filteredTones.length;
   return <main id="main" className={`scene-layout ${shelfCollapsed ? 'scene-layout-shelf-collapsed' : ''} ${detailsOpen ? 'scene-layout-details-open' : 'scene-layout-details-collapsed'}`}>
     <aside className={`library block-shelf ${shelfCollapsed ? 'block-shelf-collapsed' : ''}`} aria-label="Story blocks">
-      <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls="scene-block-shelf-panel" aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Blocks' : 'Hide blocks'}</span></button>
-      <div id="scene-block-shelf-panel" className="block-shelf-body" hidden={shelfCollapsed}>
+      <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Blocks' : 'Hide blocks'}</span></button>
+      {shelfCollapsed && <div className="block-category-rail" aria-label="Block shortcuts">{blockTabOrder.map(kind => { const Icon = blockTabIcons[kind]; return <button key={kind} className="quiet icon-button" aria-label={`Show ${blockTabTitles[kind].toLowerCase()} blocks`} aria-pressed={activeBlockTab === kind} title={blockTabTitles[kind]} onClick={() => { activateBlockTab(kind); setShelfCollapsed(false); }}><Icon size={18}/></button>; })}</div>}
+      <div id={`${prefix}-shelf`} className="block-shelf-body" hidden={shelfCollapsed}>
         <h2>Story blocks</h2>
-        <div className="block-tabs" role="tablist" aria-label="Block categories">{blockTabOrder.map(kind => <button key={kind} ref={element => { if (element) blockTabs.current[kind] = element; }} id={`scene-block-tab-${kind}`} role="tab" aria-selected={activeBlockTab === kind} aria-controls="scene-block-tab-panel" tabIndex={activeBlockTab === kind ? 0 : -1} onClick={() => activateBlockTab(kind)} onKeyDown={event => onBlockTabKeyDown(event, kind)}>{blockTabTitles[kind]}</button>)}</div>
-        <section className="block-tab-panel" id="scene-block-tab-panel" role="tabpanel" aria-labelledby={`scene-block-tab-${activeBlockTab}`}>
-          <div className="block-panel-heading"><h3>{blockTabTitles[activeBlockTab]}</h3><button className="quiet block-manage" onClick={() => manage(activeBlockTab)}>Manage {blockTabTitles[activeBlockTab]}</button></div>
+        <div className="block-tabs" role="tablist" aria-label="Block categories" aria-orientation="vertical">{blockTabOrder.map(kind => { const Icon = blockTabIcons[kind]; return <button key={kind} ref={element => { if (element) blockTabs.current[kind] = element; }} id={`${prefix}-tab-${kind}`} role="tab" aria-selected={activeBlockTab === kind} aria-controls={`${prefix}-blocks`} tabIndex={activeBlockTab === kind ? 0 : -1} onClick={() => activateBlockTab(kind)} onKeyDown={event => onBlockTabKeyDown(event, kind)}><Icon size={17} aria-hidden="true"/>{blockTabTitles[kind]}</button>; })}</div>
+        <section className="block-tab-panel" id={`${prefix}-blocks`} role="tabpanel" aria-labelledby={`${prefix}-tab-${activeBlockTab}`}>
+          <p className="block-category-description">{blockTabDescriptions[activeBlockTab]}</p>
           <label className="block-search"><span><Search size={13}/></span><span className="sr-only">Search {blockTabTitles[activeBlockTab].toLowerCase()}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${blockTabTitles[activeBlockTab].toLowerCase()}`}/></label>
+          <div className="block-panel-heading"><button className="quiet block-manage" onClick={() => manage(activeBlockTab)}>Manage {blockTabTitles[activeBlockTab]}</button><button className="quiet shelf-new-definition" disabled={locked} onClick={() => manage(activeBlockTab, 'new')}><Plus size={14}/>{activeBlockTab === 'characters' ? 'New character' : activeBlockTab === 'emotions' ? 'New emotion' : 'New tone'}</button></div>
+          <div className="block-palette">
           {activeBlockTab === 'characters' && <>
             <div className="block-collection" aria-label="Character blocks">{filteredCharacters.map(character => <button key={character.id} aria-label={`Character: ${character.name}`} className="character-chip story-block block-character" disabled={locked} draggable={!locked} title="Drag to add a character reference, or click to insert at the caret" onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData(CHARACTER_REFERENCE_MIME, character.id); event.dataTransfer.effectAllowed = 'copy'; }} onClick={() => insertReference('character', character)}><CharacterIcon icon={character.icon} size={14}/>{character.name}<Plus size={12}/></button>)}</div>
-            <button className="shelf-new-character" disabled={locked} onClick={() => manage('characters', 'new')}><Plus size={14}/>New character</button>
           </>}
           {activeBlockTab === 'emotions' && <div className="preset-color-groups" aria-label="Emotion blocks">{emotionGroups.map(group => <section key={group.id} className="preset-color-group" aria-label={group.name}>
             <h4 className="preset-color-group-heading">{group.color && <span aria-hidden="true" style={{ backgroundColor: group.color }} />}{group.name}</h4>
@@ -129,6 +134,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
             <div className="block-collection" aria-label={`${group.name} tones`}>{group.presets.map(preset => <button key={preset.id} className="story-block block-tone preset-colored" style={presetColorStyle(effectiveColor('tone', preset))} aria-label={`Tone: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add a tone reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'tone', preset)} onClick={() => insertReference('tone', preset)}>{preset.name}<Plus size={12}/></button>)}</div>
           </section>)}</div>}
           {activeDefinitionsCount === 0 && <p className="muted block-empty">{search ? `No ${blockTabTitles[activeBlockTab].toLowerCase()} match “${search}”.` : `No ${blockTabTitles[activeBlockTab].toLowerCase()} yet.`}{search && <button className="quiet" onClick={() => setSearch('')}>Clear search</button>}</p>}
+          </div>
         </section>
       </div>
     </aside>
