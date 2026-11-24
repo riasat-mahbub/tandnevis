@@ -601,16 +601,17 @@ export default function App({ gateway = desktopGateway, initialSession, chatGPTS
     <header className="app-header project-app-header">
       <a href="#workspace-main" className="skip-link">Skip to workspace</a>
       <div className="project-header-identity">
+        <span className="studio-brand"><Feather size={23} aria-hidden="true"/><span>Tandnevis</span></span>
         {backAction && <button className="project-back quiet icon-button" aria-label={backAction.label} title={backAction.label} onClick={backAction.run}><ArrowLeft size={18}/></button>}
         <details className="project-menu" ref={projectMenu} onKeyDown={event => { if (event.key === 'Escape') { closeProjectMenu(); projectMenu.current?.querySelector('summary')?.focus(); } }} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) closeProjectMenu(); }}>
-          <summary aria-label="Project menu"><Feather size={20}/><span>Project</span><ChevronDown size={13}/></summary>
+          <summary aria-label="Project menu"><span>Project</span><ChevronDown size={13}/></summary>
           <div className="project-menu-items">
             <button disabled={!gateway.desktop || locked} onClick={() => { closeProjectMenu(); run(() => load('create')); }}><Plus size={15}/>New project...</button>
             <button aria-label="Open project" disabled={!gateway.desktop || locked} onClick={() => { closeProjectMenu(); run(() => load('open')); }}><FolderOpen size={15}/>Open project...</button>
             {project && <><hr/><button disabled={locked} onClick={() => run(() => interchange('import'))}>Import Markdown...</button><button disabled={locked} onClick={() => run(() => interchange('export'))}>Export outline as Markdown...</button><hr/><button onClick={() => { closeProjectMenu(); previousDestination.current = destination === 'trash' ? 'story' : destination; navigate('trash'); }}><Trash2 size={15}/>Trash{project.trash.length > 0 && ` (${project.trash.length})`}</button></>}
           </div>
         </details>
-        {project ? <TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/> : <span className="app-brand-name">Tandnevis</span>}
+        {project && <TitleField value={project.title} label="Project title" disabled={!ready} onSave={title => { void workspace.dispatch({ type: 'renameProject', title }).catch(() => {}); }}/>}
       </div>
       <div className="project-header-actions">
         {project && <details ref={libraryMenu} className="project-menu library-menu" onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }}><summary aria-label="Library"><BookOpen size={16}/><span>Library</span><ChevronDown size={13}/></summary><nav className="project-menu-items" aria-label="Reusable libraries">{(['characters', 'emotions', 'tones'] as const).map(kind => { const Icon = kind === 'characters' ? Users : kind === 'emotions' ? Heart : MessageSquare; return <button key={kind} aria-current={destination === kind ? 'page' : undefined} onClick={() => navigate(kind)}><Icon size={16}/>{kind[0].toUpperCase() + kind.slice(1)}</button>; })}</nav></details>}

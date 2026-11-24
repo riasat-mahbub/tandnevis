@@ -177,3 +177,27 @@ svg { flex-shrink:0; }
   .story-heading { align-items:flex-start; flex-wrap:wrap; gap:18px; }
   .story-heading h1 { font-size:32px; }
 }
+
+/* Studio header keeps file actions and writing feedback together. */
+.project-app-header { min-height:64px; padding:10px 28px; gap:16px; }
+.project-header-identity { min-width:0; gap:12px; }
+.studio-brand { display:flex; align-items:center; gap:9px; flex-shrink:0; font:600 19px Georgia,serif; letter-spacing:-.02em; }
+.studio-brand>svg { color:var(--action); }
+.project-header-identity>.title-field { padding-left:12px; border-left:1px solid var(--line); max-width:320px; min-width:80px; }
+.project-header-identity>.title-field input { font:13px 'Segoe UI',system-ui,sans-serif; color:var(--muted); }
+.project-header-actions { gap:8px; }
+.project-header-actions .save-state { min-width:0; font-size:12px; }
+.project-history { padding-right:8px; border-right:1px solid var(--line); }
+.project-header-identity>.project-menu>summary { font-size:12px; }
+@media (max-width:1100px) {
+  .project-app-header { flex-wrap:wrap; }
+  .project-header-identity { flex:1 1 350px; }
+  .project-header-actions { flex:1 1 auto; justify-content:flex-end; }
+}
+@media (max-width:700px) {
+  .project-app-header { padding:10px 16px; }
+  .project-header-identity { flex-wrap:wrap; gap:8px; }
+  .project-header-identity>.title-field { flex:1; }
+  .project-header-actions { justify-content:flex-start; flex-wrap:wrap; }
+  .settings-nav>span { display:none; }
+}
