@@ -1,6 +1,8 @@
 import type { JSONContent } from '@tiptap/core';
 import type { Character, Preset, PresetKind, ProjectSnapshot, Scene } from './project';
 import { summaryBoard } from './summary-board';
+import { readableRelationships, relationshipContext, sceneRelationshipCharacters } from './relationships';
+import type { RelationshipContext } from './relationships';
 
 /** A JSON value whose nested objects and arrays cannot be edited by a caller. */
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
@@ -51,6 +53,7 @@ export interface GenerationPreset extends Omit<Preset, 'color'> { kind: PresetKi
  */
 export interface SceneGenerationContext {
   schemaVersion: 2;
+  relationships?: RelationshipContext;
   projectId: string;
   projectRevision: number;
   scene: {
@@ -259,6 +262,10 @@ export function buildSceneGenerationContext(
   const resolvedSummary = resolveBoard(summary, 0, true);
   addPreset('tone', scene.toneId);
   const beats = scene.beats.map((beat, index) => resolveBoard(beat, index));
+  for (const id of sceneRelationshipCharacters(project, sceneId, [...referencedIds])) {
+    if (characterById.has(id)) referencedIds.add(id);
+  }
+  const relationships = relationshipContext(project, sceneId, [...referencedIds]);
 
   // Preserve first occurrence order, not global-library order.
   const referencedCharacters = [...referencedIds].map(id => {
@@ -290,6 +297,7 @@ export function buildSceneGenerationContext(
     narration: cloneJson(scene.narration),
   };
   const contextBlocks = [
+    relationships && readableRelationships(project, relationships),
     `Scene: ${scene.title}`,
     resolvedSummary.readableText && `Scene summary: ${resolvedSummary.readableText}`,
     sceneTone.trim() && `Scene default tone: ${sceneTone.trim()}`,
@@ -313,6 +321,7 @@ export function buildSceneGenerationContext(
 
   return freezeDeep({
     schemaVersion: 2,
+    ...(relationships ? { relationships: cloneJson(relationships) } : {}),
     projectId: project.projectId,
     projectRevision: project.revision,
     scene: sceneCopy,

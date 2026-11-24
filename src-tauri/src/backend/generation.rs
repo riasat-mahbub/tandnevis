@@ -230,6 +230,8 @@ struct UnresolvedReference {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SceneGenerationContext {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relationships: Option<super::relationships::RelationshipContext>,
     schema_version: u8,
     project_revision: u64,
     scene: SceneDirection,
@@ -638,6 +640,8 @@ fn build_scene_context(
         });
     }
 
+    referenced_ids = project.relationship_character_ids(scene_id, &referenced_ids);
+    let relationships = project.scene_relationship_context(scene_id, &referenced_ids)?;
     let referenced_characters = referenced_ids
         .iter()
         .filter_map(|id| characters.get(id.as_str()).copied())
@@ -676,7 +680,9 @@ fn build_scene_context(
         tone_id: scene.tone_id.clone(),
         narration: scene.narration.clone(),
     };
-    let mut blocks = vec![format!("Scene: {}", direction.title)];
+    let mut blocks = Vec::new();
+    if let Some(context) = &relationships { blocks.push(super::relationships::readable_relationships(project, context)); }
+    blocks.push(format!("Scene: {}", direction.title));
     if !summary_board.readable_text.trim().is_empty() {
         blocks.push(format!(
             "Scene summary: {}",
@@ -754,6 +760,7 @@ fn build_scene_context(
     }
     let readable_context = blocks.join("\n\n");
     Ok(SceneGenerationContext {
+        relationships,
         schema_version: 2,
         project_revision: project.revision,
         scene: direction,
@@ -789,6 +796,7 @@ fn fingerprint_for_purpose(
     if purpose == GenerationPurpose::Beats {
         value["purpose"] = json!("beats");
     }
+    if let Some(relationships) = &context.relationships { value["relationships"] = json!(relationships); }
     let canonical = serde_json::to_string(&canonicalize_json(value))
         .map_err(|_| "Could not fingerprint the scene direction.".to_string())?;
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
@@ -1634,6 +1642,25 @@ pub async fn discard_scene_generation(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn relationship_briefing_matches_frontend_and_never_leaks_future_states() {
+        let mut project: ProjectSnapshot = serde_json::from_str(include_str!("../../../src/test/relationship-context.json")).unwrap();
+        let expected: Value = serde_json::from_str(include_str!("../../../src/test/relationship-context-fingerprints.json")).unwrap();
+        let context = build_scene_context(&project, "scene").unwrap();
+        assert_eq!(context.relationships.as_ref().unwrap().before.len(), 2);
+        assert!(!context.readable_context.contains("FUTURE TRUST"));
+        assert!(!context.readable_context.contains("PRIVATE OFFSTAGE"));
+        let original = fingerprint_for_purpose(&context, "", GenerationPurpose::Prose).unwrap();
+        assert_eq!(original, expected["prose"].as_str().unwrap());
+        assert_eq!(fingerprint_for_purpose(&context, "", GenerationPurpose::Beats).unwrap(), expected["beats"].as_str().unwrap());
+        project.relationship_changes.iter_mut().find(|r| r.id == "future-change").unwrap().description = "Future edit".into();
+        assert_eq!(fingerprint_for_purpose(&build_scene_context(&project, "scene").unwrap(), "", GenerationPurpose::Prose).unwrap(), original);
+        project.relationship_changes.iter_mut().find(|r| r.id == "prior-change").unwrap().description = "Upstream edit".into();
+        assert_ne!(fingerprint_for_purpose(&build_scene_context(&project, "scene").unwrap(), "", GenerationPurpose::Prose).unwrap(), original);
+        project.relationship_cast.insert("scene".into(), vec!["iris".into()]);
+        assert!(build_scene_context(&project, "scene").unwrap().readable_context.contains("PRIVATE OFFSTAGE"));
+    }
+
     #[test]
     fn rich_summary_context_matches_frontend_fingerprints_for_both_purposes() {
         let project: ProjectSnapshot =
