@@ -1,0 +1,106 @@
+// Focused native workspace review. Called by native-smoke with its isolated project/profile.
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+
+module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath }) {
+  const fixture = await invoke('create_project', { path: projectPath, title: 'The Academy of Small Wonders' });
+  let project = fixture.project;
+  const apply = async operation => { project = await invoke('apply_operation', { sessionId: fixture.sessionId, expectedRevision: project.revision, operation }); };
+  await apply({ type: 'createChapter', title: 'At the gates' });
+  const firstChapter = project.chapters[0].id;
+  await apply({ type: 'createScene', chapterId: firstChapter, title: 'The first encounter' });
+  const firstScene = project.scenes[0].id;
+  await apply({ type: 'updateScene', sceneId: firstScene, summary: 'As the procession reaches the academy gates, two strangers recognize something familiar in each other. Neither is ready to say what.' });
+  await apply({ type: 'createScene', chapterId: firstChapter, title: 'A question left unanswered' });
+  await apply({ type: 'createChapter', title: 'Inside the academy' });
+  await apply({ type: 'createScene', chapterId: project.chapters[1].id, title: 'The room of borrowed names' });
+  await apply({ type: 'createCharacter', name: 'Murad' });
+  await apply({ type: 'createCharacter', name: 'Rudra' });
+  for (const text of [
+    'The procession slows at the gates. Murad notices a stranger watching from the shade and decides to approach.',
+    'Rudra asks whether Murad has been here before. The question sounds casual, but he watches carefully for the answer.',
+    'A bell interrupts them. They follow the others inside, each privately resolving to learn more about the other.',
+  ]) await apply({ type: 'createBeat', sceneId: firstScene, document: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }, text });
+  await invoke('save_project', { sessionId: fixture.sessionId });
+  await evaluate(`(() => { const original=window.fetch.bind(window); window.fetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url);const command=url.hostname==='ipc.localhost'?decodeURIComponent(url.pathname.slice(1)):null;if(command==='plugin:dialog|open')return new Response(JSON.stringify(${JSON.stringify(projectPath)}),{headers:{'Content-Type':'application/json','Tauri-Response':'ok'}});const response=await original(input,init);if(command==='open_project'&&response.headers.get('Tauri-Response')==='ok')window.__workspaceReviewSession=(await response.clone().json()).sessionId;return response;}; })()`);
+  await clickLabel('Project menu'); await clickLabel('Open project');
+  await waitFor("Boolean(window.__workspaceReviewSession)", 'workspace fixture opened');
+  await evaluate("Array.from(document.querySelectorAll('.scene-open')).find(button=>button.querySelector('h3')?.textContent==='The first encounter').click()");
+  const active = '.scene-destination:not([hidden])';
+  const editor = `${active} [aria-label="Scene summary"]`;
+  await waitFor(`Boolean(document.querySelector(${JSON.stringify(editor)})?.editor)`, 'native rich-text editor');
+  await evaluate(`(() => { const element=document.querySelector(${JSON.stringify(editor)});window.__workspaceEditor=element;const editor=element.editor;editor.commands.focus();editor.commands.setTextSelection(4); })()`);
+  await clickLabel('Character: Murad');
+  const clickTab = async name => evaluate(`Array.from(document.querySelectorAll('${active} [role="tab"]')).find(button=>button.textContent.trim()===${JSON.stringify(name)}).click()`);
+  await clickTab('Emotions'); await clickLabel('Emotion: Awe');
+  await clickTab('Tones'); await clickLabel('Tone: Playful');
+  const richText = await evaluate(`(() => { const editor=window.__workspaceEditor.editor;return {json:editor.getJSON(),selection:editor.state.selection.from,text:editor.getText()}; })()`);
+  const nodes = richText.json.content[0].content;
+  for (const type of ['characterReference', 'emotionReference', 'toneReference']) assert.ok(nodes.some(node => node.type === type), `${type} is inserted within the text`);
+  assert.equal(nodes[0].type, 'text'); assert.equal(nodes.at(-1).type, 'text');
+  await clickLabel('Next scene'); await clickLabel('Next scene');
+  assert.equal(await evaluate(`document.querySelector('${active} [aria-label="Scene title"]').value`), 'The room of borrowed names');
+  await clickLabel('Previous scene'); await clickLabel('Previous scene');
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(editor)})===window.__workspaceEditor`), true);
+  assert.equal(await evaluate('window.__workspaceEditor.editor.state.selection.from'), richText.selection);
+  assert.equal(await evaluate('window.__workspaceEditor.editor.can().undo()'), true);
+  assert.deepEqual(await evaluate("(() => { const ids=Array.from(document.querySelectorAll('[id]'),element=>element.id);return [...new Set(ids.filter((id,index)=>ids.indexOf(id)!==index))]; })()"), [], 'Cached editors retain unique accessible label and panel IDs.');
+  report.checks.push('Native inline references insert between ordinary text and retain caret, editor identity, and undo history across chapter boundaries.');
+
+  const beatId = project.scenes[0].beats[0].id;
+  await clickLabel('Move beat 1 down');
+  await waitFor(`window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__workspaceReviewSession}).then(project=>project.scenes.find(scene=>scene.id===${JSON.stringify(firstScene)}).beats[1]?.id===${JSON.stringify(beatId)})`, 'native beat reordering');
+  await clickTab('Characters'); await clickLabel('New character');
+  await waitFor("document.querySelector('[data-testid=" + JSON.stringify('character-creation-wizard') + "]')?.dataset.wizardStep==='starting-point'", 'original character wizard');
+  await clickLabel('Cancel creation');
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(editor)})===window.__workspaceEditor`), true);
+  report.checks.push('The original character wizard returns to the same editor; supported beat movement changes native reading order.');
+
+  await clickLabel('Jump to scene: The first encounter');
+  await waitFor("Boolean(document.querySelector('dialog[open] input[type=search]'))", 'outline opens');
+  await evaluate("(() => {const input=document.querySelector('dialog[open] input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'borrowed');input.dispatchEvent(new Event('input',{bubbles:true}));})()");
+  await waitFor("document.querySelectorAll('dialog[open] .outline-scene').length===1", 'outline search');
+  await clickLabel('The room of borrowed names');
+  await clickLabel('Jump to chapter or scene: Inside the academy');
+  await clickLabel('Focus chapter At the gates');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Expand chapter Inside the academy\"]').getAttribute('aria-expanded')"), 'false');
+  await clickLabel('Compact');
+  await clickLabel('Show all chapters');
+  report.checks.push('Searchable scene jumping, chapter focus, expand/collapse, and compact Story navigation work in the native app.');
+
+  async function capture(name, width, height) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await evaluate('window.scrollTo(0,0)');
+    await new Promise(resolve => setTimeout(resolve, 120));
+    const layout = await evaluate(`(() => { const scene=document.querySelector('${active} .scene-writing');const beats=Array.from(document.querySelectorAll('${active} .timeline-item'));const rect=element=>{const r=element.getBoundingClientRect();return {left:r.left,width:r.width,right:r.right};};return {name:${JSON.stringify(name)},width:innerWidth,scrollWidth:document.documentElement.scrollWidth,editor:scene?rect(scene):null,beats:beats.map(rect)}; })()`);
+    report.layout.push(layout);
+    assert.ok(layout.scrollWidth <= width + 1, `${name} has no horizontal document overflow`);
+    if (layout.beats.length) assert.ok(layout.beats.every(beat => Math.abs(beat.left - layout.beats[0].left) < 1 && Math.abs(beat.width - layout.beats[0].width) < 1), `${name} keeps every editable beat in one comfortable column`);
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await fs.writeFile(path.join(run, name + '.png'), Buffer.from(screenshot.data, 'base64'));
+    report.screenshots.push(name + '.png');
+  }
+  await capture('workspace-story-compact', 1440, 960);
+  await clickLabel('Timeline'); await capture('workspace-story-timeline', 1440, 960);
+  await evaluate("Array.from(document.querySelectorAll('.scene-open')).find(button=>button.querySelector('h3')?.textContent==='The first encounter').click()");
+  await clickLabel('Jump to scene: The first encounter'); await capture('workspace-outline', 1440, 960); await clickLabel('Close story outline');
+  for (const theme of ['light', 'dark']) {
+    await clickLabel('Open Settings');
+    await evaluate(`document.querySelector('input[name="appearance"][value="${theme}"]').click()`);
+    await clickLabel('Back to writing');
+    for (const width of [1440, 800, 390]) {
+      if (width === 1440 && await evaluate(`Boolean(document.querySelector('${active} [aria-label="Expand block sidebar"]'))`)) await clickLabel('Expand block sidebar');
+      if (width < 900 && await evaluate(`Boolean(document.querySelector('${active} [aria-label="Collapse block sidebar"]'))`)) await clickLabel('Collapse block sidebar');
+      await capture(`workspace-scene-${theme}-${width}`, width, width === 390 ? 844 : 960);
+    }
+  }
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
+  await clickLabel('Expand block sidebar'); await clickLabel('Expand scene details');
+  await capture('workspace-both-panels-open', 1440, 960);
+  await clickLabel('Collapse block sidebar'); await clickLabel('Collapse scene details');
+  await capture('workspace-both-panels-collapsed', 1440, 960);
+  report.checks.push('Batched desktop, tablet, and narrow captures verify light/dark layout, single-column beats, and both panel states.');
+  await clickLabel('Save');
+  await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'manual Save');
+};
