@@ -201,3 +201,30 @@ svg { flex-shrink:0; }
   .project-header-actions { justify-content:flex-start; flex-wrap:wrap; }
   .settings-nav>span { display:none; }
 }
+
+/* Chapter rows retain the established sortable handles and domain actions. */
+.chapter-table-labels { display:grid; grid-template-columns:90px minmax(0,1.15fr) minmax(0,1fr) 20px; gap:24px; padding:13px 25px; background:var(--panel); border:1px solid var(--line); border-radius:8px 8px 0 0; color:var(--muted); font-size:11px; font-weight:600; }
+.story-canvas>.timeline { gap:0; border:1px solid var(--line); border-top:0; border-radius:0 0 8px 8px; overflow:hidden; }
+.story-canvas>.timeline::before,.story-canvas .timeline-item::before,.story-canvas .timeline-number { display:none; }
+.story-canvas .timeline-item,.story-canvas .timeline-item.right { width:100%; align-self:stretch; }
+.story-canvas .note-card { border:0; border-bottom:1px solid var(--line); border-radius:0; background:var(--surface-raised); }
+.story-canvas .timeline-item:last-child .note-card { border-bottom:0; }
+.story-canvas .note-card::before { content:none; }
+.story-canvas .card-tools { justify-content:flex-end; border:0; padding:4px 20px; background:transparent; }
+.story-canvas .chapter-open { display:grid; grid-template-columns:90px minmax(0,1.15fr) minmax(0,1fr) 20px; gap:24px; width:100%; padding:10px 25px 28px; min-height:128px; text-align:left; border:0; border-radius:0; white-space:normal; }
+.chapter-ordinal { font:36px/1 Georgia,serif; color:var(--muted); align-self:start; font-variant-numeric:tabular-nums; }
+.chapter-narrative,.chapter-scene-preview { min-width:0; }
+.chapter-narrative h2 { font:400 26px/1.25 Georgia,serif; margin-bottom:10px; overflow-wrap:anywhere; }
+.chapter-excerpt { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; color:var(--muted); font-size:13px; line-height:1.65; }
+.chapter-scene-preview { display:grid; gap:7px; border-left:1px solid var(--line); padding-left:15px; font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+.chapter-scene-preview>span::before { content:'·'; margin-right:8px; }
+.chapter-open>svg { color:var(--action); }
+@media (max-width:800px) {
+  .chapter-table-labels { grid-template-columns:48px minmax(0,1fr); gap:16px; padding-inline:18px; }
+  .chapter-table-labels>span:last-child { display:none; }
+  .story-canvas .chapter-open { grid-template-columns:48px minmax(0,1fr) 18px; gap:16px; padding:10px 18px 22px; }
+  .chapter-scene-preview { grid-column:2; grid-row:2; }
+  .chapter-open>svg { grid-column:3; grid-row:1; }
+  .chapter-ordinal { font-size:30px; }
+  .chapter-narrative h2 { font-size:23px; }
+}
