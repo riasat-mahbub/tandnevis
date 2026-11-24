@@ -22,10 +22,29 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
     'Rudra asks whether Murad has been here before. The question sounds casual, but he watches carefully for the answer.',
     'A bell interrupts them. They follow the others inside, each privately resolving to learn more about the other.',
   ]) await apply({ type: 'createBeat', sceneId: firstScene, document: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }, text });
+  for (const title of ['The archive', 'The first lesson', 'A door after dusk']) await apply({ type: 'createChapter', title });
   await invoke('save_project', { sessionId: fixture.sessionId });
   await evaluate(`(() => { const original=window.fetch.bind(window); window.fetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url);const command=url.hostname==='ipc.localhost'?decodeURIComponent(url.pathname.slice(1)):null;if(command==='plugin:dialog|open')return new Response(JSON.stringify(${JSON.stringify(projectPath)}),{headers:{'Content-Type':'application/json','Tauri-Response':'ok'}});const response=await original(input,init);if(command==='open_project'&&response.headers.get('Tauri-Response')==='ok')window.__workspaceReviewSession=(await response.clone().json()).sessionId;return response;}; })()`);
   await clickLabel('Project menu'); await clickLabel('Open project');
   await waitFor("Boolean(window.__workspaceReviewSession)", 'workspace fixture opened');
+  assert.equal(await evaluate("document.querySelector('.writing-view-switch')===null && document.querySelector('.story-canvas').getClientRects().length>0"), true, 'Story starts as a chapter canvas without destination tabs.');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 600, deviceScaleFactor: 1, mobile: false });
+  const storyPosition = await evaluate('window.scrollTo(0,180);window.scrollY');
+  assert.ok(storyPosition > 0, 'The story fixture has a real scroll position.');
+  await clickLabel('Open chapter At the gates');
+  await waitFor("Boolean(document.querySelector('.chapter-destination:not([hidden]) .chapter-canvas'))", 'dedicated chapter canvas');
+  await waitFor('window.scrollY===0', 'initial chapter scroll position');
+  const chapterPosition = await evaluate('window.scrollTo(0,80);window.scrollY');
+  assert.ok(chapterPosition > 0, 'The chapter fixture has a real scroll position.');
+  await evaluate("Array.from(document.querySelectorAll('.scene-open')).find(button=>button.querySelector('h3')?.textContent==='The first encounter').click()");
+  await clickLabel('Zoom out to chapter');
+  await waitFor(`Math.abs(window.scrollY-${chapterPosition})<1`, 'zoom-out restores chapter position');
+  await clickLabel('Zoom out to story');
+  await waitFor(`Math.abs(window.scrollY-${storyPosition})<1`, 'zoom-out restores story position');
+  await clickLabel('Open chapter At the gates');
+  await waitFor(`Math.abs(window.scrollY-${chapterPosition})<1`, 'reopening the chapter restores its position');
+  report.checks.push('Native zoom-out returns Scene → Chapter → Story and restores independent real scroll positions.');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 1, mobile: false });
   await evaluate("Array.from(document.querySelectorAll('.scene-open')).find(button=>button.querySelector('h3')?.textContent==='The first encounter').click()");
   const active = '.scene-destination:not([hidden])';
   const editor = `${active} [aria-label="Scene summary"]`;
@@ -62,12 +81,13 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
   await evaluate("(() => {const input=document.querySelector('dialog[open] input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'borrowed');input.dispatchEvent(new Event('input',{bubbles:true}));})()");
   await waitFor("document.querySelectorAll('dialog[open] .outline-scene').length===1", 'outline search');
   await clickLabel('The room of borrowed names');
-  await clickLabel('Jump to chapter or scene: Inside the academy');
-  await clickLabel('Focus chapter At the gates');
-  assert.equal(await evaluate("document.querySelector('[aria-label=\"Expand chapter Inside the academy\"]').getAttribute('aria-expanded')"), 'false');
-  await clickLabel('Compact');
-  await clickLabel('Show all chapters');
-  report.checks.push('Searchable scene jumping, chapter focus, expand/collapse, and compact Story navigation work in the native app.');
+  await clickLabel('Jump to scene: The room of borrowed names');
+  await clickLabel('Open chapter At the gates');
+  assert.equal(await evaluate("document.querySelector('.chapter-destination:not([hidden]) main').getAttribute('aria-label')"), 'Chapter canvas: At the gates');
+  await clickLabel('Library'); await clickLabel('Characters');
+  await clickLabel('Return to At the gates');
+  await clickLabel('Compact scene list');
+  report.checks.push('Story drills into a dedicated chapter canvas; the outline opens chapter or scene canvases, and Library returns to its originating chapter.');
 
   async function capture(name, width, height) {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
@@ -81,8 +101,10 @@ module.exports = async function reviewWorkspace({ invoke, evaluate, clickLabel, 
     await fs.writeFile(path.join(run, name + '.png'), Buffer.from(screenshot.data, 'base64'));
     report.screenshots.push(name + '.png');
   }
-  await capture('workspace-story-compact', 1440, 960);
-  await clickLabel('Timeline'); await capture('workspace-story-timeline', 1440, 960);
+  await capture('workspace-chapter-compact', 1440, 960);
+  await clickLabel('Compact scene list'); await capture('workspace-chapter-timeline', 1440, 960);
+  await clickLabel('Zoom out to story'); await capture('workspace-story-chapters', 1440, 960);
+  await clickLabel('Open chapter At the gates');
   await evaluate("Array.from(document.querySelectorAll('.scene-open')).find(button=>button.querySelector('h3')?.textContent==='The first encounter').click()");
   await clickLabel('Jump to scene: The first encounter'); await capture('workspace-outline', 1440, 960); await clickLabel('Close story outline');
   for (const theme of ['light', 'dark']) {

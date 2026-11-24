@@ -171,6 +171,9 @@ async function main() {
       throw new Error(`Timed out waiting for ${description}.`);
     };
     const clickLabel = async name => {
+      if (['Characters', 'Emotions', 'Tones'].includes(name)) {
+        await evaluate("(() => { const menu=document.querySelector('.library-menu'); if(menu&&!menu.open)menu.querySelector('summary').click(); })()");
+      }
       const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
       await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
       await evaluate(`(${button}).click()`);
@@ -178,9 +181,14 @@ async function main() {
     const keyboardActivateLabel = async name => {
       const button = `Array.from(document.querySelectorAll('button,summary')).find(button => button.getClientRects().length && (button.getAttribute('aria-label') || button.textContent.trim()) === ${JSON.stringify(name)})`;
       await waitFor(`Boolean((${button}) && !(${button}).disabled)`, `enabled ${name} button`);
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
-      await evaluate(`(${button}).focus()`);
+      // Let Settings finish restoring its focus, then reach the action through
+      // actual keyboard navigation rather than racing its animation frame.
+      await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      for (let index = 0; index < 64; index++) {
+        if (await evaluate(`document.activeElement === (${button})`)) break;
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+      }
       const focusVisible = await evaluate(`(${button}).matches(':focus-visible')`);
       assert.equal(focusVisible, true, `${name} must show keyboard focus before activation.`);
       await evaluate(`(${button}).click()`);
@@ -520,6 +528,8 @@ async function main() {
       await evaluate(`(() => { const original=window.fetch.bind(window); window.__nativeSmokeCommands=[]; window.fetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url);const command=url.hostname==='ipc.localhost'?decodeURIComponent(url.pathname.slice(1)):null;if(command)window.__nativeSmokeCommands.push(command);if(command==='plugin:dialog|open')return new Response(JSON.stringify(${JSON.stringify(projectPath)}),{headers:{'Content-Type':'application/json','Tauri-Response':'ok'}});const response=await original(input,init);if(command==='open_project'&&response.headers.get('Tauri-Response')==='ok')window.__nativeSmokeSessionId=(await response.clone().json()).sessionId;return response;}; })()`);
       await clickLabel('Project menu');
       await clickLabel('Open project');
+      await waitFor("Boolean(document.querySelector('.story-canvas')?.getClientRects().length)", 'newly opened Story canvas');
+      await clickLabel('Open chapter Chapter One');
       await waitFor("Boolean(window.__nativeSmokeSessionId)", 'focused continuation fixture opened through the native UI');
       await waitFor("Array.from(document.querySelectorAll('button.scene-open')).some(button=>button.querySelector('h3')?.textContent==='Continuation arrival')", 'focused continuation scene on Story timeline');
       await evaluate("(() => {const button=Array.from(document.querySelectorAll('button.scene-open')).find(item=>item.querySelector('h3')?.textContent==='Continuation arrival');if(!button||button.disabled)throw new Error('Continuation scene missing');button.click();})()");
@@ -580,6 +590,8 @@ async function main() {
       const sessionBeforeReopen = await evaluate('window.__nativeSmokeSessionId');
       await clickLabel('Project menu');
       await clickLabel('Open project');
+      await waitFor("Boolean(document.querySelector('.story-canvas')?.getClientRects().length)", 'newly opened Story canvas');
+      await clickLabel('Open chapter Chapter One');
       await waitFor(`window.__nativeSmokeSessionId!==${JSON.stringify(sessionBeforeReopen)}`, 'focused project reopened through native UI');
       const reopenedCharacter = (await readUi()).characters.find(character=>character.name==='Guidance Sample');
       assert.equal(reopenedCharacter?.defaultToneId, toneId, 'Save/reopen preserves the selected tone ID.');
@@ -728,9 +740,11 @@ async function main() {
     const openProjectButton = "Array.from(document.querySelectorAll('button')).find(button => !button.disabled && (button.getAttribute('aria-label') || button.textContent.trim()) === 'Open project')";
     await waitFor(`Boolean(${openProjectButton})`, 'Open project control');
     await evaluate(`(${openProjectButton}).click()`);
-    await waitFor("document.body.innerText.includes('Smoke arrival')", 'persisted Story timeline');
+    await waitFor("Boolean(document.querySelector('.story-canvas')?.getClientRects().length)", 'newly opened Story canvas');
+    await clickLabel('Open chapter Chapter One');
+    await waitFor("document.body.innerText.includes('Smoke arrival')", 'persisted Chapter canvas');
     await dragItems(sceneId, secondSceneId, () => evaluate(`window.__TAURI_INTERNALS__.invoke('read_project', { sessionId: window.__nativeSmokeSessionId }).then(project => project.chapters.find(chapter => chapter.id === ${JSON.stringify(chapterId)}).sceneIds)`), 'Scene handle drag');
-    await captureView('story');
+    await captureView('chapter');
     assert.ok(await evaluate("(() => { const button = Array.from(document.querySelectorAll('button.scene-open')).find(button => button.querySelector('h3')?.textContent === 'Smoke arrival'); if (!button || button.disabled) return false; button.click(); return true; })()"), 'Persisted scene Open control must be clickable');
     await waitFor("document.body.innerText.includes('The train arrives beneath a violet sky.')", 'persisted scene beats');
     await waitFor("Boolean(document.querySelector('.scene-generate-actions'))", 'scene generation actions');
@@ -783,6 +797,8 @@ async function main() {
     const previousUiSession = await evaluate('window.__nativeSmokeSessionId');
     await clickLabel('Project menu');
     await clickLabel('Open project');
+    await waitFor("Boolean(document.querySelector('.story-canvas')?.getClientRects().length)", 'newly opened Story canvas');
+    await clickLabel('Open chapter Chapter One');
     await waitFor(`window.__nativeSmokeSessionId !== ${JSON.stringify(previousUiSession)}`, 'reopened native UI project session');
     assert.deepEqual(await readUi(), uiProject);
     await waitFor("Boolean(document.querySelector('button.scene-open'))", 'reopened Story timeline');
@@ -810,7 +826,7 @@ async function main() {
     assert.ok(aweId, 'Starter Awe emotion is present.');
     assert.equal(collectReferences(beatAfterClicks.document, 'emotionReference').filter(node => node.attrs.emotionId === aweId && !node.attrs.targetOccurrenceId).length, 2, 'New emotions are independent and unbound.');
     assert.equal(collectReferences(beatAfterClicks.document, 'toneReference').length, 2, 'The beat retains both tone references.');
-    await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('#scene-details-panel')?.hidden === true", 'optional scene details stays closed after reference insertion');
+    await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-inspector-body')?.hidden === true", 'optional scene details stays closed after reference insertion');
     report.checks.push('Native keyboard click insertion adds independent emotions and multiple tones at the last focused caret without opening scene details');
     assert.equal(await evaluate("document.querySelector('.project-header-identity')?.firstElementChild?.classList.contains('project-back')"),true,'Back is the leftmost header control');
     await clickSidebarTab('Characters');
@@ -1006,6 +1022,8 @@ async function main() {
     const preReopenCharacterSession = await evaluate('window.__nativeSmokeSessionId');
     await clickLabel('Project menu');
     await clickLabel('Open project');
+    await waitFor("Boolean(document.querySelector('.story-canvas')?.getClientRects().length)", 'newly opened Story canvas');
+    await clickLabel('Open chapter Chapter One');
     await waitFor(`window.__nativeSmokeSessionId !== ${JSON.stringify(preReopenCharacterSession)}`, 'reopened native UI project after saving selected defaults');
     const reopenedTamsin = (await readUi()).characters.find(character=>character.name==='Tamsin Revised');
     assert.ok(reopenedTamsin, 'The created character remains in the project after reopen.');
@@ -1099,7 +1117,7 @@ async function main() {
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Mara'&&!c.icon))", 'Undo restores the existing character default icon');
     await clickLabel('Redo project change');
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.characters.some(c=>c.name==='Mara'&&c.icon==='crown'))", 'Redo restores the character icon');
-    await clickLabel('Scene');
+    await clickLabel('Return to Smoke arrival');
     await waitFor("Boolean(document.querySelector('.block-shelf button[aria-label=\"Character: Mara\"] [data-character-icon=\"crown\"]')) && Boolean(document.querySelector('.ProseMirror .character-chip [data-character-icon=\"crown\"]'))", 'live matching character icons in shelf and inline references');
     report.checks.push('Existing character icon edits preserve writing fields and inline documents and support Undo/Redo');
 
@@ -1121,7 +1139,7 @@ async function main() {
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.tones.some(t=>t.name==='Stillness'&&t.color==='#FF00AA'))", 'Redo restores the new tone custom color');
     report.checks.push('A new preset color can be customized, undone, and redone through native UI history');
     await captureView('tones');
-    await clickLabel('Scene');
+    await clickLabel('Return to Smoke arrival');
     await clickSidebarTab('Emotions');
     await clickLabel('Manage Emotions');
     await waitFor("Array.from(document.querySelectorAll('.global-library-emotion')).some(element=>element.getClientRects().length>0)", 'visible full Emotions screen');
@@ -1142,13 +1160,15 @@ async function main() {
     await waitFor("window.__TAURI_INTERNALS__.invoke('read_project',{sessionId:window.__nativeSmokeSessionId}).then(p=>p.emotions.some(e=>e.name==='Awe'&&e.color==='#000000'))", 'Redo restores the built-in custom color');
     report.checks.push('Built-in preset color edits preserve inline documents and participate in Undo/Redo');
     await captureView('emotions');
-    await clickLabel('Scene');
+    await clickLabel('Return to Smoke arrival');
     projectAfterPresetColor = await readUi();
     await clickLabel('Save');
     await waitFor("document.querySelector('.save-state')?.textContent.includes('Saved locally')", 'custom preset color Save acknowledgement');
     const previousPresetColorSession = await evaluate('window.__nativeSmokeSessionId');
     await clickLabel('Project menu');
     await clickLabel('Open project');
+    await waitFor("Boolean(document.querySelector('.story-canvas')?.getClientRects().length)", 'newly opened Story canvas');
+    await clickLabel('Open chapter Chapter One');
     await waitFor(`window.__nativeSmokeSessionId !== ${JSON.stringify(previousPresetColorSession)}`, 'reopened custom preset color session');
     assert.deepEqual(await readUi(), projectAfterPresetColor, 'Reopening preserves built-in and new custom preset colors.');
     await waitFor("Boolean(document.querySelector('button.scene-open'))", 'Story timeline after preset color reopen');
@@ -1168,7 +1188,7 @@ async function main() {
     await waitFor("Array.from(document.querySelectorAll('.global-library-character')).some(element=>element.getClientRects().length>0)", 'visible full Characters screen');
     await clickLabel('Choose character icon');
     await captureView('characters');
-    await clickLabel('Scene');
+    await clickLabel('Return to Smoke arrival');
     await clickSidebarTab('Characters');
     await dragBlock('.block-shelf button[aria-label="Character: Mara"]','.summary-board h2','Character from shelf onto summary heading');
     await waitFor("document.querySelectorAll('.summary-board .character-chip').length === 1", 'native character drag into summary heading');
@@ -1210,7 +1230,7 @@ async function main() {
     assert.equal(collectReferences(movedBeat.document, 'toneReference').length, 3);
     report.checks.push('Actual pointer drops place all reference kinds on summary headings and beat card labels; emotions and multiple tones remain independent inline references');
     report.checks.push('Generic inline drag moves emotions and tones across boards and Ctrl-drag copies only the selected character with a fresh occurrence ID');
-    await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('#scene-details-panel')?.hidden === true", 'reference drops do not open scene details');
+    await waitFor("document.querySelector('.block-inspector .inspector-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-inspector-body')?.hidden === true", 'reference drops do not open scene details');
     const colors=await evaluate("Object.fromEntries(['character','emotion','tone'].map(kind=>[kind,getComputedStyle(document.querySelector('.ProseMirror .block-'+kind)).backgroundColor]))");
     assert.ok(Object.values(colors).every(color => typeof color === 'string' && color.startsWith('rgb(')), 'Character, emotion, and tone references all have a computed background.');
     const roseTone = starterCatalog.tones.find(preset => preset.name === 'Tender');
@@ -1225,7 +1245,7 @@ async function main() {
     await evaluate('window.scrollTo(0, 0)');
     const expandedWritingWidth = await evaluate("document.querySelector('.scene-writing').getBoundingClientRect().width");
     await clickLabel('Collapse block sidebar');
-    await waitFor("document.querySelector('.shelf-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('#scene-block-shelf-panel')?.hidden === true", 'collapsed scene sidebar');
+    await waitFor("document.querySelector('.shelf-toggle')?.getAttribute('aria-expanded') === 'false' && document.querySelector('.block-shelf-body')?.hidden === true", 'collapsed scene sidebar');
     const collapsedWritingWidth = await evaluate("document.querySelector('.scene-writing').getBoundingClientRect().width");
     assert.ok(collapsedWritingWidth > expandedWritingWidth, 'Collapsing the sidebar must give scene writing more width at 1440px.');
     await clickLabel('Expand block sidebar');
