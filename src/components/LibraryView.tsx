@@ -37,6 +37,16 @@ function references(value: unknown, kind: LibraryKind, id: string) {
 
 export function libraryUsages(project: ProjectSnapshot, kind: LibraryKind, id: string): Usage[] {
   const usages: Usage[] = [];
+  if (kind === 'characters') {
+    for (const r of project.relationshipChanges ?? []) if (r.sourceId === id || r.targetId === id) {
+      const scene = project.scenes.find(s => s.id === r.sceneId);
+      usages.push({ key: `relationship:${r.id}`, label: `${scene?.title ?? (r.sceneId ? 'Scene in Trash' : 'Story beginning')} · ${r.phase} relationship`, sceneId: scene?.id });
+    }
+    for (const [sceneId, ids] of Object.entries(project.relationshipCast ?? {})) if (ids.includes(id)) {
+      const scene = project.scenes.find(s => s.id === sceneId);
+      usages.push({ key: `relationship-cast:${sceneId}`, label: `${scene?.title ?? 'Scene in Trash'} · Relationship context`, sceneId: scene?.id });
+    }
+  }
   for (const scene of project.scenes) {
     if (kind === 'tones' && scene.toneId === id) usages.push({ key: `scene:${scene.id}`, label: `${scene.title} · Scene tone`, sceneId: scene.id });
     const summary = summaryBoard(scene, project.tones);

@@ -3,6 +3,7 @@ import type { ProjectSnapshot } from '../services/project';
 import type { Workspace } from '../services/workspace';
 import { moved } from '../services/workspace';
 import { Timeline, TimelineItem } from './Timeline';
+import RelationshipPanel from './RelationshipPanel';
 
 interface Props {
   project: ProjectSnapshot; workspace: Workspace; locked: boolean;
@@ -18,6 +19,7 @@ export default function StoryView({ project, workspace, locked, openChapter, las
   }
   return <main className="story-view story-canvas" aria-label="Story canvas">
     <div className="story-heading"><div><h1>{project.title}</h1><p className="muted">{project.chapters.length} chapters · {project.scenes.length} scenes</p></div><button className="primary" disabled={locked} onClick={() => run(createChapter)}><Plus size={16}/>New chapter</button></div>
+    <RelationshipPanel project={project} workspace={workspace} locked={locked} run={run}/>
     {project.chapters.length > 0 && <div className="chapter-table-labels" aria-hidden="true"><span>Chapter</span><span>Narrative</span><span>Scene outline</span></div>}
     {project.chapters.length ? <Timeline ids={project.chapters.map(chapter => chapter.id)} group="Story chapters" onReorder={ids => run(() => workspace.dispatch({ type: 'reorderChapters', ids }))}>
       {project.chapters.map((chapter, index) => {

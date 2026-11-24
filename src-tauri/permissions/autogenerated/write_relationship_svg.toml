@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-write-relationship-svg"
+description = "Enables the write_relationship_svg command without any pre-configured scope."
+commands.allow = ["write_relationship_svg"]
+
+[[permission]]
+identifier = "deny-write-relationship-svg"
+description = "Denies the write_relationship_svg command without any pre-configured scope."
+commands.deny = ["write_relationship_svg"]

@@ -13,4 +13,5 @@ commands.allow = [
   "close_project",
   "import_markdown_file",
   "export_markdown_file",
+  "write_relationship_svg",
 ]

@@ -23,6 +23,14 @@ Reorder scenes and beats with drag and drop or the move controls. Use the **Undo
 
 Navigate through **Story → Chapter → Scene** by opening chapters and scenes. Zooming out from a scene returns to its chapter; zooming out from a chapter returns to Story. Each canvas restores its own scroll position. Click the current scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. The library drawer returns to the writing canvas it was opened from. Collapse the writing-tools shelf for more writing space; optional **Scene details** live at the bottom of that shelf. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
 
+## Character relationships
+
+Open **Character relationships** on the Story canvas to establish initial relationships or choose a scene and inspect **Before / After**. The same panel is available inside each scene. Add directed attitudes or family ties, or explicitly shared relationships. Selecting character boxes focuses the graph on one or several people; the list shows full descriptions. Zoom, pan, Fit, movable labels, and **Save SVG** support larger maps.
+
+Before inherits earlier scenes in chapter/scene order. Editing Before records an entry correction at that scene; editing After records its outcome. Unchanged relationships carry forward. **Clear at this point** clears a relationship from that point onward; **Use inherited state** removes a local override. After edits start as **Planned**; **Mark established** records that the result has been reviewed. These edits support project Undo/Redo and require Save in manual mode.
+
+AI beat and prose generation receive the relevant characters’ entering relationships and intended After changes automatically. Linked character blocks and characters whose relationships are edited in this scene are included; **Additional characters for AI context** adds relevant offstage people. **Preview scene context** shows the briefing. Later changes stay out of earlier scenes; prose acceptance does not establish planned relationships. Inheritance follows story reading order, so flashbacks need explicit Before corrections and a correction when returning to the later timeline. Relationship history is stored in the `.shorthand` project; outline Markdown and compiled manuscript exports do not include it.
+
 ## Save and move between projects
 
 Saving is manual by default: choose **Save** or press **Ctrl+S**. To save automatically, turn on **Autosave** in **Settings**. If you close or switch projects with unsaved changes, choose whether to save, discard, or cancel.

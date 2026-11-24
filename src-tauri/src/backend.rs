@@ -239,6 +239,20 @@ pub async fn write_compiled_manuscript(path: String, contents: String) -> Result
     .await
 }
 
+#[tauri::command]
+pub async fn write_relationship_svg(path: String, contents: String) -> Result<()> {
+    blocking(move || {
+        let destination = Path::new(&path);
+        if !destination.is_absolute() || !destination.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("svg")) {
+            return Err("Choose an absolute .svg export path.".into());
+        }
+        if contents.len() > 4_000_000 || !contents.trim_start().starts_with("<svg") {
+            return Err("The relationship graph must be an SVG smaller than 4 MB.".into());
+        }
+        write_compiled_manuscript_file(destination, &contents)
+    }).await
+}
+
 fn compiled_manuscript_path(path: &str) -> Result<&Path> {
     let path = Path::new(path);
     if !path.is_absolute()
