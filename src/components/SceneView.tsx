@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
-import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, Users, Heart, MessageSquare, SlidersHorizontal } from 'lucide-react';
+import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, SlidersHorizontal } from 'lucide-react';
 import type { Character, Operation, Preset, ProjectSnapshot, Scene } from '../services/project';
 import { emptyDocument } from '../services/project';
 import { buildSceneGenerationContext } from '../services/generation-context';
@@ -11,10 +11,8 @@ import type { GenerationPurpose } from '../services/generation';
 import { summaryBoard } from '../services/summary-board';
 import { moved } from '../services/workspace';
 import type { Workspace } from '../services/workspace';
-import { effectiveColor, groupPresetsByColor, presetColorStyle } from '../services/preset-colors';
-import CharacterIcon from './CharacterIcon';
-import BeatEditor, { CHARACTER_REFERENCE_MIME, PRESET_REFERENCE_MIME, characterTargets, insertInlineReference } from './BeatEditor';
-import type { LibraryKind } from './LibraryView';
+import BeatEditor, { characterTargets, insertInlineReference } from './BeatEditor';
+import WritingTools from './WritingTools';
 import GenerationPanel from './GenerationPanel';
 import SceneProseEditor from './SceneProseEditor';
 import { TitleField } from './Fields';
@@ -22,8 +20,6 @@ import { Timeline, TimelineItem } from './Timeline';
 
 interface Props { project: ProjectSnapshot; scene: Scene; workspace: Workspace; sessionId: string; generation: GenerationSession; generationReady: boolean; generationModel?: string; generationModelLabel?: string; defaultGuidance: string; locked: boolean; active?: boolean; navigation?: ReactNode; adjacentNavigation?: ReactNode; manageCharacters: (id?: string) => void; manageLibrary?: (kind: 'characters' | 'tones' | 'emotions', id?: string) => void; openSettings: () => void; notify: (message: string) => void; run: (action: () => Promise<unknown>) => void }
 export default function SceneView({ project, scene, workspace, sessionId, generation, generationReady, generationModel, generationModelLabel, defaultGuidance, locked, active: visible = true, navigation, adjacentNavigation, manageCharacters, manageLibrary, openSettings, notify, run }: Props) {
-  const [search, setSearch] = useState('');
-  const [activeBlockTab, setActiveBlockTab] = useState<LibraryKind>('characters');
   const [shelfCollapsed, setShelfCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [draftPurpose, setDraftPurpose] = useState<GenerationPurpose>('prose');
@@ -31,7 +27,6 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const visibleRef = useRef(visible); visibleRef.current = visible;
   const prefix = useId();
   const editorRef = useRef<Editor | null>(null), editors = useRef(new Map<string, Editor>());
-  const blockTabs = useRef<Partial<Record<LibraryKind, HTMLButtonElement>>>({});
   const tones = project.tones ?? [], emotions = project.emotions ?? [];
   const summary = useMemo(() => summaryBoard(scene, project.tones), [scene, project.tones]);
   const manage = (kind: 'characters' | 'tones' | 'emotions', id?: string) => { if (manageLibrary) manageLibrary(kind, id); else if (kind === 'characters') manageCharacters(id); };
@@ -95,56 +90,13 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   };
   const copyDraft = () => { if (!generationState.draftText) return; if (!navigator.clipboard?.writeText) { notify('Clipboard access is unavailable. Select the draft text to copy it.'); return; } run(() => navigator.clipboard.writeText(generationState.draftText).then(() => notify('Draft copied to the clipboard.'))); };
   const discardDraft = () => { if (generationState.job) run(() => generation.discard(sessionId, scene.id, reviewPurpose).then(() => notify('Generated draft discarded.'))); };
-  const matches = (name: string) => name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
-  const dragPreset = (event: React.DragEvent, kind: 'tone' | 'emotion', preset: Preset) => { event.stopPropagation(); event.dataTransfer.setData(PRESET_REFERENCE_MIME, JSON.stringify({ kind, id: preset.id })); event.dataTransfer.effectAllowed = 'copy'; };
-  const blockTabOrder: LibraryKind[] = ['characters', 'emotions', 'tones'];
-  const blockTabTitles: Record<LibraryKind, string> = { characters: 'Characters', emotions: 'Emotions', tones: 'Tones' };
-  const blockTabIcons = { characters: Users, emotions: Heart, tones: MessageSquare };
-  const blockTabDescriptions = { characters: 'Who is involved.', emotions: 'What they feel.', tones: 'How the writing sounds.' };
-  const filteredCharacters = project.characters.filter(character => !character.archived && matches(character.name));
-  const filteredEmotions = emotions.filter(preset => !preset.archived && matches(preset.name));
-  const filteredTones = tones.filter(preset => !preset.archived && matches(preset.name));
-  const emotionGroups = groupPresetsByColor('emotion', filteredEmotions);
-  const toneGroups = groupPresetsByColor('tone', filteredTones);
-  const activateBlockTab = (kind: LibraryKind, focus = false) => {
-    setActiveBlockTab(kind); setSearch('');
-    if (focus) blockTabs.current[kind]?.focus();
-  };
-  const onBlockTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, current: LibraryKind) => {
-    const index = blockTabOrder.indexOf(current);
-    const next = ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % blockTabOrder.length
-      : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + blockTabOrder.length - 1) % blockTabOrder.length
-      : event.key === 'Home' ? 0 : event.key === 'End' ? blockTabOrder.length - 1 : -1;
-    if (next < 0) return;
-    event.preventDefault(); activateBlockTab(blockTabOrder[next], true);
-  };
-  const activeDefinitionsCount = activeBlockTab === 'characters' ? filteredCharacters.length : activeBlockTab === 'emotions' ? filteredEmotions.length : filteredTones.length;
   return <main ref={root} className={`scene-layout ${shelfCollapsed ? 'scene-layout-shelf-collapsed' : ''} ${detailsOpen ? 'scene-layout-details-open' : 'scene-layout-details-collapsed'}`}>
     <aside className={`library block-shelf ${shelfCollapsed ? 'block-shelf-collapsed' : ''}`} aria-label="Story blocks">
-      <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Blocks' : 'Hide blocks'}</span></button>
-      {shelfCollapsed && <div className="block-category-rail" aria-label="Block shortcuts">{blockTabOrder.map(kind => { const Icon = blockTabIcons[kind]; return <button key={kind} className="quiet icon-button" aria-label={`Show ${blockTabTitles[kind].toLowerCase()} blocks`} aria-pressed={activeBlockTab === kind} title={blockTabTitles[kind]} onClick={() => { activateBlockTab(kind); setShelfCollapsed(false); }}><Icon size={18}/></button>; })}</div>}
+      <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Tools' : 'Hide tools'}</span></button>
+      {shelfCollapsed && <button className="quiet icon-button" aria-label="Search story blocks" onClick={() => { setShelfCollapsed(false); requestAnimationFrame(() => root.current?.querySelector<HTMLInputElement>('.block-search input')?.focus()); }}><Search size={18}/></button>}
       <div id={`${prefix}-shelf`} className="block-shelf-body" hidden={shelfCollapsed}>
-        <h2>Story blocks</h2>
-        <div className="block-tabs" role="tablist" aria-label="Block categories" aria-orientation="vertical">{blockTabOrder.map(kind => { const Icon = blockTabIcons[kind]; return <button key={kind} ref={element => { if (element) blockTabs.current[kind] = element; }} id={`${prefix}-tab-${kind}`} role="tab" aria-selected={activeBlockTab === kind} aria-controls={`${prefix}-blocks`} tabIndex={activeBlockTab === kind ? 0 : -1} onClick={() => activateBlockTab(kind)} onKeyDown={event => onBlockTabKeyDown(event, kind)}><Icon size={17} aria-hidden="true"/>{blockTabTitles[kind]}</button>; })}</div>
-        <section className="block-tab-panel" id={`${prefix}-blocks`} role="tabpanel" aria-labelledby={`${prefix}-tab-${activeBlockTab}`}>
-          <p className="block-category-description">{blockTabDescriptions[activeBlockTab]}</p>
-          <label className="block-search"><span><Search size={13}/></span><span className="sr-only">Search {blockTabTitles[activeBlockTab].toLowerCase()}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${blockTabTitles[activeBlockTab].toLowerCase()}`}/></label>
-          <div className="block-panel-heading"><button className="quiet block-manage" onClick={() => manage(activeBlockTab)}>Manage {blockTabTitles[activeBlockTab]}</button><button className="quiet shelf-new-definition" disabled={locked} onClick={() => manage(activeBlockTab, 'new')}><Plus size={14}/>{activeBlockTab === 'characters' ? 'New character' : activeBlockTab === 'emotions' ? 'New emotion' : 'New tone'}</button></div>
-          <div className="block-palette">
-          {activeBlockTab === 'characters' && <>
-            <div className="block-collection" aria-label="Character blocks">{filteredCharacters.map(character => <button key={character.id} aria-label={`Character: ${character.name}`} className="character-chip story-block block-character" disabled={locked} draggable={!locked} title="Drag to add a character reference, or click to insert at the caret" onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData(CHARACTER_REFERENCE_MIME, character.id); event.dataTransfer.effectAllowed = 'copy'; }} onClick={() => insertReference('character', character)}><CharacterIcon icon={character.icon} size={14}/>{character.name}<Plus size={12}/></button>)}</div>
-          </>}
-          {activeBlockTab === 'emotions' && <div className="preset-color-groups" aria-label="Emotion blocks">{emotionGroups.map(group => <section key={group.id} className="preset-color-group" aria-label={group.name}>
-            <h4 className="preset-color-group-heading">{group.color && <span aria-hidden="true" style={{ backgroundColor: group.color }} />}{group.name}</h4>
-            <div className="block-collection" aria-label={`${group.name} emotions`}>{group.presets.map(preset => <button key={preset.id} className="story-block block-emotion preset-colored" style={presetColorStyle(effectiveColor('emotion', preset))} aria-label={`Emotion: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add an emotion reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'emotion', preset)} onClick={() => insertReference('emotion', preset)}>{preset.name}<Plus size={12}/></button>)}</div>
-          </section>)}</div>}
-          {activeBlockTab === 'tones' && <div className="preset-color-groups" aria-label="Tone blocks">{toneGroups.map(group => <section key={group.id} className="preset-color-group" aria-label={group.name}>
-            <h4 className="preset-color-group-heading">{group.color && <span aria-hidden="true" style={{ backgroundColor: group.color }} />}{group.name}</h4>
-            <div className="block-collection" aria-label={`${group.name} tones`}>{group.presets.map(preset => <button key={preset.id} className="story-block block-tone preset-colored" style={presetColorStyle(effectiveColor('tone', preset))} aria-label={`Tone: ${preset.name}`} disabled={locked} draggable={!locked} title="Drag to add a tone reference, or click to insert at the caret" onDragStart={event => dragPreset(event, 'tone', preset)} onClick={() => insertReference('tone', preset)}>{preset.name}<Plus size={12}/></button>)}</div>
-          </section>)}</div>}
-          {activeDefinitionsCount === 0 && <p className="muted block-empty">{search ? `No ${blockTabTitles[activeBlockTab].toLowerCase()} match “${search}”.` : `No ${blockTabTitles[activeBlockTab].toLowerCase()} yet.`}{search && <button className="quiet" onClick={() => setSearch('')}>Clear search</button>}</p>}
-          </div>
-        </section>
+        <h2>Writing tools</h2>
+        <WritingTools project={project} locked={locked} onManage={manage} onInsert={insertReference}/>
       </div>
     <section className="scene-settings" aria-label="Scene settings">
       <button className="inspector-toggle" aria-expanded={detailsOpen} aria-controls={`${prefix}-details`} aria-label={detailsOpen ? 'Collapse scene details' : 'Expand scene details'} title={detailsOpen ? 'Collapse scene details' : 'Expand scene details'} onClick={() => { setDetailsOpen(!detailsOpen); if (!detailsOpen) setShelfCollapsed(false); }}><SlidersHorizontal size={17}/><span>{detailsOpen ? 'Hide details' : 'Scene details'}</span></button>

@@ -136,7 +136,6 @@ describe('hierarchical writing canvases', () => {
     openArrival();
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
     act(() => { editorFor(summary).commands.setTextSelection(7); });
-    fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
     fireEvent.click(screen.getByRole('button', { name: 'New emotion' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'New emotion name' }), { target: { value: 'Hope' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create emotion' }));
@@ -176,7 +175,6 @@ describe('hierarchical writing canvases', () => {
     render(<App gateway={g} initialSession={session()}/>);
     openArrival();
     const summary = screen.getByRole('textbox', { name: 'Scene summary' });
-    fireEvent.click(screen.getByRole('tab', { name: 'Tones' }));
     fireEvent.click(screen.getByRole('button', { name: 'New tone' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);

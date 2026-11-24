@@ -21,42 +21,25 @@ it('offers New character alongside existing character references', () => {
   expect(native.apply).not.toHaveBeenCalled();
 });
 
-it('shows only one category, scopes search, and keeps one dynamic manage link', async () => {
+it('searches all groups and keeps creation and management available', () => {
   const snapshot = project();
   snapshot.emotions.push({ id: 'emotion-calm', name: 'Calm', meaning: '', guidance: '', example: '', archived: false, revision: 0 });
   snapshot.tones.push({ id: 'tone-wry', name: 'Wry', meaning: '', guidance: '', example: '', archived: false, revision: 0 });
   const workspace = new Workspace(gateway(snapshot)); workspace.attach(session(snapshot));
   const manageLibrary = vi.fn();
   render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} manageLibrary={manageLibrary} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
-
-  expect(screen.getAllByRole('tab')).toHaveLength(3);
+  expect(screen.queryByRole('tab')).toBeNull();
   expect(screen.getByRole('button', { name: 'Character: Maya' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Emotion: Calm' })).toBeNull();
-  expect(screen.getAllByRole('button', { name: /^Manage / })).toHaveLength(1);
-  expect(screen.getByRole('button', { name: 'New character' })).toBeVisible();
-
-  fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
   expect(screen.getByRole('button', { name: 'Emotion: Calm' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Character: Maya' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'New character' })).toBeNull();
-  expect(screen.getAllByRole('button', { name: /^Manage / })).toHaveLength(1);
-  expect(screen.getByPlaceholderText('Search emotions')).toBeVisible();
-  fireEvent.change(screen.getByPlaceholderText('Search emotions'), { target: { value: 'does-not-match' } });
+  expect(screen.getByRole('button', { name: 'Tone: Wry' })).toBeVisible();
+  expect(screen.getAllByRole('button', { name: /^Manage / })).toHaveLength(3);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search all story blocks' }), { target: { value: 'does-not-match' } });
   expect(screen.queryByRole('button', { name: 'Emotion: Calm' })).toBeNull();
-  expect(screen.getByText('No emotions match “does-not-match”.')).toBeVisible();
-
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Emotions' }), { key: 'ArrowRight' });
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'Tones' })).toHaveAttribute('aria-selected', 'true'));
-  expect(screen.getByRole('tab', { name: 'Tones' })).toHaveFocus();
-  expect(screen.getByPlaceholderText('Search tones')).toHaveValue('');
+  expect(screen.getByText(/No emotions match .*does-not-match/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+  expect(screen.getByRole('button', { name: 'Emotion: Calm' })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Manage Tones' }));
   expect(manageLibrary).toHaveBeenCalledWith('tones', undefined);
-  expect(screen.getByRole('tablist', { name: 'Block categories' })).toHaveAttribute('aria-orientation', 'vertical');
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Tones' }), { key: 'ArrowUp' });
-  expect(screen.getByRole('tab', { name: 'Emotions' })).toHaveFocus();
-  expect(screen.getByText('What they feel.')).toBeVisible();
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Emotions' }), { key: 'ArrowDown' });
-  expect(screen.getByRole('tab', { name: 'Tones' })).toHaveFocus();
   fireEvent.click(screen.getByRole('button', { name: 'New tone' }));
   expect(manageLibrary).toHaveBeenLastCalledWith('tones', 'new');
 });
@@ -75,28 +58,27 @@ it('groups preset shelf blocks by effective color and keeps custom colors last',
   const workspace = new Workspace(gateway(snapshot)); workspace.attach(session(snapshot));
   render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
-  const discovery = screen.getByRole('region', { name: 'Discovery' });
+  const emotions = within(screen.getByRole('region', { name: 'Emotions' }));
+  const discovery = emotions.getByRole('region', { name: 'Discovery' });
   expect(within(discovery).getByRole('heading', { name: 'Discovery', level: 4 })).toBeVisible();
   expect(within(discovery).getByRole('button', { name: 'Emotion: Awe' })).toHaveClass('preset-colored');
   expect(within(discovery).getByRole('button', { name: 'Emotion: Surprised' })).toBeVisible();
-  const customEmotions = screen.getByRole('region', { name: 'Custom colors' });
+  const customEmotions = emotions.getByRole('region', { name: 'Custom colors' });
   expect(within(customEmotions).getByRole('button', { name: 'Emotion: Custom' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Emotion: Awe' })).toHaveAttribute('draggable', 'true');
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Characters' }));
   expect(screen.getByRole('button', { name: 'Character: Maya' })).not.toHaveClass('preset-colored');
-  fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
 
-  fireEvent.change(screen.getByPlaceholderText('Search emotions'), { target: { value: 'awe' } });
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search all story blocks' }), { target: { value: 'awe' } });
   expect(screen.getByRole('button', { name: 'Emotion: Awe' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Emotion: Surprised' })).toBeNull();
-  expect(screen.queryByRole('region', { name: 'Custom colors' })).toBeNull();
+  expect(emotions.queryByRole('region', { name: 'Custom colors' })).toBeNull();
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search all story blocks' }), { target: { value: '' } });
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Tones' }));
-  const positiveEnergy = screen.getByRole('region', { name: 'Positive energy' });
+  const tones = within(screen.getByRole('region', { name: 'Tones' }));
+  const positiveEnergy = tones.getByRole('region', { name: 'Positive energy' });
   expect(within(positiveEnergy).getByRole('button', { name: 'Tone: Warm' })).toBeVisible();
-  expect(screen.getByRole('region', { name: 'Custom colors' })).toContainElement(screen.getByRole('button', { name: 'Tone: Unlisted' }));
+  expect(tones.getByRole('region', { name: 'Custom colors' })).toContainElement(screen.getByRole('button', { name: 'Tone: Unlisted' }));
 });
 
 it('collapses the desktop block shelf and keeps Scene details closed until deliberately opened', () => {
@@ -190,9 +172,8 @@ it('inserts optional references at the last caret without a target dialog or aut
   fireEvent.dragStart(character, { dataTransfer });
   expect(dataTransfer.setData).toHaveBeenCalledWith(CHARACTER_REFERENCE_MIME, 'character-1');
   expect(dataTransfer.effectAllowed).toBe('copy');
-  expect(fireEvent.mouseDown(character, { button: 0 })).toBe(true);
+  expect(fireEvent.mouseDown(character, { button: 0 })).toBe(false);
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Emotion: Calm' }));
   await waitFor(() => expect(beat).toHaveTextContent('Emotion: Calm'));
   expect(screen.queryByRole('dialog')).toBeNull();

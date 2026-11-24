@@ -292,3 +292,34 @@ svg { flex-shrink:0; }
   .scene-toolbar { margin-inline:-18px; padding-inline:18px; }
   .scene-heading>.title-field { flex-basis:100%; }
 }
+
+/* All block groups remain within reach of one search. */
+.block-shelf.library { top:64px; height:calc(100dvh - 64px); max-height:calc(100dvh - 64px); padding:18px; }
+.block-shelf-collapsed.library { padding:12px 6px; }
+.block-shelf .shelf-toggle { margin-bottom:14px; }
+.block-shelf-body { min-height:0; }
+.block-shelf-body>h2 { margin:0 0 15px; }
+.writing-tools { min-height:0; overflow:auto; scrollbar-gutter:stable; }
+.writing-tools .block-search { display:flex; align-items:center; gap:7px; margin-bottom:20px; }
+.writing-tools .block-search input { background:var(--surface-raised); min-width:0; font-size:13px; }
+.writing-tool-group { padding:0 0 18px; margin-bottom:18px; border-bottom:1px solid var(--line); }
+.writing-tool-group-heading { display:flex; align-items:center; gap:8px; margin-bottom:11px; }
+.writing-tool-group-heading h3 { font-size:13px; font-weight:600; flex:1; }
+.writing-tool-group-heading button { padding:4px; min-height:28px; }
+.writing-tools .preset-color-groups { gap:12px; }
+.writing-tools .block-collection { gap:6px; }
+.writing-tools .story-block { min-height:30px; font-size:12px; padding:5px 7px; }
+.writing-tool-group-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:5px; margin-top:9px; }
+.writing-tool-group-footer button { font-size:11px; min-height:28px; padding:3px 0; }
+.block-shelf .scene-settings { flex:none; }
+.block-shelf:has(.scene-settings .block-inspector-body:not([hidden])) { overflow:auto; }
+.block-shelf:has(.scene-settings .block-inspector-body:not([hidden])) .block-shelf-body { flex:none; }
+.block-shelf:has(.scene-settings .block-inspector-body:not([hidden])) .writing-tools { overflow:visible; }
+@media (max-width:900px) {
+  .block-shelf.library { position:static; height:auto; max-height:65dvh; width:100%; padding:12px 18px; }
+  .block-shelf-collapsed.library { display:flex; flex-direction:row; justify-content:flex-start; gap:12px; }
+  .block-shelf-collapsed .shelf-toggle { min-width:34px; margin:0; }
+  .block-shelf-collapsed .scene-settings { margin-left:auto; }
+  .block-shelf-body { flex:none; }
+  .writing-tools { max-height:40dvh; }
+}
