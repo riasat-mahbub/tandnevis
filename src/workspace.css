@@ -159,3 +159,21 @@
   .story-outline { padding:16px; }
   .outline-chapter { align-items:flex-start; flex-wrap:wrap; }
 }
+
+/* Shared studio foundations; all surfaces inherit the current appearance. */
+.story-view { width:min(1260px,100%); padding:42px 48px 70px; }
+.story-heading { align-items:flex-end; margin-bottom:33px; }
+.story-heading h1 { font-size:42px; line-height:1.16; font-weight:400; }
+.story-heading .muted { font-size:14px; }
+button { border-radius:5px; min-height:34px; }
+button.primary { font-weight:600; }
+input,textarea,select { min-width:0; }
+svg { flex-shrink:0; }
+.title-field input { text-overflow:ellipsis; }
+.story-heading>div { min-width:0; }
+.story-heading>button { flex-shrink:0; }
+@media (max-width:700px) {
+  .story-view { padding:28px 20px 50px; }
+  .story-heading { align-items:flex-start; flex-wrap:wrap; gap:18px; }
+  .story-heading h1 { font-size:32px; }
+}
