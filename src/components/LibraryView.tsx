@@ -67,12 +67,13 @@ interface Props {
   createRequest?: number;
   openSelectionRequest?: number;
   onCreateCharacter?: () => void; hasCharacterDraft?: boolean; onResumeCharacterDraft?: () => void;
+  onCreated?: () => void; onCancelCreate?: () => void;
   onOpenUsage: (sceneId: string, beatId?: string, occurrenceId?: string) => void;
   onOpenCharacter: (id: string) => void;
   notify: (message: string) => void; run: (action: () => Promise<unknown>) => void;
 }
 
-export default function LibraryView({ kind, project, workspace, locked, selectedId, onSelect, createRequest = 0, openSelectionRequest = 0, onCreateCharacter, hasCharacterDraft = false, onResumeCharacterDraft, onOpenUsage, onOpenCharacter, notify, run }: Props) {
+export default function LibraryView({ kind, project, workspace, locked, selectedId, onSelect, createRequest = 0, openSelectionRequest = 0, onCreateCharacter, hasCharacterDraft = false, onResumeCharacterDraft, onCreated, onCancelCreate, onOpenUsage, onOpenCharacter, notify, run }: Props) {
   const [search, setSearch] = useState('');
   const [archived, setArchived] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -112,6 +113,7 @@ export default function LibraryView({ kind, project, workspace, locked, selected
   }
   function cancelCreate() {
     setCreating(false); setDetailOpen(false); setNewName(''); setNewColor('');
+    if (onCancelCreate) { onCancelCreate(); return; }
     requestAnimationFrame(() => newDefinitionButton.current?.focus({ preventScroll: true }));
   }
   async function create() {
@@ -124,6 +126,7 @@ export default function LibraryView({ kind, project, workspace, locked, selected
       const items = kind === 'tones' ? snapshot.tones : snapshot.emotions;
       const created = items.find(item => !before.has(item.id));
       onSelect(created?.id ?? null); setNewName(''); setNewColor(''); setSearch(''); setArchived(false); setCreating(false); setDetailOpen(true);
+      if (created && onCreated) { onCreated(); return; }
       requestAnimationFrame(() => { const input = detailRef.current?.querySelector<HTMLInputElement>('input'); input?.focus(); input?.select(); });
     } finally {
       submittingRef.current = false; setSubmitting(false);

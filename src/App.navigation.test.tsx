@@ -106,6 +106,29 @@ describe('story-first navigation', () => {
     expect(g.save).not.toHaveBeenCalled();
   });
 
+  it('returns from a new preset to the originating editor without inserting the preset or saving', async () => {
+    const snapshot = project(), g = gateway(snapshot);
+    vi.mocked(g.apply).mockImplementation(async (_session, _revision, operation) => {
+      if (operation.type !== 'createPreset') throw new Error('Unexpected operation');
+      const next = structuredClone(snapshot); next.revision++;
+      next.emotions.push({ id: 'hope', name: operation.name, meaning: '', guidance: '', example: '', archived: false, revision: 0 });
+      return next;
+    });
+    render(<App gateway={g} initialSession={session(snapshot)}/>);
+    openArrival();
+    const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    act(() => { editorFor(summary).commands.setTextSelection(7); });
+    fireEvent.click(screen.getByRole('tab', { name: 'Emotions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New emotion' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'New emotion name' }), { target: { value: 'Hope' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create emotion' }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary));
+    expect(editorFor(summary).state.selection.from).toBe(7);
+    expect(screen.getByRole('button', { name: 'Emotion: Hope' })).toBeVisible();
+    expect(summary).not.toHaveTextContent('Hope');
+    expect(g.save).not.toHaveBeenCalled();
+  });
+
   it('restores independent scene and overview scroll positions', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'scrollY')!;
     let scrollPosition = 420;
@@ -125,5 +148,15 @@ describe('story-first navigation', () => {
     } finally { Object.defineProperty(window, 'scrollY', descriptor); }
   });
 
-
+  it('returns from cancelling preset creation and leaves the scene intact', () => {
+    const g = gateway();
+    render(<App gateway={g} initialSession={session()}/>);
+    openArrival();
+    const summary = screen.getByRole('textbox', { name: 'Scene summary' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Tones' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New tone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('textbox', { name: 'Scene summary' })).toBe(summary);
+    expect(g.apply).not.toHaveBeenCalled();
+  });
 });
