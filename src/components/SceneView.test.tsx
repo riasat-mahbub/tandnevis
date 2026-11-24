@@ -29,7 +29,14 @@ it('shows only one category, scopes search, and keeps one dynamic manage link', 
   const manageLibrary = vi.fn();
   render(<SceneView project={snapshot} scene={snapshot.scenes[0]} workspace={workspace} sessionId="session-1" generation={generationSession()} generationReady={false} defaultGuidance="" locked={false} openSettings={vi.fn()} manageCharacters={vi.fn()} manageLibrary={manageLibrary} notify={vi.fn()} run={action => { void action().catch(() => {}); }}/>);
 
-  expect(screen.getAllByRole('tab')).toHaveLength(3);
+  const tabs = screen.getAllByRole('tab');
+  expect(tabs).toHaveLength(3);
+  expect(tabs.map(tab => tab.getAttribute('aria-label'))).toEqual(['Characters', 'Emotions', 'Tones']);
+  expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
+  expect(within(tabs[0]).getByText('Who is in the scene')).toBeVisible();
+  expect(within(tabs[1]).getByText('What they feel')).toBeVisible();
+  expect(within(tabs[2]).getByText('How the writing sounds')).toBeVisible();
+  expect(tabs.every(tab => tab.querySelector('svg') !== null)).toBe(true);
   expect(screen.getByRole('button', { name: 'Character: Maya' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Emotion: Calm' })).toBeNull();
   expect(screen.getAllByRole('button', { name: /^Manage / })).toHaveLength(1);
