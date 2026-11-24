@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Editor } from '@tiptap/core';
-import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus } from 'lucide-react';
+import { Copy, Plus, Trash2, ChevronLeft, ChevronRight, Search, Sparkles, ListPlus, UsersRound, Heart, MessageSquareQuote } from 'lucide-react';
 import type { Character, Operation, Preset, ProjectSnapshot, Scene } from '../services/project';
 import { emptyDocument } from '../services/project';
 import { buildSceneGenerationContext } from '../services/generation-context';
@@ -89,6 +89,8 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const dragPreset = (event: React.DragEvent, kind: 'tone' | 'emotion', preset: Preset) => { event.stopPropagation(); event.dataTransfer.setData(PRESET_REFERENCE_MIME, JSON.stringify({ kind, id: preset.id })); event.dataTransfer.effectAllowed = 'copy'; };
   const blockTabOrder: LibraryKind[] = ['characters', 'emotions', 'tones'];
   const blockTabTitles: Record<LibraryKind, string> = { characters: 'Characters', emotions: 'Emotions', tones: 'Tones' };
+  const blockTabDescriptions: Record<LibraryKind, string> = { characters: 'Who is in the scene', emotions: 'What they feel', tones: 'How the writing sounds' };
+  const blockTabIcons = { characters: UsersRound, emotions: Heart, tones: MessageSquareQuote };
   const filteredCharacters = project.characters.filter(character => !character.archived && matches(character.name));
   const filteredEmotions = emotions.filter(preset => !preset.archived && matches(preset.name));
   const filteredTones = tones.filter(preset => !preset.archived && matches(preset.name));
@@ -112,7 +114,13 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
       <button className="shelf-toggle" aria-expanded={!shelfCollapsed} aria-controls="scene-block-shelf-panel" aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => setShelfCollapsed(!shelfCollapsed)}>{shelfCollapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}<span className="shelf-toggle-label">{shelfCollapsed ? 'Blocks' : 'Hide blocks'}</span></button>
       <div id="scene-block-shelf-panel" className="block-shelf-body" hidden={shelfCollapsed}>
         <h2>Story blocks</h2>
-        <div className="block-tabs" role="tablist" aria-label="Block categories">{blockTabOrder.map(kind => <button key={kind} ref={element => { if (element) blockTabs.current[kind] = element; }} id={`scene-block-tab-${kind}`} role="tab" aria-selected={activeBlockTab === kind} aria-controls="scene-block-tab-panel" tabIndex={activeBlockTab === kind ? 0 : -1} onClick={() => activateBlockTab(kind)} onKeyDown={event => onBlockTabKeyDown(event, kind)}>{blockTabTitles[kind]}</button>)}</div>
+        <div className="block-tabs" role="tablist" aria-label="Block categories">{blockTabOrder.map(kind => {
+          const Icon = blockTabIcons[kind];
+          return <button key={kind} ref={element => { if (element) blockTabs.current[kind] = element; }} id={`scene-block-tab-${kind}`} role="tab" aria-label={blockTabTitles[kind]} aria-describedby={`scene-block-tab-description-${kind}`} aria-selected={activeBlockTab === kind} aria-controls="scene-block-tab-panel" tabIndex={activeBlockTab === kind ? 0 : -1} onClick={() => activateBlockTab(kind)} onKeyDown={event => onBlockTabKeyDown(event, kind)}>
+            <Icon size={19} aria-hidden="true"/>
+            <span className="block-tab-copy"><strong>{blockTabTitles[kind]}</strong><small id={`scene-block-tab-description-${kind}`}>{blockTabDescriptions[kind]}</small></span>
+          </button>;
+        })}</div>
         <section className="block-tab-panel" id="scene-block-tab-panel" role="tabpanel" aria-labelledby={`scene-block-tab-${activeBlockTab}`}>
           <div className="block-panel-heading"><h3>{blockTabTitles[activeBlockTab]}</h3><button className="quiet block-manage" onClick={() => manage(activeBlockTab)}>Manage {blockTabTitles[activeBlockTab]}</button></div>
           <label className="block-search"><span><Search size={13}/></span><span className="sr-only">Search {blockTabTitles[activeBlockTab].toLowerCase()}</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${blockTabTitles[activeBlockTab].toLowerCase()}`}/></label>
