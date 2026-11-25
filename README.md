@@ -4,7 +4,7 @@ Tandnevis is a desktop writing app for outlining chapters and scenes, drafting p
 
 ## Install on Windows
 
-1. Get `Shorthand-Writer-latest-win-x64.zip` for **Windows x64** from the maintainer. If a build has been published, look for the ZIP under **Assets**. [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases)
+1. Download `Shorthand-Writer-latest-win-x64.zip` for **Windows x64** from **Assets**. [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases)
 2. Right-click the ZIP and choose **Extract All**. Pick a folder you can write to, such as `Documents\Tandnevis`, and keep the extracted files together.
 3. Open the extracted folder and double-click **Shorthand Writer.exe**. Tandnevis uses this executable name for compatibility. The portable app runs from this folder.
 
@@ -12,9 +12,9 @@ If Windows reports that WebView2 is missing, download and run the **Evergreen Bo
 
 ## Install on Linux
 
-1. Get `Tandnevis-linux-x64.tar.gz` for **Linux x86-64** from the maintainer or from the **Assets** of a published release. [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases)
+1. Get `Tandnevis-linux-x64.zip` or `Tandnevis-linux-x64.tar.gz` for **Linux x86-64** from **Assets**. [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases)
 2. Extract the archive to a writable folder and open the extracted `Tandnevis-linux-x64` folder. Keep `portable.mode` beside the executable.
-3. Run `./tandnevis` from that folder.
+3. Run `./tandnevis` from that folder. If your extractor removed the executable permission, run `chmod +x tandnevis` first.
 
 The Linux build uses GTK 3 and WebKitGTK 4.1. On Ubuntu 22.04 or Debian 12, install `libwebkit2gtk-4.1-0` if the runtime is missing. On other distributions, use your package manager’s WebKitGTK 4.1 package.
 

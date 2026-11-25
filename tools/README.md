@@ -34,7 +34,7 @@ git tag -a v0.1.0 -m "Tandnevis v0.1.0"
 git push origin v0.1.0
 ```
 
-The tag run builds both x64 packages on native runners, verifies their checksums, and attaches them to one draft GitHub Release. Review the draft and publish it from **Releases** when ready. [GitHub release management](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
+The tag run builds both x64 packages on native runners and verifies their checksums. It attaches a Windows ZIP, a Linux ZIP, a Linux tarball, and their checksums to one draft. Review the draft and publish it from **Releases** when ready. [GitHub release management](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
 
 For a release you’re ready to publish when both builds pass, use the annotation `Publish Tandnevis v0.1.0` when creating the tag. Replace `v0.1.0` with the version you’re releasing.
 
