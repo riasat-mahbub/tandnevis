@@ -1,80 +1,58 @@
 # Tandnevis
 
-Tandnevis is a local desktop writing studio for shaping a story with chapters, scenes, and ordered beats, then writing editable prose for each scene. You can write and manage projects offline; ChatGPT generation is optional. Existing Windows packages and project files retain their Shorthand Writer names for compatibility.
+Tandnevis is a Windows writing app for outlining chapters and scenes, drafting prose, and exporting a manuscript. Your projects are stored on your computer, and you can write offline without an account.
+
+## Install on Windows
+
+1. Get `Shorthand-Writer-latest-win-x64.zip` for **Windows x64** from the maintainer. If a build has been published, look for the ZIP under **Assets**. [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases)
+2. Right-click the ZIP and choose **Extract All**. Pick a folder you can write to, such as `Documents\Tandnevis`, and keep the extracted files together.
+3. Open the extracted folder and double-click **Shorthand Writer.exe**. Tandnevis uses this executable name for compatibility. The portable app runs from this folder.
+
+If Windows reports that WebView2 is missing, download and run the **Evergreen Bootstrapper**, then reopen the app. [Microsoft Edge WebView2 downloads](https://developer.microsoft.com/en-us/microsoft-edge/webview2#download)
+
+## Write your first scene
+
+1. Enter a **Story name**, choose **New project**, and pick where to save the `.shorthand` file. To resume a story, choose **Open project** and select its file.
+2. In **Story**, choose **New chapter**. In the chapter, choose **New scene**, then give the scene a title.
+3. Use **Scene summary** to jot down what happens. Choose **Add beat** to break the action into smaller moments. Write the narration and dialogue you want readers to see in **Scene prose**.
+4. Choose **Save** or press **Ctrl+S**. To save automatically as you work, turn on **Autosave** in **Settings**.
 
 ![Tandnevis tour showing the story outline, scene writing, Story Library, character creation, the relationship graph, and manuscript preview.](assets/feature-tour.gif)
 
-*Outline a story, write with reusable references, create a character from a stock type, map a relationship, and preview the manuscript.*
+## Organize your story
 
-## Start on Windows
+- Open chapters and scenes from **Story**. Use the zoom-out control to return to the chapter or story, or click the current scene name to search the outline.
+- Drag chapters, scenes, or beats into order, or use their move buttons. Use **Undo** for a recent change or open **Project → Trash** to restore a deleted item.
+- Use **Project → Import Markdown** to bring notes into an open project as chapters, scenes, and beats. Use **Project → Export outline as Markdown** to take the outline and beats with you.
 
-Download the portable Windows ZIP from [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases), extract it to a folder you can write to, and run `Shorthand Writer.exe`. The app requires Microsoft's Edge WebView2 Runtime. If it is missing, install the Evergreen Runtime from Microsoft's [WebView2 download page](https://developer.microsoft.com/en-us/microsoft-edge/webview2).
+## Reuse characters, tones, and emotions
 
-Choose **New project** or **Open project** from the welcome screen or the **Project** menu. Projects are local `.shorthand` files saved where you choose. No account is needed to create or edit a project.
+Open **Story Library** to search and edit definitions shared across the project. Choose **New character** to start with a blank profile or adapt a stock character type. Add a name, review the profile, and choose **Create character**. Default tone and emotion are optional.
 
-## Shape and write a story
+In a scene, place the caret in the summary or a beat, then click a character, emotion, or tone in **Writing tools** to insert it. You can also drag a reference directly into the text.
 
-1. In **Story**, browse numbered chapter rows with narrative excerpts and a scene outline. Open a chapter to add and arrange scenes in its connected list, then open a scene to write. **Compact scene list** provides a denser view of that chapter.
-2. Write the scene's direction in **Scene summary**. Use **Add beat** to create ordered beat cards beneath it, and write narration or dialogue in **Scene prose**.
-3. Open **Story Library** from the left utility rail (the bottom bar in narrow windows) to search **Characters**, **Emotions**, and **Tones** together in a drawer. Choose a definition or category to access its full editor, archive filters, and usage list. Escape returns to your writing; **Story** in the rail returns to the story overview. In a scene, **Writing tools** shows all three groups with one shared search and **Show all** controls. Click a block to insert at the last active caret, or drag it into the summary or a beat.
-4. To make a character, choose **New character**. The four steps are **Starting point**, **Name and icon**, optional **Profile details**, and **Review**. Start blank or adapt one of 58 stock character types, including five ensemble functions. Tone and emotion defaults are optional; **None** leaves either unset. Review the profile and choose **Create character**, then **Save** to write the project changes to disk.
+### Map character relationships
 
-Reorder scenes and beats with drag and drop or the move controls. Use the **Undo** and **Redo** buttons for recent project changes. Deleted scenes, beats, chapters, and unused definitions go to **Trash**, where you can restore them.
+Open **Character graph** beside the scene title. In **After**, drag from one character’s connector to another, choose a relationship such as **Trusts** or **Rivals**, and apply it. Tandnevis adds the change to the scene summary. Click the line or the summary block to edit it again.
 
-Navigate through **Story → Chapter → Scene** by opening chapters and scenes. Zooming out from a scene returns to its chapter; zooming out from a chapter returns to Story. Each canvas restores its own scroll position. Click the current scene name to search the temporary outline; **Previous** and **Next** follow narrative order across chapters. The library drawer returns to the writing canvas it was opened from. Collapse the writing-tools shelf for more writing space; optional **Scene details** live at the bottom of that shelf. Navigation preserves opened editors, pending writing, caret position, and local text undo within the project session.
+Use **Before** to see relationships inherited from earlier scenes or to correct what’s true when the scene opens. **After** describes what changes by the end. New outcomes start as **Planned** and can be marked **Established** once you’ve written the scene.
 
-## Character relationships
+Choose **End relationship** to record that a connection ends here. To undo the change and restore the inherited relationship, delete its summary block.
 
-Choose **Character graph** beside the story or scene title. Drag from a character’s connector to another character to draw a relationship, then choose its meaning and direction beside the line. Select an edge to edit its description, family/attitude kind, shared/directed meaning, and Planned/Established status. Drag character boxes to arrange the map; Before and After share the same saved layout. Zoom, pan, search and Fit help navigate larger maps. Keyboard users can activate a connector and choose a target without dragging.
+## Export a manuscript
 
-Before inherits earlier scenes in chapter/scene order. Editing Before records an entry correction; editing After records the intended lasting outcome. Each scene change also appears as a **Relationship change** block appended to its summary. The graph and block edit the same record: selecting a block opens its edge controls, and selecting a local edge highlights its block. **Relationship change** in Writing tools offers another way to create a summary block. Ordinary summary text and beats remain freeform.
+1. Choose **Compile Book** in the sidebar or press **Ctrl+Shift+E**.
+2. Pick the whole story, a chapter, or a scene. Choose **Markdown**, **plain text**, or **HTML**, then adjust options such as the title page and how to handle unfinished scenes.
+3. Review the preview and choose **Export**. If you edit the prose while the preview is open, choose **Refresh preview** before exporting. The manuscript contains scene prose. Use **Export outline as Markdown** for summaries and beats.
 
-Deleting a relationship block cancels that scene’s change and restores the inherited state. **End relationship** keeps an explicit change block and clears the edge from that point onward. After changes start Planned; mark them Established after reviewing the prose. Graph changes, their summary blocks, and layout edits support project Undo/Redo and require Save in manual mode. Relationship blocks belong to their scene summary; copying one into a beat or another scene cannot silently change that scene’s history.
+To make a PDF, export HTML, open it in your browser, and use the browser’s **Print → Save as PDF** option.
 
-AI beat and prose generation receive the relevant characters’ entering relationships and intended After changes automatically. Linked character blocks and characters whose relationships are edited in this scene are included; **Additional characters for AI context** adds relevant offstage people. **Preview scene context** shows the briefing. Later changes stay out of earlier scenes; prose acceptance does not establish planned relationships. Inheritance follows story reading order, so flashbacks need explicit Before corrections and a correction when returning to the later timeline. Relationship history is stored in the `.shorthand` project; outline Markdown and compiled manuscript exports do not include it.
+## Draft with ChatGPT
 
-## Save and move between projects
+If your build offers ChatGPT generation, connect an eligible account under **Settings → Write with ChatGPT**. Choose a **Writing model** and select **Test connection**. Back in a scene, use **Generate beats** or **Generate prose**, then review the draft before accepting it. Accepted beats are added to the sequence. Accepting a prose draft replaces the current scene prose.
 
-Saving is manual by default: choose **Save** or press **Ctrl+S**. To save automatically, turn on **Autosave** in **Settings**. If you close or switch projects with unsaved changes, choose whether to save, discard, or cancel.
+## Back up your projects
 
-The **Project** menu also has **Import Markdown...** and **Export outline as Markdown...**. Import adds Markdown as chapters, scenes, and beats; export includes the story outline and beat text. These are explicit import and export actions, not a live sync.
+Back up the `.shorthand` files you save for each story. The portable app keeps its settings and recovery data in a separate `data` folder beside `Shorthand Writer.exe`. When updating the app, save and close it first, then keep that `data` folder and your project files.
 
-## Compile a manuscript
-
-Choose **Compile Book** in the utility rail, or press **Ctrl/Cmd+Shift+E**, to export written scene prose as **Markdown**, **plain text**, or a standalone **HTML** document. Compilation starts with the current story, chapter, or scene. You can change that scope, include a title page or contents, show scene titles, choose scene breaks, and decide whether unfinished scenes should be skipped, included as placeholders, or block export.
-
-The preview and file use the same snapshot of your writing, including queued prose edits. Compilation does not require project Save. If the writing changes while the preview is open, choose **Refresh preview** before exporting. Chapter and scene order follow the manuscript. Summaries, beats, library definitions, and unaccepted AI drafts are excluded. Closing compilation returns to your writing without replacing the editors.
-
-Choose **Export** to select a destination in the desktop Save dialog. Canceling leaves your project untouched; a failed export keeps the preview open so you can retry. The browser preview can show compilation, but file export requires the desktop app. Native PDF export is not included in this version; the HTML document can be opened and printed separately in a browser.
-
-## Optional ChatGPT generation
-
-To generate in a scene, connect ChatGPT and verify a model in **Settings**. Generation needs an internet connection and eligible ChatGPT plan access; availability depends on your account and the current app build. **Generate beats** proposes beats from the summary. **Generate prose** drafts from the summary and beats. Compare each proposal beside your editable source; narrower windows stack the proposal below it. Accepting beats appends them, while accepting prose replaces the existing scene prose. **Close review** keeps the draft available through **Review draft**. You can continue writing without connecting ChatGPT.
-
-## Projects and backups
-
-In portable mode, app settings and recovery data are stored in a `data` folder beside the application. Each `.shorthand` project is saved separately at its chosen location. Back up your project files separately from the portable app folder.
-
-## Background desktop verification
-
-Relationship integration checks can run against an invisible, unfocused native window, using an isolated WebView profile and synthetic project:
-
-```powershell
-node tools/desktop.mjs build --debug --no-bundle --config tools/native-smoke.background.json
-node tools/native-smoke.cjs --relationships --background --exe src-tauri/target/debug/shorthand-writer.exe
-```
-
-This exercises connector input, summary/graph synchronization, Undo, AI context, layout persistence and Save/reopen without activating a desktop window. The background runner verifies that the window stays hidden and destroys it after checking the fixture is saved. Use the normal portable packaging script to produce the visible user app.
-
-## Refresh the README demo
-
-Install the project's Node dependencies and put FFmpeg with the `libx264` encoder on `PATH`. Then run:
-
-```bash
-npx playwright install chromium
-npm run demo:readme
-```
-
-The runner opens Tandnevis in Chromium with a fresh copy of a fictional project for each feature. Each `*.test.mjs` file in `tools/readme-demo` drives and checks one workflow. The runner records the actions in the order listed in `run.mjs` and combines the clips into `assets/feature-tour.gif` and `out/readme-demo.mp4`. It uses in-memory project data and captures the manuscript preview without opening a native save dialog.
-
-Use `npm run demo:readme -- --check` to verify the flows without recording, or `npm run demo:readme -- --check relationships` to verify one feature.
+[Developer notes and demo recording](tools/README.md)
