@@ -2,9 +2,9 @@
 
 Tandnevis is a local desktop writing studio for shaping a story with chapters, scenes, and ordered beats, then writing editable prose for each scene. You can write and manage projects offline; ChatGPT generation is optional. Existing Windows packages and project files retain their Shorthand Writer names for compatibility.
 
-![Story overview and character setup screens in Shorthand Writer.](assets/feature-tour.gif)
+![Tandnevis tour showing the story outline, scene writing, Story Library, character creation, the relationship graph, and manuscript preview.](assets/feature-tour.gif)
 
-*Browse character starting points and 58 stock types, set optional guidance, and review the profile.*
+*Outline a story, write with reusable references, create a character from a stock type, map a relationship, and preview the manuscript.*
 
 ## Start on Windows
 
@@ -65,3 +65,16 @@ node tools/native-smoke.cjs --relationships --background --exe src-tauri/target/
 ```
 
 This exercises connector input, summary/graph synchronization, Undo, AI context, layout persistence and Save/reopen without activating a desktop window. The background runner verifies that the window stays hidden and destroys it after checking the fixture is saved. Use the normal portable packaging script to produce the visible user app.
+
+## Refresh the README demo
+
+Install the project's Node dependencies and put FFmpeg with the `libx264` encoder on `PATH`. Then run:
+
+```bash
+npx playwright install chromium
+npm run demo:readme
+```
+
+The runner opens Tandnevis in Chromium with a fresh copy of a fictional project for each feature. Each `*.test.mjs` file in `tools/readme-demo` drives and checks one workflow. The runner records the actions in the order listed in `run.mjs` and combines the clips into `assets/feature-tour.gif` and `out/readme-demo.mp4`. It uses in-memory project data and captures the manuscript preview without opening a native save dialog.
+
+Use `npm run demo:readme -- --check` to verify the flows without recording, or `npm run demo:readme -- --check relationships` to verify one feature.

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -12,5 +12,10 @@ export default defineConfig({
   },
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   build: { target: 'es2022' },
-  test: { environment: 'jsdom', restoreMocks: true, clearMocks: true },
+  test: {
+    environment: 'jsdom',
+    restoreMocks: true,
+    clearMocks: true,
+    exclude: [...configDefaults.exclude, 'tools/readme-demo/**'],
+  },
 });

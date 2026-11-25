@@ -17,7 +17,8 @@
     "desktop:dev": "node tools/desktop.mjs dev",
     "desktop:build": "node tools/desktop.mjs build",
     "test:rust": "node tools/desktop.mjs test",
-    "native:smoke": "node tools/native-smoke.cjs"
+    "native:smoke": "node tools/native-smoke.cjs",
+    "demo:readme": "node tools/readme-demo/run.mjs"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.5.3",
@@ -41,6 +42,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "jsdom": "^26.0.0",
+    "playwright": "1.60.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.0",
     "vitest": "^5.1.1"
