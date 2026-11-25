@@ -3,6 +3,15 @@
 .story-block.block-character { background:var(--block-character-bg,#DCEBDD); color:var(--block-character-ink,#274B35); }
 .story-block.block-emotion:not(.preset-colored) { background:var(--block-emotion-bg,#EADFF4); color:var(--block-emotion-ink,#543769); }
 .story-block.block-tone:not(.preset-colored) { background:var(--block-tone-bg,#FFE0B8); color:var(--block-tone-ink,#6A3A12); }
+.story-block.block-relationship-change { align-items:baseline; gap:5px; padding:2px 6px; border-color:var(--line); background:var(--soft); color:var(--ink); white-space:normal; text-align:left; cursor:pointer; }
+.block-relationship-change .relationship-change-route { font-weight:650; }
+.block-relationship-change .relationship-change-phase,.block-relationship-change .relationship-change-kind,.block-relationship-change .relationship-change-status { color:var(--muted); font-size:10px; white-space:nowrap; }
+.block-relationship-change .relationship-change-description { max-width:32ch; overflow-wrap:anywhere; }
+.block-relationship-change .relationship-change-status { padding-left:5px; border-left:1px solid var(--line); font-weight:650; }
+.block-relationship-change .relationship-status-planned { color:var(--action); }
+.block-relationship-change:hover:not(.relationship-unavailable) { border-color:var(--focus); }
+.block-relationship-change:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.block-relationship-change.relationship-unavailable { color:var(--muted); cursor:default; font-style:italic; }
 .story-block.preset-colored,.block-preview.preset-colored,.definition-rows>li>button.preset-colored { background-color:var(--preset-bg-light); color:var(--preset-ink-light); }
 .definition-rows>li>button.preset-colored small,.definition-rows>li>button.preset-colored .definition-archived { color:inherit; }
 .definition-rows>li>button.preset-colored.definition-selected { border-color:var(--focus); outline:1px solid var(--focus); outline-offset:1px; }

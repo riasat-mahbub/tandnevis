@@ -479,6 +479,7 @@ fn block_document(
     project: &ProjectSnapshot,
     document: &Value,
     referenced: &mut Vec<GenerationPreset>,
+    scene_id: Option<&str>,
 ) -> Result<Value> {
     let mut owners = HashMap::new();
     domain::walk_nodes(document, &mut |node| {
@@ -498,8 +499,15 @@ fn block_document(
         node: &Value,
         owners: &HashMap<String, String>,
         referenced: &mut Vec<GenerationPreset>,
+        scene_id: Option<&str>,
     ) -> Result<Value> {
         let kind = node["type"].as_str().unwrap_or_default();
+        if kind == "relationshipChange" {
+            let id = attr_string(node, "changeId");
+            let change = project.relationship_changes.iter().find(|r| r.id == id && Some(r.scene_id.as_str()) == scene_id)
+                .ok_or("A relationship change block must reference a change in this scene summary.")?;
+            return Ok(json!({"type":"text","text":super::relationships::relationship_change_text(change, &project.characters)}));
+        }
         if kind == "toneReference" {
             let p = add_preset(
                 project,
@@ -538,13 +546,13 @@ fn block_document(
             result["content"] = Value::Array(
                 nodes
                     .iter()
-                    .map(|n| transform(project, n, owners, referenced))
+                    .map(|n| transform(project, n, owners, referenced, scene_id))
                     .collect::<Result<Vec<_>>>()?,
             );
         }
         Ok(result)
     }
-    transform(project, document, &owners, referenced)
+    transform(project, document, &owners, referenced, scene_id)
 }
 
 fn format_preset(p: &GenerationPreset) -> String {
@@ -588,7 +596,7 @@ fn build_scene_context(
     let summary_id = format!("{}:summary", scene.id);
     let mut summary_document = domain::summary_document(scene, &project.tones);
     domain::normalize_occurrences(&mut summary_document, &summary_id);
-    let summary_display = block_document(project, &summary_document, &mut referenced_presets)?;
+    let summary_display = block_document(project, &summary_document, &mut referenced_presets, Some(scene_id))?;
     // Preserve the pre-inline scene default as a separate authored field.
     // Inline tone tokens remain ordered cues and do not replace it.
     let scene_tone = add_preset(
@@ -619,7 +627,7 @@ fn build_scene_context(
     };
 
     for (index, beat) in scene.beats.iter().enumerate() {
-        let display_document = block_document(project, &beat.document, &mut referenced_presets)?;
+        let display_document = block_document(project, &beat.document, &mut referenced_presets, None)?;
         let mut references = Vec::new();
         collect_references(
             &beat.document,
@@ -895,6 +903,7 @@ fn make_request_for_purpose(
     instructions.push_str(
         "\n\nDirection precedence and reference scope: Treat each referenced character's background and personality, their voice, and any selected default tone or emotion as baseline guidance. Scene narration instructions and the scene default tone apply across this scene as stated. A direction explicitly scoped to the scene, one beat, or one character occurrence takes priority over a conflicting character baseline within that scope; outside it, retain the baseline. When directions at different scopes conflict, the narrowest applicable explicit scope wins: occurrence, then beat, then scene. Beat-scoped directions apply only within that beat; emotion and delivery on a character reference apply only to that exact occurrence. A local emotion is momentary and does not rewrite a character's persistent personality or voice. Point of view, tense, and narration guidance govern narration; tone guides narration and presentation, not automatically a character's emotion or spoken delivery. Character voice guides baseline diction; local delivery guides only the referenced occurrence. References may appear anywhere and repeat. Keep inline Tone and Emotion references at their authored positions and use surrounding text to read their local reach; do not turn them into automatic scene-wide replacement, beat-wide inheritance, or later carryover. Do not assign an untargeted emotion to the nearest character by proximity or order. Associate an emotion cue with a character only when the reference explicitly targets that occurrence or the surrounding authored text clearly names the association; otherwise keep the emotion cue unattached."
     );
+    instructions.push_str("\n\nRelationship change blocks in the summary refer to the same authored changes as the graph. At scene entry corrections describe the entering relationship; By scene end changes describe the intended lasting outcome. Use the summary and ordered beats to write the transition. A block's placement in the summary does not establish the exact moment of change. Planned changes remain provisional; prose acceptance does not establish them. Do not emit relationshipChange nodes in generated beats or invent persistent changes beyond the author's instructions.");
     if !guidance.is_empty() {
         instructions.push_str("\n\nAdditional author guidance:\n");
         instructions.push_str(guidance);
@@ -1642,6 +1651,19 @@ pub async fn discard_scene_generation(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shared_relationship_summary_blocks_match_frontend_text_and_fingerprints() {
+        let project: ProjectSnapshot = serde_json::from_str(include_str!("../../../src/test/relationship-block-context.json")).unwrap();
+        let expected: Value = serde_json::from_str(include_str!("../../../src/test/relationship-block-context-expected.json")).unwrap();
+        let context = build_scene_context(&project, "scene").unwrap();
+        assert_eq!(context.summary_board.readable_text, expected["summary"].as_str().unwrap());
+        assert_eq!(fingerprint_for_purpose(&context, "", GenerationPurpose::Prose).unwrap(), expected["prose"].as_str().unwrap());
+        assert_eq!(fingerprint_for_purpose(&context, "", GenerationPurpose::Beats).unwrap(), expected["beats"].as_str().unwrap());
+        assert!(!context.readable_context.contains("FUTURE TRUST"));
+        let request = make_request_for_purpose("test", "", &context, GenerationPurpose::Beats);
+        assert!(request.instructions.unwrap().contains("Do not emit relationshipChange nodes"));
+    }
+
     #[test]
     fn relationship_briefing_matches_frontend_and_never_leaks_future_states() {
         let mut project: ProjectSnapshot = serde_json::from_str(include_str!("../../../src/test/relationship-context.json")).unwrap();

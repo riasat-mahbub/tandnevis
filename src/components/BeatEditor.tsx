@@ -1,15 +1,17 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
 import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Beat, Character, Preset } from '../services/project';
+import { relationshipChangeText, type RelationshipChange } from '../services/relationships';
 import { effectiveColor, presetColorStyle } from '../services/preset-colors';
 import CharacterIcon from './CharacterIcon';
 import './StoryBlocks.css';
@@ -203,8 +205,27 @@ export function updateCharacterReference(editor: Editor, attributes: { emotion?:
     tr.setSelection(NodeSelection.create(tr.doc, selection.from)); return true;
   }).run();
 }
+/** Select and scroll to a relationship atom without moving keyboard focus away from its caller. */
+export function focusRelationshipChange(editor: Editor, changeId: string) {
+  if (editor.isDestroyed) return false;
+  let position: number | undefined;
+  editor.state.doc.descendants((node, pos) => {
+    if (position === undefined && node.type.name === 'relationshipChange' && node.attrs.changeId === changeId) position = pos;
+  });
+  if (position === undefined) return false;
+  editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, position)).scrollIntoView());
+  return true;
+}
 
-const Definitions = createContext<{ characters: Character[]; tones: Preset[]; emotions: Preset[] }>({ characters: [], tones: [], emotions: [] });
+interface ReferenceDefinitions {
+  characters: Character[];
+  tones: Preset[];
+  emotions: Preset[];
+  relationshipChanges: RelationshipChange[];
+  sceneId?: string;
+  onSelectRelationshipChange?: (changeId: string) => void;
+}
+const Definitions = createContext<ReferenceDefinitions>({ characters: [], tones: [], emotions: [], relationshipChanges: [] });
 function CharacterChip({ node, selected, getPos }: NodeViewProps) {
   const { characters } = useContext(Definitions);
   const character = characters.find(c => c.id === node.attrs.characterId);
@@ -223,6 +244,55 @@ function ToneChip({ node, selected, getPos }: NodeViewProps) {
   const color = effectiveColor('tone', definition ?? { name: node.attrs.label });
   return <NodeViewWrapper as="span" className={`story-block block-tone preset-colored ${selected ? 'block-selected' : ''}`} style={presetColorStyle(color)} data-drag-handle data-story-reference data-reference-position={getPos()} draggable contentEditable={false} title="Tone · drag to move, Ctrl-drag to copy">Tone: {definition?.name ?? node.attrs.label}</NodeViewWrapper>;
 }
+
+function relationshipChangeLabel(change: RelationshipChange, characters: Character[]) {
+  return relationshipChangeText({ characters }, change);
+}
+
+function relationshipChangeFor(context: Pick<ReferenceDefinitions, 'relationshipChanges' | 'sceneId'>, changeId: string) {
+  if (!context.sceneId) return undefined;
+  return context.relationshipChanges.find(change => change.id === changeId && change.sceneId === context.sceneId);
+}
+
+function RelationshipChangeChip({ node, selected, editor }: NodeViewProps) {
+  const { characters, relationshipChanges, sceneId, onSelectRelationshipChange } = useContext(Definitions);
+  const change = relationshipChangeFor({ relationshipChanges, sceneId }, node.attrs.changeId);
+  const label = change ? relationshipChangeLabel(change, characters) : '[Unavailable relationship change]';
+  const activate = () => {
+    if (!change) return;
+    focusRelationshipChange(editor, node.attrs.changeId);
+    onSelectRelationshipChange?.(node.attrs.changeId);
+  };
+  return <NodeViewWrapper
+    as="span"
+    className={`story-block block-relationship-change ${change?.status === 'planned' ? 'relationship-planned' : ''} ${selected ? 'block-selected' : ''} ${change ? '' : 'relationship-unavailable'}`}
+    data-relationship-change=""
+    data-relationship-change-id={node.attrs.changeId}
+    role="button"
+    tabIndex={change ? 0 : -1}
+    aria-label={label.slice(1, -1)}
+    aria-disabled={!change}
+    aria-pressed={selected}
+    contentEditable={false}
+    title={change ? `${label.slice(1, -1)} · Select to edit this change` : label.slice(1, -1)}
+    onClick={activate}
+    onKeyDown={(event: ReactKeyboardEvent<HTMLSpanElement>) => {
+      if (!change || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      activate();
+    }}
+  >
+    {change ? <>
+      <span className="relationship-change-route">{characters.find(character => character.id === change.sourceId)?.name ?? 'Unknown character'} {change.mutual ? '↔' : '→'} {characters.find(character => character.id === change.targetId)?.name ?? 'Unknown character'}</span>
+      <span className="relationship-change-phase">{change.phase === 'before' ? 'At scene entry' : 'By scene end'}</span>
+      <span className="relationship-change-kind">{change.kind}</span>
+      <span className="relationship-change-description">{change.description.trim() || 'End relationship'}</span>
+      <span className={`relationship-change-status relationship-status-${change.status}`}>{change.status === 'planned' ? 'Planned' : 'Established'}</span>
+    </> : <span>Unavailable relationship change</span>}
+  </NodeViewWrapper>;
+}
+
 export const CharacterReference = Node.create({
   name: 'characterReference', group: 'inline', inline: true, atom: true, selectable: true, draggable: true,
   addAttributes() { return { occurrenceId: { default: '' }, characterId: { default: '' }, label: { default: '' }, emotion: { default: '' }, delivery: { default: '' } }; },
@@ -245,14 +315,73 @@ export const ToneReference = Node.create({
   renderHTML({ node, HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes, { 'data-tone-reference': '', class: 'story-block block-tone' }), `Tone: ${node.attrs.label}`]; },
   renderText({ node }) { return `[Tone: ${node.attrs.label}]`; }, addNodeView() { return ReactNodeViewRenderer(ToneChip); },
 });
-const ReferenceIdentity = Extension.create({
+export const RelationshipChangeReference = Node.create({
+  name: 'relationshipChange', group: 'inline', inline: true, atom: true, selectable: true, draggable: false,
+  addAttributes() { return { changeId: { default: '' } }; },
+  parseHTML() { return [{ tag: 'span[data-relationship-change]' }]; },
+  renderHTML({ node, HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, { 'data-relationship-change': '', 'data-relationship-change-id': node.attrs.changeId, class: 'story-block block-relationship-change' }), `[Relationship change: ${node.attrs.changeId || 'Unavailable'}]`];
+  },
+  renderText() { return '[Relationship change]'; },
+  addNodeView() { return ReactNodeViewRenderer(RelationshipChangeChip); },
+});
+
+interface RelationshipPolicyContext {
+  scope: BoardScope;
+  sceneId?: string;
+  relationshipChanges: RelationshipChange[];
+  notify?: (message: string) => void;
+}
+
+function allowedRelationshipChange(context: RelationshipPolicyContext, changeId: string) {
+  return context.scope === 'summary' && !!relationshipChangeFor(context, changeId);
+}
+
+function filterRelationshipReferences(fragment: Fragment, context: RelationshipPolicyContext, existingIds = new Set<string>()) {
+  let removed = false, unavailable = false, duplicate = false;
+  const seen = new Set(existingIds);
+  const transform = (part: Fragment): Fragment => {
+    const nodes: PMNode[] = [];
+    part.forEach(node => {
+      if (node.type.name === 'relationshipChange') {
+        if (!allowedRelationshipChange(context, node.attrs.changeId)) {
+          removed = true; unavailable = true; return;
+        }
+        if (seen.has(node.attrs.changeId)) {
+          removed = true; duplicate = true; return;
+        }
+        seen.add(node.attrs.changeId);
+      }
+      const content = node.content.size ? transform(node.content) : node.content;
+      nodes.push(node.isText ? node : node.type.create(node.attrs, content, node.marks));
+    });
+    return Fragment.fromArray(nodes);
+  };
+  return { content: transform(fragment), removed, unavailable, duplicate };
+}
+
+const relationshipPolicyKey = new PluginKey('relationshipReferencePolicy');
+
+const ReferenceIdentity = Extension.create<{ getContext: () => RelationshipPolicyContext }>({
   name: 'referenceIdentity',
+  addOptions() { return { getContext: () => ({ scope: 'beat' as BoardScope, relationshipChanges: [] }) }; },
   addProseMirrorPlugins() {
+    const getContext = this.options.getContext;
     return [new Plugin({
       props: {
-        transformPasted(slice) {
+        transformPasted(slice, view) {
+          const context = getContext();
+          const existingIds = new Set<string>();
+          const selection = view.state.selection;
+          view.state.doc.descendants((node, pos) => {
+            if (node.type.name === 'relationshipChange' && !(pos >= selection.from && pos < selection.to)) existingIds.add(node.attrs.changeId);
+          });
+          const filtered = filterRelationshipReferences(slice.content, context, existingIds);
+          if (filtered.unavailable) context.notify?.('Relationship changes can only be pasted into their original scene summary.');
+          else if (filtered.duplicate) context.notify?.('A relationship change can appear only once in its scene summary.');
+          const content = filtered.content;
           const ids = new Map<string, string>();
-          slice.content.descendants(node => {
+          content.descendants(node => {
             if (node.type.name === 'characterReference' && node.attrs.occurrenceId) ids.set(node.attrs.occurrenceId, newOccurrenceId());
           });
           const transform = (fragment: Fragment): Fragment => {
@@ -265,8 +394,38 @@ const ReferenceIdentity = Extension.create({
                   : node.attrs;
               nodes.push(node.isText ? node : node.type.create(attrs, node.content.size ? transform(node.content) : undefined, node.marks));
             }); return Fragment.fromArray(nodes);
-          }; return new Slice(transform(slice.content), slice.openStart, slice.openEnd);
+          }; return new Slice(transform(content), slice.openStart, slice.openEnd);
         },
+      },
+    })];
+  },
+});
+
+const RelationshipReferencePolicy = Extension.create<{ getContext: () => RelationshipPolicyContext }>({
+  name: 'relationshipReferencePolicy',
+  addOptions() { return { getContext: () => ({ scope: 'beat' as BoardScope, relationshipChanges: [] }) }; },
+  addProseMirrorPlugins() {
+    const getContext = this.options.getContext;
+    return [new Plugin({
+      key: relationshipPolicyKey,
+      appendTransaction(transactions, _oldState, newState) {
+        if (!transactions.some(transaction => transaction.docChanged || transaction.getMeta(relationshipPolicyKey))) return null;
+        const preventUpdate = transactions.some(transaction => transaction.getMeta('preventUpdate') || transaction.getMeta(relationshipPolicyKey));
+        const context = getContext();
+        const invalidPositions: number[] = [];
+        const seen = new Set<string>();
+        newState.doc.descendants((node, pos) => {
+          if (node.type.name === 'relationshipChange') {
+            if (!allowedRelationshipChange(context, node.attrs.changeId) || seen.has(node.attrs.changeId)) invalidPositions.push(pos);
+            else seen.add(node.attrs.changeId);
+          }
+        });
+        if (!invalidPositions.length) return null;
+        const tr = newState.tr;
+        for (const pos of invalidPositions.reverse()) tr.delete(pos, pos + 1);
+        tr.setMeta('addToHistory', false);
+        if (preventUpdate) tr.setMeta('preventUpdate', true);
+        return tr;
       },
     })];
   },
@@ -274,12 +433,13 @@ const ReferenceIdentity = Extension.create({
 
 interface Props {
   beat: Beat; index: number; characters: Character[]; tones?: Preset[]; emotions?: Preset[];
+  relationshipChanges?: RelationshipChange[]; sceneId?: string; onSelectRelationshipChange?: (changeId: string) => void;
   onChange: (document: Beat['document'], text: string) => void; onFocus: (editor: Editor) => void; onSelection: (editor: Editor) => void;
   register: (id: string, editor: Editor | null) => void; editable?: boolean; notify?: (message: string) => void;
   ariaLabel?: string; placeholder?: string; scope?: BoardScope; wrapperClassName?: string;
 }
-export default function BeatEditor({ beat, index, characters, tones = [], emotions = [], onChange, onFocus, onSelection, register, editable = true, notify, ariaLabel, placeholder, scope = 'beat', wrapperClassName }: Props) {
-  const callbacks = useRef({ onChange, onFocus, onSelection, notify, characters, tones, emotions, scope }); callbacks.current = { onChange, onFocus, onSelection, notify, characters, tones, emotions, scope };
+export default function BeatEditor({ beat, index, characters, tones = [], emotions = [], relationshipChanges = [], sceneId, onSelectRelationshipChange, onChange, onFocus, onSelection, register, editable = true, notify, ariaLabel, placeholder, scope = 'beat', wrapperClassName }: Props) {
+  const callbacks = useRef({ onChange, onFocus, onSelection, notify, characters, tones, emotions, relationshipChanges, sceneId, onSelectRelationshipChange, scope }); callbacks.current = { onChange, onFocus, onSelection, notify, characters, tones, emotions, relationshipChanges, sceneId, onSelectRelationshipChange, scope };
   const handleBoardDrop = (view: EditorView, event: DragEvent) => {
     clearDropFeedback(view, dropSurfaceFor(view));
     if (handleInlineReferenceDrop(view, event, message => callbacks.current.notify?.(message))) return true;
@@ -288,7 +448,7 @@ export default function BeatEditor({ beat, index, characters, tones = [], emotio
     return handled;
   };
   const editor = useEditor({
-    extensions: [StarterKit, CharacterReference, EmotionReference, ToneReference, ReferenceIdentity], content: beat.document, editable,
+    extensions: [StarterKit, CharacterReference, EmotionReference, ToneReference, RelationshipChangeReference, ReferenceIdentity.configure({ getContext: () => callbacks.current }), RelationshipReferencePolicy.configure({ getContext: () => callbacks.current })], content: beat.document, editable,
     editorProps: {
       attributes: { role: 'textbox', 'aria-label': ariaLabel ?? `Freeform text for beat ${index + 1}`, 'aria-multiline': 'true', 'data-placeholder': placeholder ?? 'Write anything that happens here…', spellcheck: 'true', 'data-board-scope': scope },
       handleDOMEvents: {
@@ -313,11 +473,32 @@ export default function BeatEditor({ beat, index, characters, tones = [], emotio
         drop(view, event) { return handleBoardDrop(view, event as DragEvent); },
       },
       handleClickOn(view, pos, node) {
+        if (node.type.name === 'relationshipChange') {
+          const context = callbacks.current;
+          if (!allowedRelationshipChange(context, node.attrs.changeId)) {
+            context.notify?.('This relationship change is unavailable in this scene summary.');
+            return true;
+          }
+          view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
+          context.onSelectRelationshipChange?.(node.attrs.changeId);
+          return true;
+        }
         if (!['characterReference', 'emotionReference', 'toneReference'].includes(node.type.name)) return false;
         view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos))); return true;
       },
     },
-    onUpdate({ editor }) { callbacks.current.onChange(editor.getJSON(), editor.getText({ blockSeparator: '\n\n' })); },
+    onUpdate({ editor }) {
+      callbacks.current.onChange(editor.getJSON(), editor.getText({
+        blockSeparator: '\n\n',
+        textSerializers: {
+          relationshipChange: node => {
+            const context = callbacks.current;
+            const change = relationshipChangeFor(context, node.node.attrs.changeId);
+            return change ? relationshipChangeLabel(change, context.characters) : '[Unavailable relationship change]';
+          },
+        },
+      }));
+    },
     onFocus({ editor }) { callbacks.current.onFocus(editor); callbacks.current.onSelection(editor); }, onSelectionUpdate({ editor }) { callbacks.current.onSelection(editor); },
   });
   useEffect(() => {
@@ -355,6 +536,10 @@ export default function BeatEditor({ beat, index, characters, tones = [], emotio
   }, [editor]);
   useEffect(() => { if (editor) register(beat.id, editor); return () => register(beat.id, null); }, [editor, beat.id, register]);
   useEffect(() => { if (!editor) return; const incoming = editor.schema.nodeFromJSON(beat.document); if (!editor.state.doc.eq(incoming)) editor.commands.setContent(beat.document, { emitUpdate: false }); }, [beat.document, editor]);
+  const relationshipReferenceSignature = JSON.stringify([scope, sceneId, relationshipChanges.map(change => [change.id, change.sceneId]).sort(([leftId, leftScene], [rightId, rightScene]) => `${leftId}:${leftScene}`.localeCompare(`${rightId}:${rightScene}`))]);
+  useEffect(() => {
+    if (editor) editor.view.dispatch(editor.state.tr.setMeta(relationshipPolicyKey, true));
+  }, [editor, relationshipReferenceSignature]);
   useEffect(() => { editor?.setEditable(editable, false); }, [editable, editor]);
-  return <Definitions.Provider value={{ characters, tones, emotions }}><EditorContent editor={editor} className={['beat-prose', wrapperClassName].filter(Boolean).join(' ')} /></Definitions.Provider>;
+  return <Definitions.Provider value={{ characters, tones, emotions, relationshipChanges, sceneId, onSelectRelationshipChange }}><EditorContent editor={editor} className={['beat-prose', wrapperClassName].filter(Boolean).join(' ')} /></Definitions.Provider>;
 }

@@ -1,0 +1,311 @@
+{
+  "projectId": "summary-golden",
+  "title": "Private story",
+  "revision": 3,
+  "chapters": [
+    {
+      "id": "chapter",
+      "title": "Chapter",
+      "sceneIds": [
+        "earlier",
+        "scene",
+        "later"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "earlier",
+      "chapterId": "chapter",
+      "title": "earlier",
+      "summary": "[Relationship change: Maya → Damian · By scene end · attitude · Values his skill; still wary. · planned]",
+      "summaryDocument": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph"
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "relationshipChange",
+                "attrs": {
+                  "changeId": "prior-change"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "tone": "",
+      "toneId": "",
+      "prose": "",
+      "narration": {
+        "pointOfView": "Third person",
+        "tense": "Past",
+        "instructions": ""
+      },
+      "beats": []
+    },
+    {
+      "id": "scene",
+      "chapterId": "chapter",
+      "title": "School infirmary",
+      "summary": "[Maya][Emotion: Serious → Maya] stitches [Damian] while he complains. 🌿[Tone: Tender]\n[Relationship change: Damian → Maya · By scene end · attitude · Respects her help; pride and resentment remain. · planned]",
+      "summaryDocument": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "characterReference",
+                "attrs": {
+                  "characterId": "maya",
+                  "occurrenceId": "summary-maya",
+                  "label": "Maya",
+                  "emotion": "",
+                  "delivery": ""
+                }
+              },
+              {
+                "type": "emotionReference",
+                "attrs": {
+                  "emotionId": "serious",
+                  "label": "Serious",
+                  "targetOccurrenceId": "summary-maya"
+                }
+              },
+              {
+                "type": "text",
+                "text": " stitches "
+              },
+              {
+                "type": "characterReference",
+                "attrs": {
+                  "characterId": "damian",
+                  "occurrenceId": "summary-damian",
+                  "label": "Damian",
+                  "emotion": "",
+                  "delivery": ""
+                }
+              },
+              {
+                "type": "text",
+                "text": " while he complains. 🌿"
+              },
+              {
+                "type": "toneReference",
+                "attrs": {
+                  "toneId": "tender",
+                  "label": "Tender"
+                }
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "relationshipChange",
+                "attrs": {
+                  "changeId": "current-change"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "tone": "",
+      "toneId": "",
+      "prose": "",
+      "narration": {
+        "pointOfView": "Third person",
+        "tense": "Past",
+        "instructions": ""
+      },
+      "beats": []
+    },
+    {
+      "id": "later",
+      "chapterId": "chapter",
+      "title": "later",
+      "summary": "[Relationship change: Maya → Damian · By scene end · attitude · FUTURE TRUST: trusts him completely. · established]",
+      "summaryDocument": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph"
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "relationshipChange",
+                "attrs": {
+                  "changeId": "future-change"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "tone": "",
+      "toneId": "",
+      "prose": "",
+      "narration": {
+        "pointOfView": "Third person",
+        "tense": "Past",
+        "instructions": ""
+      },
+      "beats": []
+    }
+  ],
+  "characters": [
+    {
+      "id": "maya",
+      "name": "Maya",
+      "background": "A student medic.",
+      "personality": "Practical.",
+      "voice": "Blunt and dry.",
+      "archived": false,
+      "defaultToneId": "",
+      "defaultEmotionId": ""
+    },
+    {
+      "id": "damian",
+      "name": "Damian",
+      "background": "Injured after a fight.",
+      "personality": "Proud.",
+      "voice": "Terse and defensive.",
+      "archived": false,
+      "defaultToneId": "",
+      "defaultEmotionId": ""
+    },
+    {
+      "id": "joy-person",
+      "name": "Joy",
+      "background": "UNRELATED PROFILE MUST NOT LEAK",
+      "personality": "",
+      "voice": "",
+      "archived": false,
+      "defaultToneId": "",
+      "defaultEmotionId": ""
+    },
+    {
+      "id": "iris",
+      "name": "Iris",
+      "background": "A student medic.",
+      "personality": "Practical.",
+      "voice": "Blunt and dry.",
+      "archived": false,
+      "defaultToneId": "",
+      "defaultEmotionId": ""
+    }
+  ],
+  "tones": [
+    {
+      "id": "tender",
+      "name": "Tender",
+      "meaning": "Warmth",
+      "guidance": "Let small gestures of care carry the scene.",
+      "example": "",
+      "archived": false,
+      "revision": 1
+    }
+  ],
+  "emotions": [
+    {
+      "id": "serious",
+      "name": "Serious",
+      "meaning": "Focused",
+      "guidance": "Stay with the immediate task.",
+      "example": "",
+      "archived": false,
+      "revision": 1
+    },
+    {
+      "id": "joy-emotion",
+      "name": "Joy",
+      "meaning": "UNUSED EMOTION MUST NOT LEAK",
+      "guidance": "",
+      "example": "",
+      "archived": false,
+      "revision": 0
+    }
+  ],
+  "starterTypes": [],
+  "trash": [],
+  "importSources": [],
+  "canUndo": false,
+  "canRedo": false,
+  "relationshipChanges": [
+    {
+      "id": "baseline",
+      "sourceId": "maya",
+      "targetId": "damian",
+      "kind": "attitude",
+      "mutual": false,
+      "sceneId": "",
+      "phase": "before",
+      "description": "Kindly disposed; does not accept his claimed authority.",
+      "status": "established"
+    },
+    {
+      "id": "reverse-baseline",
+      "sourceId": "damian",
+      "targetId": "maya",
+      "kind": "attitude",
+      "mutual": false,
+      "sceneId": "",
+      "phase": "before",
+      "description": "Resents taking direction; recognizes practical skill.",
+      "status": "established"
+    },
+    {
+      "id": "offstage",
+      "sourceId": "iris",
+      "targetId": "maya",
+      "kind": "attitude",
+      "mutual": false,
+      "sceneId": "",
+      "phase": "before",
+      "description": "PRIVATE OFFSTAGE: suspects her motives.",
+      "status": "established"
+    },
+    {
+      "id": "prior-change",
+      "sourceId": "maya",
+      "targetId": "damian",
+      "kind": "attitude",
+      "mutual": false,
+      "sceneId": "earlier",
+      "phase": "after",
+      "description": "Values his skill; still wary.",
+      "status": "planned"
+    },
+    {
+      "id": "current-change",
+      "sourceId": "damian",
+      "targetId": "maya",
+      "kind": "attitude",
+      "mutual": false,
+      "sceneId": "scene",
+      "phase": "after",
+      "description": "Respects her help; pride and resentment remain.",
+      "status": "planned"
+    },
+    {
+      "id": "future-change",
+      "sourceId": "maya",
+      "targetId": "damian",
+      "kind": "attitude",
+      "mutual": false,
+      "sceneId": "later",
+      "phase": "after",
+      "description": "FUTURE TRUST: trusts him completely.",
+      "status": "established"
+    }
+  ]
+}

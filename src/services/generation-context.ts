@@ -1,7 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import type { Character, Preset, PresetKind, ProjectSnapshot, Scene } from './project';
 import { summaryBoard } from './summary-board';
-import { readableRelationships, relationshipContext, sceneRelationshipCharacters } from './relationships';
+import { readableRelationships, relationshipChangeText, relationshipContext, sceneRelationshipCharacters } from './relationships';
 import type { RelationshipContext } from './relationships';
 
 /** A JSON value whose nested objects and arrays cannot be edited by a caller. */
@@ -226,6 +226,11 @@ export function buildSceneGenerationContext(
     collectReferences(document, [], characterById, references);
     const owners = new Map(references.map(r => [r.occurrenceId, r.label]));
     const displayNode = (node: JSONContent): JSONContent => {
+      if (node.type === 'relationshipChange') {
+        const change = project.relationshipChanges?.find(r => r.id === stringAttr(node, 'changeId') && r.sceneId === sceneId);
+        if (!isSummary || !change) throw new Error('A relationship change block must reference a change in this scene summary.');
+        return { type: 'text', text: relationshipChangeText(project, change) };
+      }
       if (node.type === 'toneReference') {
         const preset = addPreset('tone', stringAttr(node, 'toneId'));
         if (!preset) throw new Error('A tone reference is missing its definition.');

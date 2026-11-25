@@ -1,13 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import source from '../test/relationship-context.json';
 import fingerprints from '../test/relationship-context-fingerprints.json';
+import blockSource from '../test/relationship-block-context.json';
+import blockExpected from '../test/relationship-block-context-expected.json';
 import type { ProjectSnapshot } from './project';
 import { relationshipStates } from './relationships';
+import { relationshipChangeText } from './relationships';
 import { buildSceneGenerationContext } from './generation-context';
 import { generationInputFingerprint } from './generation-fingerprint';
 
 const fixture = () => structuredClone(source) as ProjectSnapshot;
 describe('scene relationship continuity', () => {
+  it('matches native readable relationship blocks and fingerprints for both generation purposes', () => {
+    const context = buildSceneGenerationContext(blockSource as ProjectSnapshot, 'scene');
+    expect(context.summaryBoard.readableText).toBe(blockExpected.summary);
+    expect(generationInputFingerprint(context, '')).toBe(blockExpected.prose);
+    expect(generationInputFingerprint(context, '', 'beats')).toBe(blockExpected.beats);
+  });
+  it('renders a summary change from its shared record and rejects foreign or beat-local references', () => {
+    const project = fixture();
+    const scene = project.scenes.find(s => s.id === 'scene')!;
+    scene.summaryDocument!.content!.push({ type: 'paragraph', content: [{ type: 'relationshipChange', attrs: { changeId: 'current-change' } }] });
+    const change = project.relationshipChanges!.find(r => r.id === 'current-change')!;
+    const first = buildSceneGenerationContext(project, scene.id);
+    expect(first.summaryBoard.readableText).toContain(relationshipChangeText(project, change));
+    change.description = 'Updated from the graph, with caution remaining.';
+    expect(buildSceneGenerationContext(project, scene.id).summaryBoard.readableText).toContain(change.description);
+    expect(first.summaryBoard.readableText).not.toContain(change.description);
+    expect(generationInputFingerprint(buildSceneGenerationContext(project, scene.id), '')).not.toBe(generationInputFingerprint(first, ''));
+    scene.beats.push({ id: 'invalid-change-beat', document: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'relationshipChange', attrs: { changeId: change.id } }] }] }, text: '' });
+    expect(() => buildSceneGenerationContext(project, scene.id)).toThrow(/scene summary/);
+    scene.beats = [];
+    scene.summaryDocument!.content![1] = { type: 'paragraph', content: [{ type: 'relationshipChange', attrs: { changeId: 'prior-change' } }] };
+    expect(() => buildSceneGenerationContext(project, scene.id)).toThrow(/scene summary/);
+  });
   it('replays prior changes, preserves asymmetry, and separates the current outcome from entry', () => {
     const states = relationshipStates(fixture(), 'scene');
     expect(states.before.find(r => r.id === 'prior-change')?.status).toBe('planned');
