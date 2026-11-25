@@ -82,6 +82,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          sed -i 's/\r$//' Shorthand-Writer-latest-win-x64.zip.sha256
           sha256sum -c Shorthand-Writer-latest-win-x64.zip.sha256 Tandnevis-linux-x64.tar.gz.sha256
           release_mode=(--draft)
           tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --template '{{.object.type}} {{.object.sha}}')
