@@ -25,9 +25,11 @@ Navigate through **Story → Chapter → Scene** by opening chapters and scenes.
 
 ## Character relationships
 
-Choose **Character graph** beside the story title on the Story canvas to open the relationship map. Each Scene also has a **Character graph** button beside its title. The button opens the graph, scrolls it into view, and focuses its heading. Establish initial story relationships or choose a scene and inspect **Before / After**. Add directed attitudes or family ties, or explicitly shared relationships. Selecting character boxes focuses the graph on one or several people; the list shows full descriptions. Zoom, pan, Fit, movable labels, and **Save SVG** support larger maps.
+Choose **Character graph** beside the story or scene title. Drag from a character’s connector to another character to draw a relationship, then choose its meaning and direction beside the line. Select an edge to edit its description, family/attitude kind, shared/directed meaning, and Planned/Established status. Drag character boxes to arrange the map; Before and After share the same saved layout. Zoom, pan, search and Fit help navigate larger maps. Keyboard users can activate a connector and choose a target without dragging.
 
-Before inherits earlier scenes in chapter/scene order. Editing Before records an entry correction at that scene; editing After records its outcome. Unchanged relationships carry forward. **Clear at this point** clears a relationship from that point onward; **Use inherited state** removes a local override. After edits start as **Planned**; **Mark established** records that the result has been reviewed. These edits support project Undo/Redo and require Save in manual mode.
+Before inherits earlier scenes in chapter/scene order. Editing Before records an entry correction; editing After records the intended lasting outcome. Each scene change also appears as a **Relationship change** block appended to its summary. The graph and block edit the same record: selecting a block opens its edge controls, and selecting a local edge highlights its block. **Relationship change** in Writing tools offers another way to create a summary block. Ordinary summary text and beats remain freeform.
+
+Deleting a relationship block cancels that scene’s change and restores the inherited state. **End relationship** keeps an explicit change block and clears the edge from that point onward. After changes start Planned; mark them Established after reviewing the prose. Graph changes, their summary blocks, and layout edits support project Undo/Redo and require Save in manual mode. Relationship blocks belong to their scene summary; copying one into a beat or another scene cannot silently change that scene’s history.
 
 AI beat and prose generation receive the relevant characters’ entering relationships and intended After changes automatically. Linked character blocks and characters whose relationships are edited in this scene are included; **Additional characters for AI context** adds relevant offstage people. **Preview scene context** shows the briefing. Later changes stay out of earlier scenes; prose acceptance does not establish planned relationships. Inheritance follows story reading order, so flashbacks need explicit Before corrections and a correction when returning to the later timeline. Relationship history is stored in the `.shorthand` project; outline Markdown and compiled manuscript exports do not include it.
 
@@ -52,3 +54,14 @@ To generate in a scene, connect ChatGPT and verify a model in **Settings**. Gene
 ## Projects and backups
 
 In portable mode, app settings and recovery data are stored in a `data` folder beside the application. Each `.shorthand` project is saved separately at its chosen location. Back up your project files separately from the portable app folder.
+
+## Background desktop verification
+
+Relationship integration checks can run against an invisible, unfocused native window, using an isolated WebView profile and synthetic project:
+
+```powershell
+node tools/desktop.mjs build --debug --no-bundle --config tools/native-smoke.background.json
+node tools/native-smoke.cjs --relationships --background --exe src-tauri/target/debug/shorthand-writer.exe
+```
+
+This exercises connector input, summary/graph synchronization, Undo, AI context, layout persistence and Save/reopen without activating a desktop window. The background runner verifies that the window stays hidden and destroys it after checking the fixture is saved. Use the normal portable packaging script to produce the visible user app.

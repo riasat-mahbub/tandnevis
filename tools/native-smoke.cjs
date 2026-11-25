@@ -13,7 +13,7 @@ const presetPalette = ['#BE527A', '#B98116', '#C85343', '#8260AD', '#527FB0', '#
 const presetFamilyNames = ['Connection', 'Positive energy', 'Conflict', 'Unease', 'Vulnerability', 'Discovery', 'Focus'];
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
-  console.log('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace | --compile | --relationships] [--exe path/to/shorthand-writer.exe]\nRequires a built Windows app. Launches that exact child with an isolated WebView2 profile and temporary CDP port.');
+  console.log('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace | --compile | --relationships] [--background] [--exe path/to/shorthand-writer.exe]\nFor hidden relationship checks, build with tools/native-smoke.background.json and pass --background --exe src-tauri/target/debug/shorthand-writer.exe.');
   process.exit(0);
 }
 const exeIndex = argv.indexOf('--exe');
@@ -21,8 +21,9 @@ const continuationIndex = argv.indexOf('--wizard-continuation');
 const focusedWorkspace = argv.includes('--workspace');
 const focusedCompile = argv.includes('--compile');
 const focusedRelationships = argv.includes('--relationships');
+const background = argv.includes('--background');
 const modeArgs = argv.filter(arg => arg === '--wizard-continuation' || arg === '--workspace' || arg === '--compile' || arg === '--relationships');
-const remainingArgs = argv.filter(arg => !modeArgs.includes(arg));
+const remainingArgs = argv.filter(arg => !modeArgs.includes(arg) && arg !== '--background');
 const validArgs = modeArgs.length <= 1 && (remainingArgs.length === 0 || remainingArgs.length === 2 && remainingArgs[0] === '--exe' && !!remainingArgs[1]);
 if (!validArgs) {
   console.error('Usage: node tools/native-smoke.cjs [--wizard-continuation | --workspace | --compile | --relationships] [--exe path/to/shorthand-writer.exe]');
@@ -30,6 +31,10 @@ if (!validArgs) {
 }
 const exe = path.resolve(root, exeIndex >= 0 ? argv[exeIndex + 1] ?? '' : 'src-tauri/target/release/shorthand-writer.exe');
 const focusedWizardContinuation = continuationIndex >= 0;
+if (background && !exe.toLowerCase().includes(`${path.sep}debug${path.sep}`)) {
+  throw new Error('Background checks require --exe src-tauri/target/debug/shorthand-writer.exe built with tools/native-smoke.background.json.');
+}
+if (background && !focusedRelationships) throw new Error('Background verification currently supports --relationships.');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function rgbChannels(value) {
@@ -140,7 +145,7 @@ async function main() {
   const appLog = await fs.open(path.join(run, 'app.log'), 'w');
   const child = spawn(exe, [], {
     cwd: root, windowsHide: true,
-    env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`, ...(!existsSync(path.join(path.dirname(exe), 'portable.mode')) ? { WEBVIEW2_USER_DATA_FOLDER: path.join(temporary, 'webview') } : {}) },
+    env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1${background ? ' --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows' : ''}`, ...(!existsSync(path.join(path.dirname(exe), 'portable.mode')) ? { WEBVIEW2_USER_DATA_FOLDER: path.join(temporary, 'webview') } : {}) },
     stdio: ['ignore', appLog.fd, appLog.fd],
   });
   let childError, cdp;
@@ -496,6 +501,10 @@ async function main() {
     };
     await waitFor("typeof window.__TAURI_INTERNALS__?.invoke === 'function'", 'real Tauri bridge');
     const invoke = (command, args = {}) => evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`);
+    if (background) {
+      assert.equal(await invoke('plugin:window|is_visible', { label: 'main' }), false, 'The background test window must stay hidden.');
+      report.checks.push('Native verification runs with an invisible, unfocused test window.');
+    }
     const runtime = await invoke('app_runtime_info');
     const expectedDataDirectory = path.join(path.dirname(exe), 'data');
     const portablePackage = existsSync(path.join(path.dirname(exe), 'portable.mode'));
@@ -505,10 +514,16 @@ async function main() {
       report.checks.push('Portable runtime resolves writable app data beside the executable, independently of the development working directory');
     }
     if (focusedRelationships) {
-      await require('./relationship-smoke.cjs')({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath, temporary });
-      await requestWindowClose(child.pid);
+      await require('./relationship-blocks-smoke.cjs')({ invoke, evaluate, clickLabel, waitFor, cdp, report, run, projectPath, temporary });
+      if (background) {
+        const sessionId = await evaluate('window.__relationshipSession');
+        assert.equal(await invoke('project_has_unsaved_changes', { sessionId }), false, 'Save the fixture before closing the hidden window.');
+        assert.equal(await invoke('plugin:window|is_visible', { label: 'main' }), false, 'The test window must remain hidden throughout verification.');
+        await evaluate("setTimeout(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|destroy',{label:'main'}).catch(()=>{}),0);true");
+        report.checks.push('The saved fixture closes through native window destruction while remaining hidden.');
+      } else await requestWindowClose(child.pid);
       if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(10_000)]);
-      assert.equal(child.exitCode, 0, 'The saved relationship fixture closes through the native close handler.');
+      assert.equal(child.exitCode, 0, 'The saved relationship test window exits normally.');
       report.passed = true;
       return;
     }

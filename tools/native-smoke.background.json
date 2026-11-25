@@ -1,0 +1,15 @@
+{
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "Shorthand Writer background verification",
+      "width": 1440,
+      "height": 960,
+      "minWidth": 800,
+      "minHeight": 600,
+      "visible": false,
+      "focus": false,
+      "dragDropEnabled": false
+    }]
+  }
+}
