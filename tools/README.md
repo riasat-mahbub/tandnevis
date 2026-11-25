@@ -12,6 +12,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1
 
 The script builds the Tauri release and refreshes the executable, ZIP, and checksum in `out/latest`. It preserves the `data` folder and separately saved projects.
 
+## Build the portable Linux app
+
+On Linux x86-64, install Node 22.12 or later, Rust 1.90 or later, and the platform build dependencies. The release workflow uses Ubuntu 22.04 as its build baseline. Local builds use the libraries on the build machine, including its glibc version. [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux)
+
+```bash
+npm ci
+bash scripts/package-portable-linux.sh
+```
+
+The script builds the Tauri release executable and writes it, the portable archive, and its SHA-256 checksum to `out/linux-latest`. Existing `data` and project files stay in place.
+
+## Create a GitHub release
+
+Once the [workflow](../.github/workflows/portable-release.yml) is on the default branch, you can run **Portable builds** from the repository’s **Actions** tab to download test packages from the run’s **Artifacts**.
+
+To prepare a release, push a tag matching the app version. For example, use `v0.1.0` for package version `0.1.0`.
+
+```bash
+git tag -a v0.1.0 -m "Tandnevis v0.1.0"
+git push origin v0.1.0
+```
+
+The tag run builds both x64 packages on native runners, verifies their checksums, and attaches them to one draft GitHub Release. Review the draft and publish it from **Releases** when ready. [GitHub release management](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
+
 ## Background desktop verification
 
 Relationship integration checks can run against an invisible, unfocused native window, using an isolated WebView profile and synthetic project.

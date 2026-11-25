@@ -1,0 +1,89 @@
+name: Portable builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-${{ github.ref }}
+
+jobs:
+  build:
+    name: Package ${{ matrix.platform }} x64
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-2025
+            archive: out/latest/Shorthand-Writer-latest-win-x64.zip
+          - platform: linux
+            runner: ubuntu-22.04
+            archive: out/linux-latest/Tandnevis-linux-x64.tar.gz
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify release tag matches the application version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            printf 'Expected tag v%s for this version.\n' "$version" >&2
+            exit 1
+          fi
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+      - name: Update Rust stable
+        run: rustup update stable --no-self-update
+      - run: npm ci
+      - name: Package Windows ZIP
+        if: matrix.platform == 'windows'
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-portable.ps1
+      - name: Package Linux tarball
+        if: matrix.platform == 'linux'
+        run: bash scripts/package-portable-linux.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: portable-${{ matrix.platform }}-x64
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Draft GitHub release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: portable-*-x64
+          merge-multiple: true
+          path: release-assets
+      - name: Create release draft with both packages
+        working-directory: release-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum -c Shorthand-Writer-latest-win-x64.zip.sha256 Tandnevis-linux-x64.tar.gz.sha256
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --draft --generate-notes --title "Tandnevis $GITHUB_REF_NAME" \
+            Shorthand-Writer-latest-win-x64.zip Shorthand-Writer-latest-win-x64.zip.sha256 \
+            Tandnevis-linux-x64.tar.gz Tandnevis-linux-x64.tar.gz.sha256

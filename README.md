@@ -1,6 +1,6 @@
 # Tandnevis
 
-Tandnevis is a Windows writing app for outlining chapters and scenes, drafting prose, and exporting a manuscript. Your projects are stored on your computer, and you can write offline without an account.
+Tandnevis is a desktop writing app for outlining chapters and scenes, drafting prose, and exporting a manuscript. Your projects are stored on your computer, and you can write offline without an account.
 
 ## Install on Windows
 
@@ -9,6 +9,14 @@ Tandnevis is a Windows writing app for outlining chapters and scenes, drafting p
 3. Open the extracted folder and double-click **Shorthand Writer.exe**. Tandnevis uses this executable name for compatibility. The portable app runs from this folder.
 
 If Windows reports that WebView2 is missing, download and run the **Evergreen Bootstrapper**, then reopen the app. [Microsoft Edge WebView2 downloads](https://developer.microsoft.com/en-us/microsoft-edge/webview2#download)
+
+## Install on Linux
+
+1. Get `Tandnevis-linux-x64.tar.gz` for **Linux x86-64** from the maintainer or from the **Assets** of a published release. [GitHub Releases](https://github.com/riasat-mahbub/tandnevis/releases)
+2. Extract the archive to a writable folder and open the extracted `Tandnevis-linux-x64` folder. Keep `portable.mode` beside the executable.
+3. Run `./tandnevis` from that folder.
+
+The Linux build uses GTK 3 and WebKitGTK 4.1. On Ubuntu 22.04 or Debian 12, install `libwebkit2gtk-4.1-0` if the runtime is missing. On other distributions, use your package manager’s WebKitGTK 4.1 package.
 
 ## Write your first scene
 
@@ -49,10 +57,10 @@ To make a PDF, export HTML, open it in your browser, and use the browser’s **P
 
 ## Draft with ChatGPT
 
-If your build offers ChatGPT generation, connect an eligible account under **Settings → Write with ChatGPT**. Choose a **Writing model** and select **Test connection**. Back in a scene, use **Generate beats** or **Generate prose**, then review the draft before accepting it. Accepted beats are added to the sequence. Accepting a prose draft replaces the current scene prose.
+On supported Windows builds, connect an eligible account under **Settings → Write with ChatGPT**. Choose a **Writing model** and select **Test connection**. Back in a scene, use **Generate beats** or **Generate prose**, then review the draft before accepting it. Accepted beats are added to the sequence. Accepting a prose draft replaces the current scene prose.
 
 ## Back up your projects
 
-Back up the `.shorthand` files you save for each story. The portable app keeps its settings and recovery data in a separate `data` folder beside `Shorthand Writer.exe`. When updating the app, save and close it first, then keep that `data` folder and your project files.
+Back up the `.shorthand` files you save for each story. The portable app keeps its settings and recovery data in a separate `data` folder beside the executable. When updating the app, save and close it first, then keep that `data` folder and your project files.
 
 [Developer notes and demo recording](tools/README.md)
