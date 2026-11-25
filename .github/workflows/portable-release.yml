@@ -65,7 +65,7 @@ jobs:
           compression-level: 0
 
   release:
-    name: Draft GitHub release
+    name: Create GitHub release
     if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-22.04
@@ -77,13 +77,22 @@ jobs:
           pattern: portable-*-x64
           merge-multiple: true
           path: release-assets
-      - name: Create release draft with both packages
+      - name: Verify packages and create release
         working-directory: release-assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha256sum -c Shorthand-Writer-latest-win-x64.zip.sha256 Tandnevis-linux-x64.tar.gz.sha256
+          release_mode=(--draft)
+          tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --template '{{.object.type}} {{.object.sha}}')
+          read -r tag_kind tag_sha <<< "$tag_ref"
+          if [[ "$tag_kind" == tag ]]; then
+            tag_message=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" --jq '.message')
+            if [[ "$tag_message" == "Publish Tandnevis $GITHUB_REF_NAME" ]]; then
+              release_mode=()
+            fi
+          fi
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --draft --generate-notes --title "Tandnevis $GITHUB_REF_NAME" \
+            --verify-tag "${release_mode[@]}" --generate-notes --title "Tandnevis $GITHUB_REF_NAME" \
             Shorthand-Writer-latest-win-x64.zip Shorthand-Writer-latest-win-x64.zip.sha256 \
             Tandnevis-linux-x64.tar.gz Tandnevis-linux-x64.tar.gz.sha256

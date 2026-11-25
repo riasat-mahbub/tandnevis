@@ -36,6 +36,8 @@ git push origin v0.1.0
 
 The tag run builds both x64 packages on native runners, verifies their checksums, and attaches them to one draft GitHub Release. Review the draft and publish it from **Releases** when ready. [GitHub release management](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
 
+For a release you’re ready to publish when both builds pass, use the annotation `Publish Tandnevis v0.1.0` when creating the tag. Replace `v0.1.0` with the version you’re releasing.
+
 ## Background desktop verification
 
 Relationship integration checks can run against an invisible, unfocused native window, using an isolated WebView profile and synthetic project.
