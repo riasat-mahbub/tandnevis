@@ -15,6 +15,8 @@ pub struct ProjectSnapshot {
     pub relationship_changes: Vec<super::relationships::RelationshipChange>,
     #[serde(default)]
     pub relationship_cast: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub relationship_layout: HashMap<String, RelationshipPosition>,
     pub project_id: String,
     pub title: String,
     pub revision: u64,
@@ -31,6 +33,13 @@ pub struct ProjectSnapshot {
     pub import_sources: Vec<ImportedSource>,
     pub can_undo: bool,
     pub can_redo: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationshipPosition {
+    pub x: f64,
+    pub y: f64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -301,8 +310,13 @@ pub struct ImportedSource {
 )]
 pub enum Operation {
     SetRelationship { change: super::relationships::RelationshipChange },
+    ReplaceRelationship {
+        change: super::relationships::RelationshipChange,
+        previous_change_id: String,
+    },
     RemoveRelationshipChange { change_id: String },
     SetRelationshipCast { scene_id: String, character_ids: Vec<String> },
+    SetRelationshipLayout { positions: HashMap<String, RelationshipPosition> },
     RenameProject {
         title: String,
     },
@@ -921,6 +935,7 @@ impl ProjectSnapshot {
         Ok(Self {
             relationship_changes: vec![],
             relationship_cast: HashMap::new(),
+            relationship_layout: HashMap::new(),
             project_id: new_id(),
             title: name,
             revision: 0,
@@ -967,13 +982,20 @@ impl ProjectSnapshot {
     pub fn apply(&mut self, operation: Operation) -> Result<()> {
         match operation {
             Operation::SetRelationship { change } => self.set_relationship(change)?,
+            Operation::ReplaceRelationship { change, previous_change_id } => {
+                self.replace_relationship(change, &previous_change_id)?;
+            }
             Operation::RemoveRelationshipChange { change_id } => {
                 let index = self.relationship_changes.iter().position(|r| r.id == change_id).ok_or("Relationship change does not exist.")?;
+                self.remove_relationship_change_nodes(&change_id);
                 self.relationship_changes.remove(index);
             }
             Operation::SetRelationshipCast { scene_id, character_ids } => {
                 self.scene_mut(&scene_id)?;
                 self.relationship_cast.insert(scene_id, character_ids);
+            }
+            Operation::SetRelationshipLayout { positions } => {
+                self.relationship_layout = positions;
             }
             Operation::RenameProject { title: name } => {
                 title(&name)?;
@@ -1048,36 +1070,60 @@ impl ProjectSnapshot {
                 if let Some(ref name) = name {
                     title(name)?;
                 }
-                let scene = self.scene_mut(&scene_id)?;
-                if let Some(v) = name {
-                    scene.title = v;
+                let summary_changed = summary.is_some() || summary_document.is_some();
+                {
+                    let scene = self.scene_mut(&scene_id)?;
+                    if let Some(v) = name {
+                        scene.title = v;
+                    }
+                    if let Some(v) = summary {
+                        scene.summary_document = None;
+                        scene.summary = v;
+                    }
+                    if let Some(v) = summary_document {
+                        scene.summary_document = Some(v);
+                    }
+                    if let Some(v) = tone {
+                        scene.tone = v;
+                    }
+                    if let Some(v) = tone_id {
+                        scene.tone_id = v;
+                    }
+                    if let Some(v) = prose {
+                        scene.prose = v;
+                    }
+                    if let Some(v) = narration {
+                        scene.narration = v;
+                    }
                 }
-                if let Some(v) = summary {
-                    scene.summary_document = None;
-                    scene.summary = v;
-                }
-                if let Some(v) = summary_document {
-                    scene.summary_document = Some(v);
-                }
-                if let Some(v) = tone {
-                    scene.tone = v;
-                }
-                if let Some(v) = tone_id {
-                    scene.tone_id = v;
-                }
-                if let Some(v) = prose {
-                    scene.prose = v;
-                }
-                if let Some(v) = narration {
-                    scene.narration = v;
+                if summary_changed {
+                    self.reconcile_scene_relationship_changes(&scene_id)?;
                 }
             }
             Operation::DuplicateScene { scene_id } => {
                 let mut scene = self.scene_mut(&scene_id)?.clone();
                 scene.id = new_id();
                 scene.title.push_str(" (copy)");
+                let copies: Vec<_> = self
+                    .relationship_changes
+                    .iter()
+                    .filter(|r| r.scene_id == scene_id)
+                    .cloned()
+                    .map(|mut r| {
+                        let old_id = r.id.clone();
+                        r.id = new_id();
+                        r.scene_id = scene.id.clone();
+                        r.status = "planned".into();
+                        (old_id, r)
+                    })
+                    .collect();
+                let remap: HashMap<_, _> = copies
+                    .iter()
+                    .map(|(old_id, change)| (old_id.clone(), change.id.clone()))
+                    .collect();
                 if let Some(document) = &mut scene.summary_document {
                     refresh_occurrences(document);
+                    super::relationships::remap_relationship_change_nodes(document, &remap);
                 }
                 for beat in &mut scene.beats {
                     beat.id = new_id();
@@ -1090,8 +1136,7 @@ impl ProjectSnapshot {
                     .position(|id| id == &scene_id)
                     .ok_or("Scene order is invalid.")?;
                 chapter.scene_ids.insert(pos + 1, scene.id.clone());
-                let copies: Vec<_> = self.relationship_changes.iter().filter(|r| r.scene_id == scene_id).cloned().map(|mut r| { r.id = new_id(); r.scene_id = scene.id.clone(); r.status = "planned".into(); r }).collect();
-                self.relationship_changes.extend(copies);
+                self.relationship_changes.extend(copies.into_iter().map(|(_, change)| change));
                 if let Some(cast) = self.relationship_cast.get(&scene_id).cloned() { self.relationship_cast.insert(scene.id.clone(), cast); }
                 self.scenes.push(scene);
             }
@@ -1320,6 +1365,7 @@ impl ProjectSnapshot {
                     .position(|c| c.id == character_id)
                     .ok_or("Character does not exist.")?;
                 let c = self.characters.remove(position);
+                self.relationship_layout.remove(&character_id);
                 self.trash(
                     "character",
                     c.name.clone(),
@@ -1429,16 +1475,28 @@ impl ProjectSnapshot {
                 return Err("History operations require a project transaction.".into())
             }
         }
-        for scene in &mut self.scenes {
-            if scene.summary_document.is_none() {
-                scene.summary_document = Some(summary_document(scene, &self.tones));
+        self.refresh_document_texts()?;
+        self.validate()
+    }
+
+    pub(super) fn refresh_document_texts(&mut self) -> Result<()> {
+        for index in 0..self.scenes.len() {
+            if self.scenes[index].summary_document.is_none() {
+                let document = summary_document(&self.scenes[index], &self.tones);
+                self.scenes[index].summary_document = Some(document);
             }
-            if let Some(document) = &mut scene.summary_document {
-                normalize_occurrences(document, &format!("{}:summary", scene.id));
-                scene.summary =
-                    document_text(document, &self.characters, &self.tones, &self.emotions)?;
-            }
-            for beat in &mut scene.beats {
+            let scene_id = self.scenes[index].id.clone();
+            let document = self.scenes[index].summary_document.as_mut().unwrap();
+            normalize_occurrences(document, &format!("{}:summary", scene_id));
+            self.scenes[index].summary = super::relationships::document_text_with_relationship_changes(
+                document,
+                &self.characters,
+                &self.tones,
+                &self.emotions,
+                &self.relationship_changes,
+                &scene_id,
+            )?;
+            for beat in &mut self.scenes[index].beats {
                 normalize_occurrences(&mut beat.document, &beat.id);
                 beat.text = document_text(
                     &beat.document,
@@ -1448,7 +1506,7 @@ impl ProjectSnapshot {
                 )?;
             }
         }
-        self.validate()
+        Ok(())
     }
     pub fn validate(&self) -> Result<()> {
         self.validate_relationships()?;
@@ -1494,7 +1552,14 @@ impl ProjectSnapshot {
                 {
                     return Err("Scene summary exceeds the 4 MB limit.".into());
                 }
-                document_text(document, &self.characters, &self.tones, &self.emotions)?;
+                super::relationships::document_text_with_relationship_changes(
+                    document,
+                    &self.characters,
+                    &self.tones,
+                    &self.emotions,
+                    &self.relationship_changes,
+                    &s.id,
+                )?;
             }
             if s.prose.len() > 10_000_000 {
                 return Err("Scene prose exceeds the 10 MB limit.".into());

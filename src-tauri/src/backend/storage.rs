@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 const APPLICATION_ID: i32 = 0x53485752;
-const SCHEMA_VERSION: i32 = 8;
+const SCHEMA_VERSION: i32 = 9;
 
 /// Each native project is one SQLite database. DELETE journaling and FULL synchronous
 /// commits retain SQLite's crash recovery without an application-level sidecar journal.
@@ -556,6 +556,8 @@ impl Database {
                 .map_err(sql)?;
             }
         }
+        after.materialize_missing_relationship_nodes()?;
+        after.refresh_document_texts()?;
         if before.project_id != after.project_id {
             return Err("Project history identity does not match.".into());
         }
@@ -818,6 +820,12 @@ fn migrate_in_transaction(tx: &rusqlite::Transaction<'_>, mut version: i32) -> R
                 tx.pragma_update(None, "user_version", 8).map_err(sql)?;
                 8
             }
+            8 => {
+                // Relationship summary atoms and shared graph positions live in extensions.
+                // Older binaries must not discard either authored representation.
+                tx.pragma_update(None, "user_version", 9).map_err(sql)?;
+                9
+            }
             _ => {
                 return Err(format!(
                     "Unsupported project schema {version}; this app supports {SCHEMA_VERSION}."
@@ -950,6 +958,7 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
     let mut project = ProjectSnapshot {
         relationship_changes: vec![],
         relationship_cast: std::collections::HashMap::new(),
+        relationship_layout: std::collections::HashMap::new(),
         project_id,
         title,
         revision,
@@ -1119,6 +1128,7 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
         let v: serde_json::Value = decode(extras)?;
         project.relationship_changes = serde_json::from_value(v.get("relationshipChanges").cloned().unwrap_or_else(|| serde_json::json!([]))).map_err(|e| e.to_string())?;
         project.relationship_cast = serde_json::from_value(v.get("relationshipCast").cloned().unwrap_or_else(|| serde_json::json!({}))).map_err(|e| e.to_string())?;
+        project.relationship_layout = serde_json::from_value(v.get("relationshipLayout").cloned().unwrap_or_else(|| serde_json::json!({}))).map_err(|e| e.to_string())?;
         project.tones = serde_json::from_value(v["tones"].clone()).map_err(|e| e.to_string())?;
         project.emotions =
             serde_json::from_value(v["emotions"].clone()).map_err(|e| e.to_string())?;
@@ -1145,20 +1155,8 @@ fn load(connection: &Connection) -> Result<ProjectSnapshot> {
                 .into();
         }
     }
-    for s in &mut project.scenes {
-        let mut document = summary_document(s, &project.tones);
-        normalize_occurrences(&mut document, &format!("{}:summary", s.id));
-        s.summary = document_text(
-            &document,
-            &project.characters,
-            &project.tones,
-            &project.emotions,
-        )?;
-        s.summary_document = Some(document);
-        for b in &mut s.beats {
-            normalize_occurrences(&mut b.document, &b.id);
-        }
-    }
+    project.materialize_missing_relationship_nodes()?;
+    project.refresh_document_texts()?;
     project.validate()?;
     Ok(project)
 }
@@ -1290,7 +1288,7 @@ fn persist(connection: &Connection, project: &ProjectSnapshot, cursor: i64) -> R
                 .map(|d| (s.id.clone(), d.clone()))
         })
         .collect();
-    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults,"characterIcons":character_icons,"relationshipChanges":project.relationship_changes,"relationshipCast":project.relationship_cast});
+    let extensions = serde_json::json!({"tones":project.tones,"emotions":project.emotions,"starterTypes":project.starter_types,"sceneTones":scene_tones,"sceneSummaries":scene_summaries,"characterDefaults":character_defaults,"characterIcons":character_icons,"relationshipChanges":project.relationship_changes,"relationshipCast":project.relationship_cast,"relationshipLayout":project.relationship_layout});
     connection.execute("INSERT INTO project_extensions(singleton,data) VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET data=excluded.data",[encode(&extensions)?]).map_err(sql)?;
     Ok(())
 }

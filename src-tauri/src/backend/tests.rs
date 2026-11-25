@@ -28,6 +28,27 @@ fn apply_json(db: &mut Database, value: serde_json::Value) -> ProjectSnapshot {
     apply(db, serde_json::from_value(value).unwrap())
 }
 
+fn relationship_node_ids(document: &serde_json::Value) -> Vec<String> {
+    let mut ids = Vec::new();
+    domain::walk_nodes(document, &mut |node| {
+        if node["type"].as_str() == Some("relationshipChange") {
+            if let Some(id) = node["attrs"]["changeId"].as_str() {
+                ids.push(id.to_owned());
+            }
+        }
+    });
+    ids
+}
+
+fn strip_relationship_nodes(document: &mut serde_json::Value) {
+    if let Some(content) = document.get_mut("content").and_then(serde_json::Value::as_array_mut) {
+        content.retain(|node| node["type"].as_str() != Some("relationshipChange"));
+        for node in content {
+            strip_relationship_nodes(node);
+        }
+    }
+}
+
 #[test]
 fn relationship_changes_save_reopen_undo_and_preserve_direction_and_scene_history() {
     let file = ProjectFile::new();
@@ -79,6 +100,10 @@ fn relationship_changes_save_reopen_undo_and_preserve_direction_and_scene_histor
     let copies: Vec<_> = p.relationship_changes.iter().filter(|r| r.scene_id == copied.id).collect();
     assert_eq!(copies.len(), 2);
     assert!(copies.iter().all(|r| r.status == "planned" && !original_ids.contains(&r.id)));
+    let copied_blocks = relationship_node_ids(copied.summary_document.as_ref().unwrap());
+    assert_eq!(copied_blocks.len(), copies.len());
+    assert!(copies.iter().all(|change| copied_blocks.contains(&change.id)));
+    assert!(copied_blocks.iter().all(|id| !original_ids.contains(id)));
     assert_eq!(p.relationship_cast.get(&copied.id).unwrap().len(), 2);
 }
 
@@ -103,8 +128,249 @@ fn v7_relationship_migration_happens_on_save_and_shared_ties_are_explicit() {
     assert_eq!(db.read().unwrap().relationship_changes.len(), 1);
     db.save().unwrap();
     let disk = rusqlite::Connection::open(file.path()).unwrap();
-    assert_eq!(disk.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 8);
+    assert_eq!(disk.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 9);
     assert_eq!(Database::open(file.path()).unwrap().read().unwrap().relationship_changes.len(), 1);
+}
+
+#[test]
+fn relationship_blocks_and_graph_changes_stay_in_sync_through_edits_and_history() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"Maya"}));
+    let maya = p.characters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"Damian"}));
+    let damian = p.characters[1].id.clone();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":{
+        "sourceId":maya,"targetId":damian,"kind":"attitude","mutual":false,
+        "sceneId":scene_id,"phase":"after","description":"New respect","status":"planned"
+    }}));
+    let change = p.relationship_changes[0].clone();
+    assert_eq!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()), vec![change.id.clone()]);
+    assert!(p.scenes[0].summary.contains("[Relationship change: Maya → Damian · By scene end · attitude · New respect · planned]"));
+
+    let p = apply_json(&mut db, json!({"type":"updateCharacter","characterId":damian,"name":"Damian Vale"}));
+    assert!(p.scenes[0].summary.contains("Maya → Damian Vale"));
+
+    let mut edited = p.relationship_changes[0].clone();
+    edited.kind = "family".into();
+    edited.mutual = true;
+    edited.description = "Sibling bond".into();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":edited}));
+    assert_eq!(p.relationship_changes[0].id, change.id, "changing kind/direction must keep the block identity");
+    assert_eq!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()), vec![change.id.clone()]);
+    assert!(p.scenes[0].summary.contains("family · Sibling bond"));
+
+    let mut tombstone = p.relationship_changes[0].clone();
+    tombstone.description.clear();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":tombstone}));
+    assert!(p.scenes[0].summary.contains("End relationship"));
+    assert_eq!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()), vec![change.id.clone()]);
+
+    let p = apply(&mut db, Undo);
+    assert!(p.scenes[0].summary.contains("Sibling bond"));
+    assert_eq!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()), vec![change.id.clone()]);
+    let p = apply(&mut db, Redo);
+    assert!(p.scenes[0].summary.contains("End relationship"));
+
+    let p = apply_json(&mut db, json!({"type":"removeRelationshipChange","changeId":change.id}));
+    assert!(p.relationship_changes.is_empty());
+    assert!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()).is_empty());
+    let p = apply(&mut db, Undo);
+    assert_eq!(p.relationship_changes.len(), 1);
+    assert_eq!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()), vec![change.id]);
+}
+
+#[test]
+fn summary_edits_reconcile_relationship_blocks_and_reject_bad_references_atomically() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let first = p.scenes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createScene","chapterId":p.chapters[0].id,"title":"Next"}));
+    let second = p.scenes[1].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"A"}));
+    let a = p.characters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"B"}));
+    let b = p.characters[1].id.clone();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":{
+        "sourceId":a,"targetId":b,"kind":"attitude","mutual":false,
+        "sceneId":first,"phase":"after","description":"First scene","status":"planned"
+    }}));
+    let first_change = p.relationship_changes[0].clone();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":{
+        "sourceId":b,"targetId":a,"kind":"attitude","mutual":false,
+        "sceneId":second,"phase":"after","description":"Second scene","status":"planned"
+    }}));
+    let second_change = p.relationship_changes.iter().find(|change| change.scene_id == second).unwrap().clone();
+
+    let mut foreign = p.scenes[0].summary_document.clone().unwrap();
+    foreign["content"].as_array_mut().unwrap().push(json!({
+        "type":"paragraph","content":[{"type":"relationshipChange","attrs":{"changeId":second_change.id}}]
+    }));
+    let revision = p.revision;
+    assert!(db.apply(revision, serde_json::from_value(json!({
+        "type":"updateScene","sceneId":first,"summaryDocument":foreign
+    })).unwrap()).is_err());
+    assert_eq!(db.read().unwrap(), p);
+
+    let mut duplicate = p.scenes[0].summary_document.clone().unwrap();
+    duplicate["content"].as_array_mut().unwrap().push(json!({
+        "type":"paragraph","content":[{"type":"relationshipChange","attrs":{"changeId":first_change.id}}]
+    }));
+    assert!(db.apply(revision, serde_json::from_value(json!({
+        "type":"updateScene","sceneId":first,"summaryDocument":duplicate
+    })).unwrap()).is_err());
+    assert_eq!(db.read().unwrap(), p);
+
+    let mut unknown = p.scenes[0].summary_document.clone().unwrap();
+    unknown["content"].as_array_mut().unwrap().push(json!({
+        "type":"paragraph","content":[{"type":"relationshipChange","attrs":{"changeId":new_id()}}]
+    }));
+    assert!(db.apply(revision, serde_json::from_value(json!({
+        "type":"updateScene","sceneId":first,"summaryDocument":unknown
+    })).unwrap()).is_err());
+    assert_eq!(db.read().unwrap(), p);
+
+    let mut deleted = p.scenes[0].summary_document.clone().unwrap();
+    deleted["content"].as_array_mut().unwrap().retain(|node| {
+        !(node["content"].as_array().is_some_and(|items| items.iter().any(|item|
+            item["type"].as_str() == Some("relationshipChange")
+                && item["attrs"]["changeId"].as_str() == Some(first_change.id.as_str())
+        )))
+    });
+    let p = apply_json(&mut db, json!({"type":"updateScene","sceneId":first,"summaryDocument":deleted}));
+    assert!(p.relationship_changes.iter().all(|change| change.id != first_change.id));
+    assert_eq!(p.relationship_changes.len(), 1);
+    assert_eq!(p.relationship_changes[0].id, second_change.id);
+}
+
+#[test]
+fn replacing_relationship_identity_ends_old_key_in_one_undoable_operation() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"A"}));
+    let a = p.characters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"B"}));
+    let b = p.characters[1].id.clone();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":{
+        "sourceId":a,"targetId":b,"kind":"attitude","mutual":false,
+        "sceneId":scene_id,"phase":"after","description":"Trust","status":"established"
+    }}));
+    let previous_id = p.relationship_changes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"replaceRelationship","previousChangeId":previous_id,"change":{
+        "id":previous_id,"sourceId":a,"targetId":b,"kind":"family","mutual":false,
+        "sceneId":scene_id,"phase":"after","description":"Siblings","status":"established"
+    }}));
+    assert_eq!(p.relationship_changes.len(), 2);
+    assert!(p.scenes[0].summary.contains("attitude · End relationship"));
+    assert!(p.scenes[0].summary.contains("family · Siblings"));
+    let ids = relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap());
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&previous_id));
+
+    let undone = apply(&mut db, Undo);
+    assert_eq!(undone.relationship_changes.len(), 1);
+    assert_eq!(undone.relationship_changes[0].id, previous_id);
+    assert_eq!(undone.relationship_changes[0].kind, "attitude");
+    assert_eq!(relationship_node_ids(undone.scenes[0].summary_document.as_ref().unwrap()), vec![previous_id]);
+    assert!(undone.scenes[0].summary.contains("attitude · Trust"));
+    let redone = apply(&mut db, Redo);
+    assert_eq!(redone.relationship_changes.len(), 2);
+}
+
+#[test]
+fn schema_v8_relationship_blocks_materialize_in_memory_and_history_replay_repairs_old_snapshots() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = scene(&mut db);
+    let scene_id = p.scenes[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"A"}));
+    let a = p.characters[0].id.clone();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"B"}));
+    let b = p.characters[1].id.clone();
+    let p = apply_json(&mut db, json!({"type":"setRelationship","change":{
+        "sourceId":a,"targetId":b,"kind":"attitude","mutual":false,
+        "sceneId":scene_id,"phase":"after","description":"Trust","status":"planned"
+    }}));
+    let event_id = p.relationship_changes[0].id.clone();
+    db.save().unwrap();
+    drop(db);
+
+    let connection = rusqlite::Connection::open(file.path()).unwrap();
+    let mut extensions: serde_json::Value = serde_json::from_str(&connection.query_row(
+        "SELECT data FROM project_extensions WHERE singleton=1", [], |row| row.get::<_,String>(0)
+    ).unwrap()).unwrap();
+    for document in extensions["sceneSummaries"].as_object_mut().unwrap().values_mut() {
+        strip_relationship_nodes(document);
+    }
+    extensions.as_object_mut().unwrap().remove("relationshipLayout");
+    connection.execute("UPDATE project_extensions SET data=?1 WHERE singleton=1", [extensions.to_string()]).unwrap();
+
+    let mut statement = connection.prepare("SELECT sequence,before_state,after_state FROM history ORDER BY sequence").unwrap();
+    let rows: Vec<(i64, String, String)> = statement.query_map([], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap().collect::<std::result::Result<_,_>>().unwrap();
+    drop(statement);
+    for (sequence, before, after) in rows {
+        let mut before: serde_json::Value = serde_json::from_str(&before).unwrap();
+        let mut after: serde_json::Value = serde_json::from_str(&after).unwrap();
+        for state in [&mut before, &mut after] {
+            if let Some(scenes) = state["scenes"].as_array_mut() {
+                for scene in scenes {
+                    if let Some(document) = scene.get_mut("summaryDocument") {
+                        strip_relationship_nodes(document);
+                    }
+                }
+            }
+        }
+        connection.execute("UPDATE history SET before_state=?1,after_state=?2 WHERE sequence=?3", rusqlite::params![before.to_string(),after.to_string(),sequence]).unwrap();
+    }
+    connection.pragma_update(None, "user_version", 8).unwrap();
+    drop(connection);
+    let source_before_open = std::fs::read(file.path()).unwrap();
+
+    let mut migrated = Database::open(file.path()).unwrap();
+    let p = migrated.read().unwrap();
+    assert_eq!(std::fs::read(file.path()).unwrap(), source_before_open);
+    assert_eq!(relationship_node_ids(p.scenes[0].summary_document.as_ref().unwrap()), vec![event_id.clone()]);
+    assert!(p.scenes[0].summary.contains("[Relationship change: A → B · By scene end · attitude · Trust · planned]"));
+
+    let undone = apply(&mut migrated, Undo);
+    assert!(undone.relationship_changes.is_empty());
+    let redone = apply(&mut migrated, Redo);
+    assert_eq!(relationship_node_ids(redone.scenes[0].summary_document.as_ref().unwrap()), vec![event_id]);
+    assert!(redone.scenes[0].summary.contains("Trust"));
+}
+
+#[test]
+fn relationship_layout_persists_validates_and_is_removed_with_deleted_characters() {
+    let file = ProjectFile::new();
+    let mut db = file.create().working_copy().unwrap();
+    let p = apply_json(&mut db, json!({"type":"createCharacter","name":"Maya"}));
+    let id = p.characters[0].id.clone();
+    let positions = std::collections::HashMap::from([(
+        id.clone(), domain::RelationshipPosition { x: 125.5, y: -40.0 },
+    )]);
+    let p = apply(&mut db, SetRelationshipLayout { positions });
+    assert_eq!(p.relationship_layout[&id], domain::RelationshipPosition { x:125.5,y:-40.0 });
+    db.save().unwrap();
+    let mut reopened = Database::open(file.path()).unwrap();
+    assert_eq!(reopened.read().unwrap().relationship_layout, p.relationship_layout);
+
+    let bad = SetRelationshipLayout {
+        positions: std::collections::HashMap::from([(
+            id.clone(), domain::RelationshipPosition { x:f64::INFINITY,y:0.0 },
+        )]),
+    };
+    assert!(reopened.apply(p.revision, bad).is_err());
+    assert_eq!(reopened.read().unwrap(), p);
+
+    let deleted = apply(&mut reopened, DeleteCharacter { character_id:id.clone() });
+    assert!(!deleted.relationship_layout.contains_key(&id));
+    let restored = apply(&mut reopened, Undo);
+    assert!(restored.relationship_layout.contains_key(&id));
 }
 
 #[test]
@@ -1754,7 +2020,7 @@ fn schema_v1_migrates_on_save_without_losing_story_or_undo_history() {
     let version: i32 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 8);
+    assert_eq!(version, 9);
     assert_eq!(
         connection
             .query_row("SELECT prose FROM scenes LIMIT 1", [], |row| row

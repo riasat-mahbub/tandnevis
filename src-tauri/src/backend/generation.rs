@@ -1964,6 +1964,7 @@ mod tests {
         ProjectSnapshot {
             relationship_changes: vec![],
             relationship_cast: HashMap::new(),
+            relationship_layout: HashMap::new(),
             tones: vec![],
             emotions: vec![],
             starter_types: vec![],

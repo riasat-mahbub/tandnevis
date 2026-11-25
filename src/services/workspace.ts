@@ -8,6 +8,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : S
 export function projectEdits(project: ProjectSnapshot, operations: Operation[]): ProjectSnapshot {
   const result = structuredClone(project);
   for (const op of operations) {
+    if (op.type === 'setRelationshipLayout') result.relationshipLayout = op.positions;
     if (op.type === 'renameProject') result.title = op.title;
     if (op.type === 'renameChapter') { const c = result.chapters.find(c => c.id === op.chapterId); if (c) c.title = op.title; }
     if (op.type === 'updateScene') { const s = result.scenes.find(s => s.id === op.sceneId); if (s) Object.assign(s, op); }
