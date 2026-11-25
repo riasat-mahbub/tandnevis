@@ -19,7 +19,7 @@ export interface RelationshipContext {
 
 export function relationshipChangeText(project: Pick<ProjectSnapshot, 'characters'>, change: RelationshipChange): string {
   const name = (id: string) => project.characters.find(c => c.id === id)?.name ?? 'Unknown character';
-  return `[Relationship change: ${name(change.sourceId)} ${change.mutual ? '↔' : '→'} ${name(change.targetId)} · ${change.phase === 'before' ? 'At scene entry' : 'By scene end'} · ${change.kind} · ${change.description || 'End relationship'} · ${change.status}]`;
+  return `[Relationship change: ${name(change.sourceId)} ${change.mutual ? '↔' : '→'} ${name(change.targetId)} · ${change.phase === 'before' ? 'At scene entry' : 'By scene end'} · ${change.kind} · ${change.description.trim() || 'End relationship'} · ${change.status}]`;
 }
 export const relationshipKey = (r: Pick<RelationshipChange, 'sourceId' | 'targetId' | 'kind' | 'mutual'>) =>
   JSON.stringify([r.sourceId, r.targetId, r.kind, r.mutual]);

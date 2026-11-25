@@ -11,7 +11,7 @@ import type { GenerationPurpose } from '../services/generation';
 import { summaryBoard } from '../services/summary-board';
 import { moved } from '../services/workspace';
 import type { Workspace } from '../services/workspace';
-import BeatEditor, { characterTargets, insertInlineReference } from './BeatEditor';
+import BeatEditor, { characterTargets, insertInlineReference, focusRelationshipChange } from './BeatEditor';
 import WritingTools from './WritingTools';
 import GenerationPanel from './GenerationPanel';
 import SceneProseEditor from './SceneProseEditor';
@@ -24,6 +24,8 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const [shelfCollapsed, setShelfCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [graphRequest, setGraphRequest] = useState(0);
+  const [relationshipEdit, setRelationshipEdit] = useState<{ id: string; request: number }>({ id: '', request: 0 });
+  const [relationshipCreate, setRelationshipCreate] = useState(0);
   const [draftPurpose, setDraftPurpose] = useState<GenerationPurpose>('prose');
   const [reviewOpen, setReviewOpen] = useState(true);
   const root = useRef<HTMLElement>(null);
@@ -32,6 +34,20 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
   const editorRef = useRef<Editor | null>(null), editors = useRef(new Map<string, Editor>());
   const tones = project.tones ?? [], emotions = project.emotions ?? [];
   const summary = useMemo(() => summaryBoard(scene, project.tones), [scene, project.tones]);
+  const openRelationshipChange = (id: string) => {
+    setRelationshipEdit(previous => ({ id, request: previous.request + 1 }));
+    setGraphRequest(request => request + 1);
+  };
+  useEffect(() => {
+    const focusChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ sceneId: string; changeId: string }>).detail;
+      if (!visible || detail.sceneId !== scene.id) return;
+      const editor = editors.current.get(summary.id);
+      if (editor) focusRelationshipChange(editor, detail.changeId);
+    };
+    window.addEventListener('shorthand:focus-relationship-change', focusChange);
+    return () => window.removeEventListener('shorthand:focus-relationship-change', focusChange);
+  }, [visible, scene.id, summary.id]);
   const manage = (kind: 'characters' | 'tones' | 'emotions', id?: string) => { if (manageLibrary) manageLibrary(kind, id); else if (kind === 'characters') manageCharacters(id); };
   const register = useCallback((id: string, editor: Editor | null) => { if (editor) editors.current.set(id, editor); else editors.current.delete(id); }, []);
   const selectEditor = useCallback((editor: Editor) => {
@@ -101,7 +117,7 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
       <div className="shelf-heading"><strong hidden={shelfCollapsed}>Writing tools</strong><button className="shelf-toggle quiet icon-button" aria-expanded={!shelfCollapsed} aria-controls={`${prefix}-shelf`} aria-label={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} title={shelfCollapsed ? 'Expand block sidebar' : 'Collapse block sidebar'} onClick={() => { setShelfCollapsed(!shelfCollapsed); if (!shelfCollapsed) setDetailsOpen(false); }}>{shelfCollapsed ? <ChevronRight size={17}/> : <ChevronLeft size={17}/>}</button></div>
       {shelfCollapsed && <button className="quiet icon-button" aria-label="Search story blocks" onClick={() => { setShelfCollapsed(false); requestAnimationFrame(() => root.current?.querySelector<HTMLInputElement>('.block-search input')?.focus()); }}><Search size={18}/></button>}
       <div id={`${prefix}-shelf`} className="block-shelf-body" hidden={shelfCollapsed}>
-        <WritingTools project={project} locked={locked} onManage={manage} onInsert={insertReference}/>
+        <WritingTools project={project} locked={locked} onManage={manage} onInsert={insertReference} onRelationshipChange={() => { setRelationshipCreate(request => request + 1); setGraphRequest(request => request + 1); }}/>
       </div>
     <section className="scene-settings" aria-label="Scene settings">
       <button className="inspector-toggle" aria-expanded={detailsOpen} aria-controls={`${prefix}-details`} aria-label={detailsOpen ? 'Collapse scene details' : 'Expand scene details'} title={detailsOpen ? 'Collapse scene details' : 'Expand scene details'} onClick={() => { setDetailsOpen(!detailsOpen); if (!detailsOpen) setShelfCollapsed(false); }}><SlidersHorizontal size={17}/><span>{detailsOpen ? 'Hide details' : 'Scene details'}</span></button>
@@ -128,9 +144,9 @@ export default function SceneView({ project, scene, workspace, sessionId, genera
         <div className="review-source-heading" hidden={!reviewVisible}><h2>{reviewPurpose === 'beats' ? 'Current scene direction' : 'Current manuscript'}</h2><p className="muted">Your writing remains editable while you compare the proposal.</p></div>
       <section className="summary-note summary-board" aria-labelledby={`${prefix}-summary-label`} data-board-id={summary.id} data-reference-drop-board>
         <div className="summary-board-heading"><h2 id={`${prefix}-summary-label`}>Scene summary</h2><span className="muted">Freeform direction</span></div>
-        <BeatEditor beat={summary} index={-1} scope="summary" ariaLabel="Scene summary" placeholder="Describe the scene. Add optional character, emotion, or tone references when useful." characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateScene', sceneId: scene.id, summary: text, summaryDocument: document, toneId: '', tone: '' })} onFocus={selectEditor} onSelection={selectEditor}/>
+        <BeatEditor beat={summary} index={-1} scope="summary" sceneId={scene.id} relationshipChanges={project.relationshipChanges} onSelectRelationshipChange={openRelationshipChange} ariaLabel="Scene summary" placeholder="Describe the scene. Add optional character, emotion, tone, or relationship change blocks." characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateScene', sceneId: scene.id, summary: text, summaryDocument: document, toneId: '', tone: '' })} onFocus={selectEditor} onSelection={selectEditor}/>
       </section>
-      <RelationshipPanel project={project} workspace={workspace} locked={locked} sceneId={scene.id} run={run} openRequest={graphRequest}/>
+      <RelationshipPanel project={project} workspace={workspace} locked={locked} sceneId={scene.id} run={run} openRequest={graphRequest} editChangeId={relationshipEdit.id} editRequest={relationshipEdit.request} createRequest={relationshipCreate}/>
       <div className="sequence-heading"><h2>The beats</h2><span className="muted">{scene.beats.length} beat{scene.beats.length === 1 ? '' : 's'} - One moment, then the next.</span></div>
       {scene.beats.length ? <Timeline ids={scene.beats.map(b => b.id)} group={`Beats in ${scene.id}`} onReorder={ids => { edit({ type: 'reorderBeats', sceneId: scene.id, ids }); notify('Beat order updated.'); }}>{scene.beats.map((beat, index) => <TimelineItem key={beat.id} id={beat.id} index={index} count={scene.beats.length} group={`Beats in ${scene.id}`} label={`beat ${index + 1}`} disabled={locked} onMove={delta => { edit({ type: 'reorderBeats', sceneId: scene.id, ids: moved(scene.beats.map(b => b.id), beat.id, delta) }); notify(`Beat moved to position ${index + delta + 1}.`); }} actions={<><button disabled={locked} aria-label={`Duplicate beat ${index + 1}`} onClick={() => run(async () => { const before = new Set(scene.beats.map(b => b.id)); const p = await workspace.dispatch({ type: 'duplicateBeat', beatId: beat.id }); focusBeat(p.scenes.find(s => s.id === scene.id)!.beats.find(b => !before.has(b.id))?.id); })}><Copy size={13}/>Duplicate</button><button disabled={locked} className="danger" aria-label={`Delete beat ${index + 1}`} onClick={() => run(async () => { await workspace.dispatch({ type: 'deleteBeat', beatId: beat.id }); focusBeat(scene.beats[index + 1]?.id ?? scene.beats[index - 1]?.id); notify('Beat moved to Trash.'); })}><Trash2 size={13}/>Delete</button></>}><div className="beat-content" data-board-id={beat.id} data-reference-drop-board><span className="beat-label">Beat {index + 1}</span><BeatEditor beat={beat} index={index} characters={project.characters} tones={tones} emotions={emotions} notify={notify} register={register} editable={!locked} onChange={(document, text) => edit({ type: 'updateBeat', beatId: beat.id, document, text })} onFocus={selectEditor} onSelection={selectEditor}/></div><div className="insert-row"><button className="quiet" disabled={locked} onClick={() => run(() => addBeat(beat.id))}><Plus size={12}/>Insert beat after</button></div></TimelineItem>)}</Timeline> : <div className="empty-beats"><p>Give this scene its first moment.</p><p className="muted">Write freely. No character blocks are required.</p></div>}
       <button className="add-beat" disabled={locked} onClick={() => run(() => addBeat())}><Plus size={16}/>Add beat</button>

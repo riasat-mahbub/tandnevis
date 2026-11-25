@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ChevronDown, ChevronUp, Heart, MessageSquare, Plus, Search, Users } from 'lucide-react';
+import { ChevronDown, ChevronUp, Heart, MessageSquare, Network, Plus, Search, Users } from 'lucide-react';
 import type { Character, Preset, ProjectSnapshot } from '../services/project';
 import { effectiveColor, groupPresetsByColor, presetColorStyle } from '../services/preset-colors';
 import type { LibraryKind } from './LibraryView';
@@ -16,9 +16,10 @@ interface Props {
   locked: boolean;
   onManage: (kind: LibraryKind, id?: string) => void;
   onInsert: (kind: 'character' | 'emotion' | 'tone', definition: Character | Preset) => void;
+  onRelationshipChange?: () => void;
 }
 
-export default function WritingTools({ project, locked, onManage, onInsert }: Props) {
+export default function WritingTools({ project, locked, onManage, onInsert, onRelationshipChange }: Props) {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Partial<Record<LibraryKind, boolean>>>({});
   const prefix = useId();
@@ -43,6 +44,7 @@ export default function WritingTools({ project, locked, onManage, onInsert }: Pr
   return <div className="writing-tools">
     <label className="block-search"><Search size={15} aria-hidden="true"/><span className="sr-only">Search all story blocks</span><input type="search" autoComplete="off" value={search} placeholder="Find a block…" onChange={event => setSearch(event.target.value)}/></label>
     <div className="writing-tool-groups">
+      {onRelationshipChange && (!query || 'relationship change'.includes(query)) && <section className="writing-tool-group" aria-label="Relationship changes"><div className="writing-tool-group-heading"><Network size={16} aria-hidden="true"/><h3>Relationships</h3></div><button className="story-block block-relationship-change" disabled={locked || project.characters.length < 2} onClick={onRelationshipChange} title="Add a relationship change to this scene summary">Relationship change</button><p className="muted block-empty">Changes in the summary also appear in the graph.</p></section>}
       {categories.map(kind => {
         const Icon = icons[kind];
         const items = project[kind].filter(item => !item.archived && item.name.toLocaleLowerCase().includes(query));
